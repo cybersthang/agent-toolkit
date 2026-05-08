@@ -7,13 +7,14 @@ Toolkit này đóng gói toàn bộ hạ tầng AI agent (Claude Code / Cursor /
 - [1. Cài đặt toolkit lên máy](#1-cài-đặt-toolkit-lên-máy)
 - [2. Cài hạ tầng vào một project](#2-cài-hạ-tầng-vào-một-project)
 - [3. Sau khi install lần đầu](#3-sau-khi-install-lần-đầu)
-- [4. Workflow theo từng preset](#4-workflow-theo-từng-preset)
-- [5. Cấu trúc được cài vào project](#5-cấu-trúc-được-cài-vào-project)
-- [6. Cập nhật toolkit cho project đã cài](#6-cập-nhật-toolkit-cho-project-đã-cài)
-- [7. Thêm preset mới (vd: Django)](#7-thêm-preset-mới-vd-django)
-- [8. Verify install](#8-verify-install)
-- [9. Troubleshooting](#9-troubleshooting)
-- [10. FAQ](#10-faq)
+- [4. `agent-toolkit.config.json` — config trung tâm](#4-agent-toolkitconfigjson--config-trung-tâm)
+- [5. Workflow theo từng preset](#5-workflow-theo-từng-preset)
+- [6. Cấu trúc được cài vào project](#6-cấu-trúc-được-cài-vào-project)
+- [7. Cập nhật toolkit cho project đã cài](#7-cập-nhật-toolkit-cho-project-đã-cài)
+- [8. Thêm preset mới (vd: Django)](#8-thêm-preset-mới-vd-django)
+- [9. Verify install](#9-verify-install)
+- [10. Troubleshooting](#10-troubleshooting)
+- [11. FAQ](#11-faq)
 
 ---
 
@@ -97,7 +98,17 @@ In ra danh sách file sẽ được ghi và đường dẫn memory sẽ được
 
 Sau khi `init` xong, làm 3 bước:
 
-### Bước 1: Điền credentials
+### Bước 1: Điền credentials và (nếu cần) chỉnh `agent-toolkit.config.json`
+
+Sau init, project có **3 file config** ở 3 vị trí khác nhau:
+
+| File | Mục đích | Commit Git? |
+|------|----------|-------------|
+| `agent-toolkit.config.json` | Override preset defaults (addon_roots, mcp_servers, db, project_name…) | ✅ Có (trừ `machine_local`) |
+| `.codex/mcp.local.env` | Credentials thật (PASSWORD, JIRA user/pass) | ❌ KHÔNG (auto-gitignored) |
+| `.cursor/mcp.json` | MCP config cho Cursor (auto-generated) | ❌ KHÔNG (auto-gitignored) |
+
+Điền credentials:
 
 ```bash
 $EDITOR /path/to/project/.codex/mcp.local.env
@@ -131,7 +142,126 @@ Mong đợi:
 
 ---
 
-## 4. Workflow theo từng preset
+## 4. `agent-toolkit.config.json` — config trung tâm
+
+Sau `init`, toolkit ghi file `agent-toolkit.config.json` ở root project. Đây là **single source of truth** cho mọi giá trị toolkit cần khi render template hay sinh `.cursor/mcp.json`. Mục đích: chỉnh đúng 1 file thay vì re-pass CLI flags hay sửa preset trong toolkit repo.
+
+### 4.1. Cấu trúc file
+
+```jsonc
+{
+  "_managed_by": "agent-toolkit",
+  "_schema_version": 1,
+  "_doc": "Edit this file to override preset defaults...",
+
+  "preset": "odoo-17",                          // preset name
+  "project_name": "test_odoo17_install",
+  "workspace_root": "C:/tmp/test_odoo17_install",
+  "response_language": "Vietnamese",            // Reply language
+
+  "stack": {                                    // Override stack details if cần
+    "language": "python",
+    "language_version": "3.10",
+    "framework": "odoo",
+    "framework_version": "17",
+    "label": "Odoo 17"
+  },
+
+  "addon_roots": [                              // ← CODEBASE FOLDERS
+    "addons",
+    "custom_addons",
+    "enterprise",
+    "my_custom_addons"                          // user thêm thoải mái
+  ],
+
+  "mcp_servers": [                              // MCP nào sẽ bật
+    "codebase",
+    "postgres"                                  // bỏ "realdata_test" → mcp.json bớt 1 dòng
+  ],
+
+  "db": {
+    "default_db": "my_real_db",                 // override DB
+    "default_port": 5433
+  },
+
+  "machine_local": {                            // ← KHÔNG nên commit nguyên block này
+    "_doc": "Machine-specific paths.",
+    "python_bin": "C:/.../venv/Scripts/python.exe",
+    "psql_bin": "C:/Program Files/.../psql.exe"
+  }
+}
+```
+
+### 4.2. Thứ tự ưu tiên khi resolve
+
+```
+CLI flag  >  agent-toolkit.config.json  >  preset JSON  >  auto-detect
+```
+
+Ví dụ: `--python /other/python.exe` ưu tiên hơn `machine_local.python_bin` trong file. File đè preset. Preset đè auto-detect.
+
+### 4.3. Use case thực tế
+
+**A. Thêm addon root mới (codebase folder)**
+
+```jsonc
+"addon_roots": [
+  "addons",
+  "custom_addons",
+  "enterprise",
+  "tools/internal_addons"   // ← thêm
+]
+```
+
+Chạy `setup.py update <project>` → `AGENTS.md`, `project_workspace.md`, canonical_decisions answer "addon roots" đều cập nhật theo.
+
+**B. Bỏ một MCP server**
+
+Project Odoo 17 không cần JIRA, hoặc test môi trường offline không cần `realdata_test`:
+
+```jsonc
+"mcp_servers": ["codebase", "postgres"]
+```
+
+`update` xong → `.cursor/mcp.json` chỉ còn 2 server, các start_*_mcp.py dư thừa vẫn nằm lại trong `.codex/` (chấp nhận được — Cursor không load chúng).
+
+**C. Đổi DB mặc định**
+
+```jsonc
+"db": {
+  "default_db": "production_clone",
+  "default_port": 5432
+}
+```
+
+`AGENTS.md` + `odoo-17-project-context.mdc` đều update.
+
+**D. Project-level config commit lên Git, machine paths thì không**
+
+Khuyến nghị: commit toàn bộ `agent-toolkit.config.json` **trừ block `machine_local`**. Cách triển khai:
+
+```bash
+# Cách 1: gitignore cả file, mỗi dev tự chạy `init`
+echo "agent-toolkit.config.json" >> .gitignore
+
+# Cách 2: commit file nhưng dùng sparse strategy — split thành 2 file
+# (không support sẵn, nhưng có thể đặt machine_local.python_bin = ""
+#  rồi dev pass --python qua CLI mỗi lần update)
+```
+
+Recommendation thực dụng: commit file luôn, mỗi máy chỉnh `machine_local.python_bin` rồi `setup.py update`. Path Windows / Linux khác nhau là chuyện bình thường, dev biết tự fix.
+
+### 4.4. Sau khi edit file → re-run update
+
+```bash
+python ~/agent-toolkit/setup.py update /path/to/project
+```
+
+Update đọc file, merge, re-render mọi template, ghi lại file (chuẩn hoá format).
+
+---
+
+## 5. Workflow theo từng preset
 
 ### 4.1. Preset `odoo-12` (NAKIVO Odoo 12 Enterprise)
 
@@ -184,12 +314,13 @@ Project nhận:
 
 ---
 
-## 5. Cấu trúc được cài vào project
+## 6. Cấu trúc được cài vào project
 
 Sau `init`, project có thêm:
 
 ```
 your-project/
+├── agent-toolkit.config.json       # ← CONFIG TRUNG TÂM (xem mục 4)
 ├── .codex/
 │   ├── mcp_servers/                # MCP server impls (theo preset)
 │   │   ├── codebase_server.py
@@ -226,26 +357,36 @@ your-project/
 
 ---
 
-## 6. Cập nhật toolkit cho project đã cài
+## 7. Cập nhật toolkit cho project đã cài
 
-Khi toolkit có thay đổi (rule mới, skill mới, MCP server fix bug…), refresh project:
+Khi toolkit có thay đổi (rule mới, skill mới, MCP server fix bug…) **HOẶC** khi user vừa edit `agent-toolkit.config.json`:
 
 ```bash
 python ~/agent-toolkit/setup.py update /path/to/project
 ```
 
-Behaviour:
+`update` đọc `agent-toolkit.config.json` để biết preset + override, sau đó re-run logic của `init`:
+
 - ✅ Ghi đè rules, skills, MCP server impls, start scripts, tests
 - ✅ Reseed memory files (force=true → cập nhật cả nội dung)
-- ✅ Re-render `AGENTS.md`, `CLAUDE.md`, `mcp.local.env.example`
+- ✅ Re-render `AGENTS.md`, `CLAUDE.md`, `mcp.local.env.example`, `odoo-*-project-context.mdc`
+- ✅ Re-generate `.cursor/mcp.json` (theo `mcp_servers` trong config.json)
+- ✅ Re-write `agent-toolkit.config.json` (chuẩn hoá format)
 - ❌ **Không** đụng `mcp.local.env` (credentials thật)
 - ❌ **Không** đụng `.codex/canonical_decisions.json` nếu file đã tồn tại (registry curated locally)
+- ❌ **Không** xóa file MCP server cũ khi user bỏ ra khỏi `mcp_servers` (file dư thừa vô hại — có thể xóa thủ công)
 
-`update` đọc `.agent-toolkit-install.json` để biết preset/python/psql đã chọn.
+Override flag tại commandline (ưu tiên hơn config file):
+
+```bash
+python ~/agent-toolkit/setup.py update /path/to/project \
+    --python /new/path/to/python.exe \
+    --preset odoo-17
+```
 
 ---
 
-## 7. Thêm preset mới (vd: Django)
+## 8. Thêm preset mới (vd: Django)
 
 ### Bước 1: Drop preset JSON
 
@@ -296,7 +437,7 @@ python ~/agent-toolkit/setup.py init /tmp/test-django --preset django --yes
 
 ---
 
-## 8. Verify install
+## 9. Verify install
 
 ### 8.1. Smoke test (offline, không cần DB)
 
@@ -324,7 +465,7 @@ Spawn từng MCP server qua stdio, gửi `tools/list` thật, kiểm tra respons
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 ### 9.1. `UnicodeEncodeError: 'charmap' codec can't encode character '✓'`
 
@@ -394,7 +535,7 @@ File này phải tồn tại.
 
 ---
 
-## 10. FAQ
+## 11. FAQ
 
 ### Tại sao toolkit là repo riêng, không nhét trong project?
 
@@ -437,10 +578,12 @@ Toolkit cài cả ba — bạn dùng cái nào tuỳ thích.
 ### Làm sao biết toolkit version nào đã cài cho project?
 
 ```bash
-cat /path/to/project/.agent-toolkit-install.json
+cat /path/to/project/agent-toolkit.config.json
 ```
 
-Ghi: preset, python_bin, psql_bin, project_name, install timestamp.
+Ghi: preset, python_bin, psql_bin, project_name, addon_roots, mcp_servers, db, schema version.
+
+(File cũ `.agent-toolkit-install.json` được tự động migrate sang `agent-toolkit.config.json` khi chạy `update`.)
 
 ### Toolkit có support Linux / macOS / Windows tất cả không?
 
@@ -455,11 +598,20 @@ Có. Path detection (Python venv, psql) có nhánh per-OS trong `lib/installer.p
 | `setup.py list-presets` | Liệt kê preset có sẵn |
 | `setup.py init <path> --preset <name> --yes` | Cài hạ tầng vào project |
 | `setup.py init <path> --preset <name> --dry-run` | Xem trước, không ghi |
-| `setup.py update <path>` | Refresh project từ toolkit mới |
+| `setup.py update <path>` | Refresh project (đọc `agent-toolkit.config.json`) |
+| `setup.py update <path> --python /new/python` | Override config tạm thời |
 | `python <project>/.codex/tests/test_mcp_wrappers.py` | Verify install (27 tests) |
 
-| File quan trọng | Vai trò |
-|-----------------|---------|
+| File quan trọng (project) | Vai trò |
+|---------------------------|---------|
+| `agent-toolkit.config.json` | **Config trung tâm** — preset, addon_roots, mcp_servers, db, machine paths |
+| `.codex/mcp.local.env` | Credentials (gitignored) |
+| `.codex/canonical_decisions.json` | Knowledge registry (curate locally, không bị overwrite) |
+| `.cursor/mcp.json` | Cursor MCP wiring (auto-generated, gitignored) |
+| `AGENTS.md` | Entry point — render từ template + config |
+
+| File quan trọng (toolkit) | Vai trò |
+|---------------------------|---------|
 | `presets/<name>.json` | Định nghĩa preset (stack, MCP, rules, memory…) |
 | `templates/codex/canonical_decisions.<preset>.json` | Registry seed riêng cho preset |
 | `templates/cursor/rules/<stack>/*.mdc` | Rule cho stack |

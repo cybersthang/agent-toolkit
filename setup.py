@@ -47,6 +47,75 @@ from installer import (  # noqa: E402
 )
 
 
+# Project-level config file. Captures the effective settings for an installed
+# project so `update` can re-run with the same shape, and so users can edit
+# overrides (addon_roots, mcp_servers, db, python_bin) without touching the
+# toolkit's preset JSON or re-passing CLI flags.
+PROJECT_CONFIG_NAME = 'agent-toolkit.config.json'
+LEGACY_CONFIG_NAME = '.agent-toolkit-install.json'
+
+
+def load_project_config(target: Path) -> Optional[Dict[str, Any]]:
+    """Return parsed project config dict, or None if neither file exists.
+
+    Tries `agent-toolkit.config.json` first, then the legacy
+    `.agent-toolkit-install.json` for backward compatibility.
+    """
+    cfg_path = target / PROJECT_CONFIG_NAME
+    if cfg_path.exists():
+        return json.loads(cfg_path.read_text(encoding='utf-8'))
+    legacy = target / LEGACY_CONFIG_NAME
+    if legacy.exists():
+        warn(f'Found legacy {LEGACY_CONFIG_NAME}; will migrate to {PROJECT_CONFIG_NAME}')
+        return json.loads(legacy.read_text(encoding='utf-8'))
+    return None
+
+
+def write_project_config(target: Path, ctx: Dict[str, Any], preset_name: str):
+    """Persist the resolved config so `update` can re-run consistently."""
+    cfg = {
+        '_managed_by': 'agent-toolkit',
+        '_schema_version': 1,
+        '_doc': (
+            'Edit this file to override preset defaults for this project. '
+            'CLI flags > this file > preset defaults. Run '
+            '`python <toolkit>/setup.py update <project>` after editing.'
+        ),
+        'preset': preset_name,
+        'project_name': ctx.get('PROJECT_NAME', ''),
+        'workspace_root': ctx.get('WORKSPACE_ROOT', ''),
+        'response_language': ctx.get('RESPONSE_LANGUAGE', 'English'),
+        'stack': {
+            'language': ctx.get('STACK_LANGUAGE', ''),
+            'language_version': ctx.get('STACK_LANGUAGE_VERSION', ''),
+            'framework': ctx.get('STACK_FRAMEWORK', ''),
+            'framework_version': ctx.get('STACK_FRAMEWORK_VERSION', ''),
+            'label': ctx.get('STACK_LABEL', ''),
+        },
+        'addon_roots': list(ctx.get('ADDON_ROOTS', []) or []),
+        'mcp_servers': list(ctx.get('MCP_SERVERS', []) or []),
+        'db': {
+            'default_db': ctx.get('DEFAULT_DB', ''),
+            'default_port': int(ctx.get('DEFAULT_PG_PORT') or 5432),
+        },
+        'machine_local': {
+            '_doc': 'Machine-specific paths. Consider gitignoring or per-developer overrides.',
+            'python_bin': ctx.get('PYTHON_BIN', ''),
+            'psql_bin': ctx.get('PSQL_BIN', ''),
+        },
+    }
+    cfg_path = target / PROJECT_CONFIG_NAME
+    cfg_path.write_text(
+        json.dumps(cfg, indent=2, ensure_ascii=False) + '\n',
+        encoding='utf-8',
+    )
+    ok(f'  wrote {PROJECT_CONFIG_NAME}')
+    legacy = target / LEGACY_CONFIG_NAME
+    if legacy.exists():
+        legacy.unlink()
+        info(f'  removed legacy {LEGACY_CONFIG_NAME}')
+
+
 # -----------------------------------------------------------------------
 def cmd_list_presets(args):
     presets = sorted({p.stem for p in PRESETS_DIR.glob('*.json')}
@@ -64,9 +133,20 @@ def cmd_init(args):
     target = Path(args.target).resolve()
     target.mkdir(parents=True, exist_ok=True)
 
+    # 0. Load existing project config (if any). Values from this file act as
+    #    defaults below preset-baked defaults but above auto-detection.
+    #    Priority: CLI flag > project config > preset default > auto-detect.
+    project_cfg: Dict[str, Any] = load_project_config(target) or {}
+    machine_cfg = project_cfg.get('machine_local') or {}
+
+    # 1. Resolve preset name (CLI > config > interactive prompt)
+    if not args.preset:
+        args.preset = project_cfg.get('preset')
     if not args.preset:
         presets = sorted({p.stem for p in PRESETS_DIR.glob('*.json')}
                          | {p.stem for p in PRESETS_DIR.glob('*.yaml')})
+        # Filter out per-preset registry seeds like canonical_decisions.odoo-17
+        presets = [p for p in presets if not p.startswith('canonical_decisions')]
         print('Available presets:')
         for i, p in enumerate(presets, 1):
             print(f'  {i}. {p}')
@@ -86,40 +166,73 @@ def cmd_init(args):
     info(f'Using preset: {args.preset}')
     info(f'  description: {preset.get("description", "")}')
     info(f'  stack: {preset.get("stack", {})}')
+    if project_cfg:
+        info(f'  honoring overrides from {PROJECT_CONFIG_NAME}')
 
-    py_bin = args.python or detect_python(target)
-    psql_bin = args.psql or detect_psql()
+    # 2. Resolve every field with CLI > config > preset > detect priority.
+    py_bin = (
+        args.python
+        or machine_cfg.get('python_bin')
+        or project_cfg.get('python_bin')   # legacy flat shape
+        or detect_python(target)
+    )
+    psql_bin = (
+        args.psql
+        or machine_cfg.get('psql_bin')
+        or project_cfg.get('psql_bin')
+        or detect_psql()
+    )
 
     if not args.yes:
         py_bin = input(f'Python binary [{py_bin or "?"}]: ').strip() or py_bin
         psql_bin = input(f'psql binary [{psql_bin or "?"}]: ').strip() or psql_bin
 
-    project_name = args.project_name or target.name
+    project_name = (
+        args.project_name
+        or project_cfg.get('project_name')
+        or target.name
+    )
 
-    addon_roots = preset.get('addon_roots', []) or []
-    mcp_servers = preset.get('mcp_servers', []) or []
+    addon_roots = (
+        project_cfg.get('addon_roots')
+        or preset.get('addon_roots', [])
+        or []
+    )
+    mcp_servers = (
+        project_cfg.get('mcp_servers')
+        or preset.get('mcp_servers', [])
+        or []
+    )
+    db_cfg = project_cfg.get('db') or preset.get('db', {}) or {}
+    response_language = (
+        project_cfg.get('response_language')
+        or preset.get('response_language', 'English')
+    )
+    stack_cfg = project_cfg.get('stack') or {}
+    preset_stack = preset.get('stack', {}) or {}
+
     ctx: Dict[str, Any] = {
         'WORKSPACE_ROOT': str(target).replace('\\', '/'),
         'WORKSPACE_NAME': project_name,
         'PROJECT_NAME': project_name,
         'PYTHON_BIN': str(py_bin or '').replace('\\', '/'),
         'PSQL_BIN': str(psql_bin or '').replace('\\', '/'),
-        'STACK_LANGUAGE': preset.get('stack', {}).get('language', 'python'),
-        'STACK_LANGUAGE_VERSION': preset.get('stack', {}).get('language_version', '3'),
-        'STACK_FRAMEWORK': preset.get('stack', {}).get('framework', ''),
-        'STACK_FRAMEWORK_VERSION': preset.get('stack', {}).get('framework_version', ''),
-        'STACK_LABEL': preset.get('stack_label')
+        'STACK_LANGUAGE': stack_cfg.get('language') or preset_stack.get('language', 'python'),
+        'STACK_LANGUAGE_VERSION': stack_cfg.get('language_version') or preset_stack.get('language_version', '3'),
+        'STACK_FRAMEWORK': stack_cfg.get('framework') or preset_stack.get('framework', ''),
+        'STACK_FRAMEWORK_VERSION': stack_cfg.get('framework_version') or preset_stack.get('framework_version', ''),
+        'STACK_LABEL': stack_cfg.get('label') or preset.get('stack_label')
             or '%s %s' % (
-                preset.get('stack', {}).get('framework', '').title(),
-                preset.get('stack', {}).get('framework_version', '')),
+                preset_stack.get('framework', '').title(),
+                preset_stack.get('framework_version', '')),
         'ADDON_ROOTS': addon_roots,
         'ADDON_ROOTS_CSV': ', '.join(addon_roots),
-        'DEFAULT_DB': preset.get('db', {}).get('default_db', ''),
-        'DEFAULT_PG_PORT': str(preset.get('db', {}).get('default_port', 5432)),
+        'DEFAULT_DB': db_cfg.get('default_db', ''),
+        'DEFAULT_PG_PORT': str(db_cfg.get('default_port', 5432)),
         'MCP_SERVERS': mcp_servers,
         'MCP_SERVERS_CSV': ', '.join(mcp_servers),
         'PRESET_NAME': args.preset,
-        'RESPONSE_LANGUAGE': preset.get('response_language', 'English'),
+        'RESPONSE_LANGUAGE': response_language,
     }
 
     info('\nResolved context:')
@@ -153,26 +266,39 @@ def cmd_init(args):
     seed_memory(preset, ctx, target, force=args.force)
     write_cursor_mcp(ctx, target, force=args.force)
     write_gitignore(target)
+    write_project_config(target, ctx, args.preset)
 
     print()
     ok('install complete.')
     info('Next:')
     info(f'  1. Edit {target}/.codex/mcp.local.env — fill PASSWORD + JIRA creds')
-    info('  2. Restart Cursor / Claude Code')
-    info(f'  3. Verify: python {target}/.codex/tests/test_mcp_wrappers.py')
+    info(f'  2. Edit {target}/{PROJECT_CONFIG_NAME} to override addon_roots,')
+    info('     mcp_servers, db etc. then re-run `setup.py update <project>`')
+    info('  3. Restart Cursor / Claude Code')
+    info(f'  4. Verify: python {target}/.codex/tests/test_mcp_wrappers.py')
 
 
 def cmd_update(args):
-    """Refresh templates/scripts but preserve user's mcp.local.env."""
+    """Refresh templates/scripts but preserve user's mcp.local.env.
+
+    Reads `agent-toolkit.config.json` (or legacy `.agent-toolkit-install.json`)
+    from the target. Project config takes precedence over preset defaults, so
+    edits to addon_roots/mcp_servers/db propagate on update.
+    """
     target = Path(args.target).resolve()
-    info_path = target / '.agent-toolkit-install.json'
-    if not info_path.exists():
-        sys.exit(f'No install record at {info_path}; use `init` instead')
-    state = json.loads(info_path.read_text(encoding='utf-8'))
-    args.preset = state['preset']
-    args.python = state.get('python_bin')
-    args.psql = state.get('psql_bin')
-    args.project_name = state.get('project_name')
+    cfg = load_project_config(target)
+    if cfg is None:
+        sys.exit(
+            f'No {PROJECT_CONFIG_NAME} or {LEGACY_CONFIG_NAME} at {target}; '
+            'use `init` instead'
+        )
+    # Only seed the args that aren't already set; cmd_init re-reads the
+    # config itself for the rich override merge.
+    args.preset = args.preset or cfg.get('preset')
+    args.project_name = args.project_name or cfg.get('project_name')
+    machine = cfg.get('machine_local') or {}
+    args.python = args.python or machine.get('python_bin') or cfg.get('python_bin')
+    args.psql = args.psql or machine.get('psql_bin') or cfg.get('psql_bin')
     args.yes = True
     args.dry_run = False
     args.force = True
@@ -182,11 +308,15 @@ def cmd_update(args):
 
 # -----------------------------------------------------------------------
 def build_plan(preset, ctx, target):
-    """Decide for each toolkit file: copy raw, template, or skip."""
+    """Decide for each toolkit file: copy raw, template, or skip.
+
+    `ctx['MCP_SERVERS']` is honored over `preset['mcp_servers']` so a project
+    config can drop or add MCP servers without forking the preset.
+    """
     plan: List = []
     rules_set = preset.get('rules', ['_common'])
     skills_set = preset.get('skills', ['_common'])
-    mcp_set = set(preset.get('mcp_servers', []))
+    mcp_set = set(ctx.get('MCP_SERVERS') or preset.get('mcp_servers', []))
 
     # 1. .codex/ tree — MCP server impls + scripts
     codex_src = TEMPLATES / 'codex'
@@ -374,6 +504,10 @@ def main():
 
     sp = sub.add_parser('update', help='refresh templates in an installed project')
     sp.add_argument('target')
+    sp.add_argument('--preset', help='override preset (defaults to config file)')
+    sp.add_argument('--python', help='override Python venv binary')
+    sp.add_argument('--psql', help='override psql binary path')
+    sp.add_argument('--project-name', help='override project name')
     sp.set_defaults(func=cmd_update)
 
     sp = sub.add_parser('list-presets', help='list available presets')

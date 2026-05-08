@@ -1,0 +1,63 @@
+---
+description: Generic, module-agnostic Odoo 12 rules. Hard-coded module names are forbidden in invariant rules; everything is discovered at runtime.
+alwaysApply: true
+---
+
+# Odoo 12 — Generic Rules (Module-Agnostic)
+
+This file applies to **any** addon under any addon root. Never embed a specific module name (e.g. `nakivo_sale`, `oca_*`, `web_*`) into an invariant rule. When you need a concrete module, discover it at runtime via the `nakivo_codebase` MCP.
+
+## Discovery (always before edits)
+
+1. `workspace_status` -> confirm addon roots.
+2. `discover_modules({ root_hint })` -> narrow to one module.
+3. `read_manifest({ module_path })` -> understand depends and data load order.
+4. `find_inheritance_chain({ model })` -> see every place a model is extended.
+5. `list_test_targets({ module_path })` -> learn the test entry points.
+
+## Invariants
+
+- **Models**: `_name` for new model, `_inherit` for extension, `_inherits` for delegation. Never declare both `_name` and `_inherit` to the same string in one class.
+- **API**: `@api.multi` for recordsets, `@api.model` for class-level methods. `@api.one` is forbidden.
+- **`ensure_one()`**: required when a method assumes a single record.
+- **Loops**: no `search()`, `browse(id)`, `write()`, or `unlink()` inside loops. Push filtering into domains, batch with `mapped` / `filtered` / `read_group`.
+- **Counts**: `search_count(domain)` over `len(search(domain))`.
+- **Computed fields**: declare a complete `@api.depends`. Store only when searched / grouped / sorted at scale.
+- **SQL**: prefer ORM. If SQL is unavoidable, use parameters and invalidate or refresh affected caches when writing.
+- **`sudo()`**: avoided unless clearly required; document the reason in a one-line comment.
+- **Errors**: `UserError` for business rules, `ValidationError` for invalid data.
+- **Logging**: use `_logger`, never `print`.
+- **Imports**: stdlib, third-party, `odoo`, local — in that order.
+
+## Manifest hygiene (any module)
+
+- `data` order: `security/` first, then `data/`, then `views/`, then menus.
+- `depends` lists exactly what the module imports / inherits.
+- `version` follows the existing project pattern (e.g. `12.0.x.y.z`).
+- `installable: True`, `application` only when the module is a top-level app.
+
+## XML / view hygiene
+
+- Inheritance edits use `xpath` with `position="after|before|inside|replace"`.
+- XML IDs are stable across releases. Never rename a published XML ID without a migration step.
+- Views referenced by `act_window`/`menuitem` must already exist by the time the data file loads.
+
+## Security / ACL
+
+- Every new model has at least one `ir.model.access.csv` row.
+- Multi-company models inherit `mail.thread` only when chatter is needed; otherwise omit to keep tables lean.
+- Record rules align with the model's `_inherit` chain — check the parent's rules before adding new ones.
+
+## Verification recipes (narrowest first)
+
+1. `-u <module> --stop-after-init` against the dev DB.
+2. `--test-enable --test-tags /<module> --stop-after-init` for module tests.
+3. For algorithm correctness: `eval_orm_expression` + `consistency_check_eval` (see `odoo-12-data-verification`).
+
+## What this rule **does not** mention by design
+
+- Specific NAKIVO module names.
+- Specific menu / model paths.
+- Specific JIRA project keys.
+
+If you need any of those, look them up via the `nakivo_codebase` MCP or the canonical decisions registry — do not hard-code them here.

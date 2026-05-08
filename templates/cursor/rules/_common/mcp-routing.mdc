@@ -1,0 +1,37 @@
+---
+description: MCP routing — which MCP server to call for which class of question. Always apply.
+alwaysApply: true
+---
+
+# MCP Routing
+
+Five MCP servers are wired into this workspace. Pick the right one before opening files.
+
+| Class of question                                   | MCP server               | Primary tools                                          |
+|-----------------------------------------------------|--------------------------|--------------------------------------------------------|
+| Module discovery, manifests, model lookup, XML IDs  | `nakivo_codebase`        | `discover_modules`, `read_manifest`, `find_inheritance_chain`, `search_xml_ids`, `search_text`, `read_file_chunk` |
+| Read-only DB schema and data inspection             | `nakivo_postgres`        | `list_databases`, `list_schemas`, `describe_table`, `query_readonly` |
+| Real-data smoke, registry boot, module tests, ORM eval | `nakivo_realdata_test`| `run_smoke_test`, `run_registry_boot`, `run_module_test`, `eval_orm_expression`, `consistency_check_eval`, `compare_with_expected` |
+| Canonical project answers ("how do we do X")        | `nakivo_codebase`        | `list_canonical_decisions`, `lookup_canonical_decision` |
+| JIRA tickets on the production server               | `jira_production`        | `get_issue`, `search_issues`, `my_assigned_issues`, `list_projects` |
+| JIRA tickets on the pre-production server           | `jira_preproduction`     | (same toolset as production)                            |
+
+## Hard rules
+
+1. **Codebase MCP before file reads.** Never broad-read with native file tools when an MCP tool answers the question.
+2. **Postgres MCP is read-only.** Use it for schema and data inspection; never via raw psql in Bash.
+3. **Real-data ORM eval is sandboxed.** Mutation tokens are rejected. Do not try to bypass the sandbox.
+4. **Pick the JIRA profile explicitly.** Never mix tickets from production and pre-production in the same answer without naming the profile.
+5. **Canonical lookup first** for recurring questions (see `decision-consistency.mdc`).
+
+## Token discipline
+
+- Always pass a `root_hint` (e.g. `nakivo`) when the question is module-scoped — this halves search time and tokens.
+- Use `read_file_chunk` with `start_line/end_line` instead of full reads.
+- Cap `search_text` with `limit` and use `glob` to constrain file types.
+- For JIRA, default `maxResults: 20`; raise only when the user asks for a wider window.
+
+## Failure handling
+
+- MCP returns `error`: read the message, fix the inputs, retry once. If still failing, surface the raw error and stop — do not silently fall back to a broader search.
+- DB looks production-like: stop and confirm with the user before running anything that writes.

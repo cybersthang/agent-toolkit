@@ -1,0 +1,21 @@
+---
+description: {{PROJECT_NAME}} Odoo 17 project context and agent rules - always apply
+alwaysApply: true
+---
+
+**Stack**: Odoo 17 ({{STACK_LANGUAGE}} {{STACK_LANGUAGE_VERSION}}, OWL frontend, PostgreSQL)
+**Root**: `{{WORKSPACE_ROOT}}`
+**Database**: `{{DEFAULT_DB}}`
+**Python**: `{{PYTHON_BIN}}`
+**Run**: `{{PYTHON_BIN}} odoo-bin -d {{DEFAULT_DB}}` (cwd: `{{WORKSPACE_ROOT}}`)
+
+**Agent rules**:
+- Keep output concise and result-focused.
+- Reply in {{RESPONSE_LANGUAGE}} when the user writes in {{RESPONSE_LANGUAGE}}.
+- Read the target file before editing it.
+- Keep diffs small and stay inside scope.
+- Do not add features outside the request without asking first.
+- Prefer ORM helpers such as `mapped`, `filtered`, and `read_group`.
+- Avoid `search()` / `browse(id)` calls inside loops.
+- Do not introduce `@api.multi` — it is removed in Odoo 17. Recordset is the default.
+- Do not introduce `attrs="{...}"` or `states="…"` in views — both are removed in 17.

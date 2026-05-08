@@ -1,0 +1,37 @@
+{
+  "description": "Odoo 12 Enterprise stack — Python 3.8, QWeb + jQuery, @api.multi",
+  "stack_label": "Odoo 12 Enterprise",
+  "response_language": "Vietnamese",
+  "stack": {
+    "language": "python",
+    "language_version": "3.8",
+    "framework": "odoo",
+    "framework_version": "12",
+    "frontend": "QWeb + jQuery"
+  },
+  "addon_roots": [
+    "nakivo",
+    "base_addons",
+    "nakivooca",
+    "OCA",
+    "nakivo-server/addons",
+    "nakivo-server/odoo/addons",
+    "odoo-12-enterprise-master/addons",
+    "odoo-12-enterprise-master/odoo/addons"
+  ],
+  "mcp_servers": [
+    "codebase",
+    "postgres",
+    "realdata_test",
+    "jira_production",
+    "jira_preproduction"
+  ],
+  "db": {
+    "default_db": "Nakivo01",
+    "default_port": 5432,
+    "default_user": "nakivo"
+  },
+  "rules": ["_common", "odoo-12"],
+  "skills": ["_common", "odoo-12"],
+  "memory_packs": ["odoo-12"]
+}

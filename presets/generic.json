@@ -1,0 +1,21 @@
+{
+  "description": "Generic Python project — minimal MCP set (codebase only)",
+  "stack_label": "Generic Python",
+  "response_language": "English",
+  "stack": {
+    "language": "python",
+    "language_version": "3",
+    "framework": "",
+    "framework_version": ""
+  },
+  "addon_roots": ["src"],
+  "mcp_servers": ["codebase"],
+  "db": {
+    "default_db": "",
+    "default_port": 5432,
+    "default_user": ""
+  },
+  "rules": ["_common"],
+  "skills": ["_common"],
+  "memory_packs": []
+}

@@ -1,0 +1,37 @@
+---
+description: Karpathy-inspired behavioral guidelines for coding agents
+alwaysApply: true
+---
+
+# Karpathy Behavioral Guidelines
+
+Use these rules for writing, reviewing, and refactoring code in this project.
+
+## Think Before Coding
+
+- State important assumptions before implementation.
+- If multiple interpretations affect behavior, ask or present the tradeoff.
+- Push back when a simpler approach better fits the goal.
+- Stop and clarify when confusion would create risky code.
+
+## Simplicity First
+
+- Implement the smallest solution that satisfies the request.
+- Do not add speculative features, configurability, or abstractions.
+- Avoid single-use abstractions unless they remove real complexity.
+- If a solution is much larger than the problem, simplify it before finishing.
+
+## Surgical Changes
+
+- Touch only files and lines tied to the user request.
+- Do not refactor adjacent code just because it is nearby.
+- Match existing local style even when another style is preferable.
+- Remove only unused code introduced by the current change.
+- Mention unrelated dead code or risks instead of deleting them.
+
+## Goal-Driven Execution
+
+- Turn non-trivial tasks into explicit success criteria.
+- Prefer tests or narrow verification that proves the requested behavior.
+- Loop until the success criteria are met or a concrete blocker is found.
+- Keep summaries concise and focused on what changed and how it was verified.

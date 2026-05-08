@@ -1,0 +1,564 @@
+{
+  "version": 10,
+  "updated_at": "2026-05-08",
+  "purpose": "Single source of truth for recurring project questions. Agents MUST consult this registry before answering 'how do we do X in this project'. Adding/changing entries requires explicit user approval - this protects determinism.",
+  "decisions": [
+    {
+      "id": "stack",
+      "topic": "stack",
+      "aliases": [
+        "technology stack",
+        "tech stack",
+        "odoo version"
+      ],
+      "question": "What is the project stack?",
+      "answer": "Odoo 12 Enterprise on Python 3.8.8 (project venv at C:/Users/thang.vo/Desktop/NAKIVO/venv), PostgreSQL, QWeb + jQuery. Workspace root: C:/Users/thang.vo/Desktop/NAKIVO/Cursor_NAKIVO. Database: Nakivo01.",
+      "source": ".cursor/rules/odoo-12-project-context.mdc"
+    },
+    {
+      "id": "python-bin",
+      "topic": "python binary",
+      "aliases": [
+        "python interpreter",
+        "venv python",
+        "which python",
+        "python 3.8",
+        "project python"
+      ],
+      "question": "Which Python interpreter do we run for this project?",
+      "answer": "Always use the venv: C:/Users/thang.vo/Desktop/NAKIVO/venv/Scripts/python.exe (Python 3.8.8). Never use the system Python at C:/Users/thang.vo/AppData/Local/Programs/Python/Python38. The venv path is also exported as NAKIVO_PYTHON_BIN in .codex/mcp.local.env so MCP wrappers, Odoo shell, and test runners stay aligned.",
+      "source": ".codex/mcp.local.env"
+    },
+    {
+      "id": "addon-roots",
+      "topic": "addon roots",
+      "aliases": [
+        "where are modules",
+        "addon path",
+        "module location"
+      ],
+      "question": "Where do custom and vendored addons live?",
+      "answer": "nakivo, base_addons, nakivooca, OCA, nakivo-server/addons, nakivo-server/odoo/addons, odoo-12-enterprise-master/addons, odoo-12-enterprise-master/odoo/addons. Custom code lives under nakivo/.",
+      "source": "AGENTS.md"
+    },
+    {
+      "id": "api-decorators",
+      "topic": "api decorators",
+      "aliases": [
+        "api.multi",
+        "api.one",
+        "api.model",
+        "decorator"
+      ],
+      "question": "Which Odoo API decorators do we use?",
+      "answer": "Use @api.multi for recordset methods and @api.model for model-level methods. Avoid @api.one (deprecated). Call ensure_one() when a single record is required.",
+      "source": ".cursor/rules/odoo-12-backend.mdc"
+    },
+    {
+      "id": "loop-anti-patterns",
+      "topic": "loop anti-patterns",
+      "aliases": [
+        "search in loop",
+        "browse in loop",
+        "performance loop"
+      ],
+      "question": "What ORM calls are forbidden inside loops?",
+      "answer": "Never call search(), browse(id), write(), or unlink() inside loops. Push filtering into domains, batch with mapped/filtered/read_group, and use search_count() instead of len(search()).",
+      "source": ".cursor/rules/odoo-12-backend.mdc"
+    },
+    {
+      "id": "sudo-policy",
+      "topic": "sudo",
+      "aliases": [
+        "sudo()",
+        "privileged"
+      ],
+      "question": "When may we use sudo()?",
+      "answer": "Avoid sudo() unless clearly required. Document every sudo() call with a one-line reason. Default to standard ACL/record-rule security.",
+      "source": ".cursor/rules/odoo-12-backend.mdc"
+    },
+    {
+      "id": "verification-default",
+      "topic": "verification",
+      "aliases": [
+        "how to test",
+        "verify changes",
+        "smoke test"
+      ],
+      "question": "How do we verify Odoo 12 changes?",
+      "answer": "Prefer the narrowest module-level check: -u <module> --stop-after-init against the configured DB. For real-data smoke checks, use the nakivo_realdata_test MCP run_smoke_test or build_module_test_command tool. For algorithm correctness, use eval_orm_expression + consistency_check_eval.",
+      "source": ".codex/mcp_servers/realdata_test_server.py"
+    },
+    {
+      "id": "mcp-routing",
+      "topic": "mcp routing",
+      "aliases": [
+        "which mcp",
+        "tool selection",
+        "mcp choice"
+      ],
+      "question": "Which MCP do we use for which question?",
+      "answer": "Codebase discovery, manifests, models, XML IDs => nakivo_codebase. Read-only DB schema/data => nakivo_postgres. Real-data smoke and algorithm verification => nakivo_realdata_test. JIRA Production tickets => jira_production. JIRA Pre-Production tickets => jira_preproduction. Never broad-read files before asking the codebase MCP.",
+      "source": "AGENTS.md"
+    },
+    {
+      "id": "jira-production-url",
+      "topic": "jira production",
+      "aliases": [
+        "prod jira",
+        "jira prod url"
+      ],
+      "question": "What is the JIRA Production endpoint and how is it accessed?",
+      "answer": "Base URL http://10.170.180.181:8080/. Credentials are loaded from .codex/mcp.local.env (NAKIVO_JIRA_PRODUCTION_*) by start_jira_production_mcp.py. Never hardcode them in committed files.",
+      "source": ".codex/mcp.local.env"
+    },
+    {
+      "id": "jira-preproduction-url",
+      "topic": "jira preproduction",
+      "aliases": [
+        "preprod jira",
+        "jira preprod url"
+      ],
+      "question": "What is the JIRA Pre-Production endpoint and how is it accessed?",
+      "answer": "Base URL http://10.170.179.41/. Credentials are loaded from .codex/mcp.local.env (NAKIVO_JIRA_PREPRODUCTION_*) by start_jira_preproduction_mcp.py. Never hardcode them in committed files.",
+      "source": ".codex/mcp.local.env"
+    },
+    {
+      "id": "language-policy",
+      "topic": "response language",
+      "aliases": [
+        "vietnamese",
+        "language"
+      ],
+      "question": "Which language do we reply in?",
+      "answer": "Reply in Vietnamese unless the user asks otherwise. Code comments stay in English.",
+      "source": "AGENTS.md"
+    },
+    {
+      "id": "module-agnostic-rule",
+      "topic": "module agnostic",
+      "aliases": [
+        "generic rule",
+        "fix cứng",
+        "any module"
+      ],
+      "question": "Should rules and skills hard-code specific NAKIVO modules?",
+      "answer": "No. Rules and skills must be generic and operate on any Odoo 12 module. Use addon roots, manifests, model names and inheritance chains discovered at runtime via the codebase MCP - never embed module names like nakivo_sale into invariant rules.",
+      "source": ".cursor/rules/odoo-12-generic.mdc"
+    },
+    {
+      "id": "nakivo-profiler-overall-correctness",
+      "topic": "nakivo_profiler correctness",
+      "aliases": [
+        "profiler logic",
+        "profiler đúng chưa",
+        "nakivo_profiler review",
+        "tracking algorithm",
+        "profiler đánh giá"
+      ],
+      "question": "Logic tracking của module nakivo_profiler có đúng không?",
+      "answer": "ĐÚNG ở mức kiến trúc. (1) Zero-overhead-when-off qua _PROFILING_ACTIVE ở profiler_engine.py:448 — single boolean check là path đầu trong mọi wrapper. (2) Opt-in user tracking ở profiler_engine.py:548-566 (include_user_ids rỗng = không track ai). (3) TTL auto-off ở controllers/profiler_controller.py:5735-5756. (4) Async log queue ở profiler_engine.py:846-880 + worker batch INSERT ở controllers/profiler_controller.py:4920-4967. (5) Coverage ~98% wall theo benchmark 88s flow (verified trên dữ liệu thật trong REVIEW_AND_OPTIMIZATION.md). 2% outside là giới hạn của sys.setprofile (psycopg2 I/O wait, werkzeug C, JSON/lxml C parser) — KHÔNG phải bug. (6) Bottleneck owner ranking và N+1 detector chỉ đúng thủ phạm (sale.order.search 643 calls / 43.24s; res.users.search 166 calls). Issue tồn đọng nằm ở 3 vùng (xem topics: nakivo_profiler issue A C-ext, issue B payload, issue C partition).",
+      "source": "nakivo/nakivo_profiler/REVIEW_AND_OPTIMIZATION.md + verified by code reading 2026-05-08"
+    },
+    {
+      "id": "nakivo-profiler-issue-a-c-ext",
+      "topic": "nakivo_profiler issue A C-ext",
+      "aliases": [
+        "c extension fallback",
+        "deep_trace_ext silent",
+        "engine python fallback"
+      ],
+      "question": "Vì sao deep trace chậm 5-10× và làm sao biết C extension đã load?",
+      "answer": "Module có sẵn artifact _deep_trace_cb.cp38-win_amd64.pyd cho Windows Python 3.8 (deep_trace_ext/), nhưng deep_trace_ext/__init__.py:35-39 silent fallback sang pure-Python khi import fail — không log warning. Trên runtime production Linux, .pyd là Windows-only nên chắc chắn fallback. Pure-Python callback fire 65k+ lần cho trace 88s → overhead 5-10× cao hơn C ext. Fix 3 bước: (1) build artifact đúng OS bằng setup.py build_ext --inplace dưới venv 3.8. (2) Thêm _logger.warning trong models/profiler_config.py:328 (sau install_profiler_hooks) cảnh báo HAS_C_EXT=False. (3) Tạo deep_trace_ext/BUILD.md hướng dẫn build cho Linux + Windows. Effort 30 phút. Verify: SQL trên nakivo_profiler_log additional_info::json -> 'engine' phải ra 'c_ext' sau restart.",
+      "source": "nakivo/nakivo_profiler/deep_trace_ext/__init__.py:35-39"
+    },
+    {
+      "id": "nakivo-profiler-issue-b-payload",
+      "topic": "nakivo_profiler issue B payload",
+      "aliases": [
+        "additional_info 58MB",
+        "trace payload size",
+        "dashboard slow"
+      ],
+      "question": "Vì sao additional_info có thể tới 58MB/row và làm sao giảm?",
+      "answer": "Vị trí persist: controllers/profiler_controller.py:5209-5252 (line numbers shifted from doc's 4960-5002 — code đã thêm sau khi doc viết). Cap thực tế: top_breakdown 1200 (line 5176 _max_tb=1200, line 5233), all_functions/custom_functions 500, bottleneck_findings_partitioned 100 (line 5239), exclusive 30. Trace 88s ghi 58MB JSON do payload cộng dồn 6 array, nhiều array là variant re-derivable từ top_breakdown. Fix 2 bước: B1 (1 giờ) - gzip+base64 wrap khi raw_payload > 1MB ở chỗ json.dumps line 5209-5252, đọc lại ở read path line 1731-1864 — giảm 58MB → 5-8MB (gzip 7-10×). B2 (4-6 giờ) - drop all_functions/custom_functions/partitioned_grouped/exclusive_grouped + trim top_breakdown 1200→200; dashboard re-derive từ top_breakdown — giảm còn 1-2MB nhưng cần test kỹ render. Khuyến nghị B1 trước, B2 sau.",
+      "source": "nakivo/nakivo_profiler/controllers/profiler_controller.py:5176,5209-5252"
+    },
+    {
+      "id": "nakivo-profiler-issue-c-partition",
+      "topic": "nakivo_profiler issue C partition",
+      "aliases": [
+        "exact_partition_total_ms over wall",
+        "double counting",
+        "partition formula"
+      ],
+      "question": "Vì sao exact_partition_total_ms (91.2s) > wall_ms (86.6s) ~5%?",
+      "answer": "Vị trí: models/deep_trace.py:6972-6975 — exact_partition_total_ms = sum(impact_ms các row) không trừ overlap. Root cause: trong _bt_remap_rows_to_business_owner (line 2349-2570+), impact_ms của 1 row có thể là subtree_time_ns (cho orchestrator/_compute, impact_is_subtree=True) hoặc self_time_ns (cho leaf). Khi parent _compute_X (subtree) và child _search (subtree) cùng có row trong partitioned_findings, subtree(_compute_X) ⊇ subtree(_search) → sum overlap vùng giao. Verify với id=245: 5151 visible + 82687 hidden = 87838 > wall 86582 by 1256ms. Fix 2 bước: C1 (1-2 giờ, không thay logic) — thêm sanity check sau line 6986 lưu exact_partition_overcount_ms, exact_partition_overcount_pct, exact_partition_consistent vào sub['summary']; dashboard hiển thị badge 'Approximate ±X%' khi consistent=false. C2 (1-2 ngày, cần spec rõ trước) — sửa partition formula sao cho mỗi frame chỉ attribute vào đúng 1 owner: impact_ms row = sum(self_time_ns of owner's frames) / 1e6, sum tất cả + skipped = wall. Khuyến nghị C1 trước.",
+      "source": "nakivo/nakivo_profiler/models/deep_trace.py:6972-6975, 2349-2570"
+    },
+    {
+      "id": "nakivo-profiler-fixes-applied",
+      "topic": "nakivo_profiler fixes applied",
+      "aliases": [
+        "profiler sửa rồi",
+        "fixes commit"
+      ],
+      "question": "Những fix nào trong doc REVIEW_AND_OPTIMIZATION.md đã được apply trong code hiện tại?",
+      "answer": "4 fix Critical/Medium đã apply và verify: (1) models/profiler_config.py:299-301 — _register_hook gọi uninstall_profiler_hooks() trước _original_methods.clear() để chống wrap chồng wrap khi registry rebuild. (2) models/profiler_mixin.py:175-253 — _check_entries batch warnings group by db (line 222 per_db loop), 1 cursor/db thay vì 1 cursor/entry. (3) profiler_engine.py:1139,1142,1183-1184 — _COMPUTE_CAPTURE_MAX_ENTRIES = 5000 (cũ 50000), _COMPUTE_CAPTURE_MIN_DURATION_S = 0.001 (1ms), filter len(rec_ids)>1 OR duration>=1ms. (4) models/profiler_log.py:412-442 — cleanup_old_logs raw SQL DELETE thay search().unlink(). 3 fix CHƯA apply: #A (build C ext + warning + BUILD.md), #B (gzip payload), #C (sanity flag exact partition).",
+      "source": "git diff vs nakivo/nakivo_profiler/REVIEW_AND_OPTIMIZATION.md sec 2"
+    },
+    {
+      "id": "nakivo-profiler-quick-wins",
+      "topic": "nakivo_profiler quick wins",
+      "aliases": [
+        "profiler chưa fix",
+        "quick wins phụ"
+      ],
+      "question": "Quick wins phụ trong doc — claim nào đúng và còn issue gì doc bỏ sót?",
+      "answer": "ĐÚNG: (1) Deprecated fields auto_profile_rpc và full_trace_mode vẫn còn ở models/profiler_config.py:71-99 — nên drop sau migration. (2) Substring blacklist false positive: profiler_engine.py:649-650 dùng 'if pattern in normalized', addon có file 'nakivo_xxx/odoo/api.py' sẽ false positive bị mark internal. Nên anchor (^|/)pattern(/|$). (3) SPEC file có khoảng trắng tên — đổi tên dấu cách → underscore. CHƯA CHÍNH XÁC: doc claim 'leak _TRACE_LOCAL.state ở controller 5519+' — _TRACE_LOCAL không tồn tại trong controller, mà ở models/deep_trace.py:236. Controller đã có defensive clear_trace_capture_state() đầu request (profiler_controller.py:5803) → mitigate leak qua thread-reuse. Vẫn nên clear _TRACE_LOCAL của deep_trace.py ở finally khi dispatch raise. Issue doc BỎ SÓT: (a) profiler_engine.py:1014-1020 ORM hook chỉ comment 'standalone ORM row logging disabled' — nên xóa code dead path luôn. (b) Module có 136 test methods (test_deep_trace.py grep -c 'def test_') chứ không phải 16 như doc nói — số 16 có thể là test class count.",
+      "source": "code reading vs nakivo/nakivo_profiler/REVIEW_AND_OPTIMIZATION.md sec 4"
+    },
+    {
+      "id": "nakivo-profiler-priority",
+      "topic": "nakivo_profiler priority",
+      "aliases": [
+        "thứ tự fix profiler",
+        "sprint nakivo_profiler"
+      ],
+      "question": "Thứ tự fix khuyến nghị cho nakivo_profiler trong sprint kế tiếp?",
+      "answer": "Sprint nhỏ (~3-4 giờ + restart Odoo verify) làm 3 việc: (1) Issue #A — build C ext cho cả Linux+Windows, add _logger.warning HAS_C_EXT trong models/profiler_config.py:328, tạo deep_trace_ext/BUILD.md. Effort 30 phút. Impact 🔥 5-10× faster trace, risk thấp. (2) Issue #B1 — gzip+base64 wrap json.dumps ở controllers/profiler_controller.py:5209-5252 + decompress ở read path 1731-1864. Effort 1 giờ. Impact storage 7-10× nhỏ hơn (58MB→5-8MB), risk thấp. (3) Issue #C1 — thêm sanity check sau models/deep_trace.py:6986: exact_partition_overcount_ms, exact_partition_overcount_pct, exact_partition_consistent < 5%. Effort 1-2 giờ. Impact UI rõ ràng (badge Approximate ±X%), risk không. Sau sprint: trace cho deal 228642 nhanh 5×, payload nhẹ 7×, UI cảnh báo khi partition không khớp. Sprint sau (B2: 4-6 giờ, C2: 1-2 ngày) mới đụng business code.",
+      "source": "nakivo/nakivo_profiler/REVIEW_AND_OPTIMIZATION.md sec 5"
+    },
+    {
+      "id": "nakivo-profiler-real-data-DE032139",
+      "topic": "nakivo_profiler real data DE032139",
+      "aliases": [
+        "DE032139 trace",
+        "deal 228642 trace",
+        "nakivo profiler real test",
+        "Nakivo02 traces"
+      ],
+      "question": "Phân tích dữ liệu thực tế DE032139 trên DB Nakivo02 cho thấy gì?",
+      "answer": "DB Nakivo02 có 8 trace logs từ 2026-05-07 (Nakivo01 đã bị cleanup retention=1 ngày). 3 trace cho action_create_quote_from_de trên deal 228642 (DE032139): id=16 (25.57s, 17.5MB, 24972 nodes), id=20 (19.02s, 29.5MB, 28003 nodes), id=21 (19.52s, 29.2MB, 28003 nodes). XÁC NHẬN: (1) Doc REVIEW_AND_OPTIMIZATION.md đã OUTDATED — 8/8 trace đều engine='c_ext', uses_c_ext=true, c_ext_file=...build/lib.win-amd64-3.8/_deep_trace_cb.cp38-win_amd64.pyd, python_abi=38 (C ext đã build trên Windows dev box; doc claim 'engine=python' không còn đúng). (2) Payload thực tế 17-30MB cho trace deal — Fix #B1 sẽ kick in cho 5/8 trace (>=1MB). (3) Bottleneck owner ranking đúng: top 1 _get_imi_email_partner [nakivo_invesment_tracking] 3022.3ms self / 9733.3ms subtree = 15% trace; top 2 create [nakivo_marketing_funnel_automation] 32 calls / 664.3ms self / 18877.7ms subtree. (4) Issue #C OUTDATED trên data hiện tại: id=20 exact_partition=18530.109 < wall=19025.1 (-2.60%, UNDER wall không phải over như doc); id=21 -0.82%; id=16 +0.69%. Có thể partition formula đã được sửa, hoặc 5% over chỉ surface ở edge case (88s deep tree). (5) Partition coverage rất tốt: sum(impact_ms partitioned) = 18522.6ms = 97.4% wall — partition formula HEALTHY trên flow này.",
+      "source": "postgres MCP query Nakivo02.nakivo_profiler_log 2026-05-08"
+    },
+    {
+      "id": "nakivo-profiler-issue-D-depth-zero",
+      "topic": "nakivo_profiler depth zero",
+      "aliases": [
+        "effective_depth_used 0",
+        "max_observed_depth zero",
+        "depth field bug"
+      ],
+      "question": "Vì sao effective_depth_used và max_observed_depth = 0 trong tất cả 8 trace?",
+      "answer": "🟡 NEW MEDIUM: 8/8 trace ghi effective_depth_used=0 và max_observed_depth=0 dù node_count = 28003 (chứng minh stack chắc chắn sâu). Hai field này không được engine populate đúng trước khi persist. Vị trí: deep_trace_engine populate ndb_trace dict — cần audit phương thức stop() ở deep.trace.engine có set 2 field này không, hoặc phương thức trace_result_to_profiler_dashboard có override = 0 không. Impact: dashboard hiển thị depth=0 → dev hiểu nhầm là trace nông trong khi thực sự sâu. Effort: 1 giờ (tìm chỗ set + fix). Discovered từ postgres MCP query Nakivo02.nakivo_profiler_log 2026-05-08, 8/8 traces.",
+      "source": "real data Nakivo02 traces id 14-21"
+    },
+    {
+      "id": "nakivo-profiler-issue-E-phase-missing",
+      "topic": "nakivo_profiler phase missing",
+      "aliases": [
+        "outside_phase_timings null",
+        "phase tracking incomplete",
+        "trace overhead invisible"
+      ],
+      "question": "Vì sao 6/8 trace không có outside_phase_timings?",
+      "answer": "🟡 NEW MEDIUM: id=14, 15, 16, 17, 18, 19 đều thiếu outside_phase_timings field; chỉ id=20, 21 có. Trong code controllers/profiler_controller.py:5800 outside_phase_timings = {} init, được populate trong middleware. 2 trace có phase data đều là button action (action_create_quote_from_de). 6 trace thiếu phase data đều là 'View ... read' (RPC reads) — có vẻ View RPC path không đi qua đoạn code populate phase timings. Impact: dev không thấy được trace_start_call_ms/trace_stop_call_ms/engine_stop_result_build_ms cho RPC reads → khó audit overhead profiler trên view loads. Fix: trace_result_to_profiler_dashboard hoặc _process_deep_trace_entry cần ensure outside_phase_timings luôn có (set default {}). Effort: 30 phút.",
+      "source": "real data Nakivo02 traces id 14-21"
+    },
+    {
+      "id": "nakivo-profiler-issue-BB-stale-pyd",
+      "topic": "nakivo_profiler stale pyd binary",
+      "aliases": [
+        "pyd outdated",
+        "C ext stale",
+        "binary not rebuilt"
+      ],
+      "question": "Vì sao max_observed_depth = 0 mặc dù C ext đang load?",
+      "answer": "🔴 BLOCKER ROOT CAUSE: File _deep_trace_cb.cp38-win_amd64.pyd dated **20-Apr 13:35** nhưng _deep_trace_cb.c source dated **8-May 09:25** (3 tuần khác). Binary stale, không có code tracking max_observed_depth (line 553-556 in current source) hoặc đã có nhưng version cũ hơn. Trace runtime load OLD .pyd → state['max_observed_depth'] never populated → defaults 0. Verify: trace 28000 nodes nhưng max_observed_depth=0 (impossible vật lý — tree depth chắc chắn > 1). Fix bắt buộc: cd nakivo_profiler/deep_trace_ext && C:\\Users\\thang.vo\\Desktop\\NAKIVO\\venv\\Scripts\\python.exe setup.py build_ext --inplace + restart Odoo. Effort: 5 phút. Trên prod Linux: cần build artifact riêng. Liên quan: Issue #D depth_used = 0.",
+      "source": "file mtime check + C source line 494-500 (write to state) + line 553-556 (track depth)"
+    },
+    {
+      "id": "nakivo-profiler-issue-FF-cron-stuck",
+      "topic": "nakivo_profiler cron stuck",
+      "aliases": [
+        "cron nextcall past",
+        "cleanup cron not firing"
+      ],
+      "question": "Cron cleanup_old_logs có chạy đúng không?",
+      "answer": "🟡 MEDIUM: Cron id=592 (NAKIVO Profiler: Cleanup Old Logs) trên Nakivo02: nextcall = 2026-05-07 02:13:46 (>24h trong quá khứ), active=true, numbercall=-1, interval=1 day. Nextcall đáng ra đã được cron worker advance sau khi chạy. Nếu nextcall > 24h cũ chứng tỏ cron worker không chạy hoặc cron stuck. Có 2 cleanup paths: ir.cron `cleanup_old_logs` (models/profiler_log.py:412) AND background worker `_cleanup_old_logs` (controllers/profiler_controller.py:4880). Background worker chạy mỗi 30 phút (3600 cycles × 0.5s sleep) NHƯNG chỉ sleep khi empty batch — busy system thì cleanup_counter tăng nhanh hơn wall clock → cleanup fires unpredictable interval. Action: kiểm tra ir_cron worker log, xem profiler-log-worker thread alive chưa.",
+      "source": "ir_cron query Nakivo02 + controllers/profiler_controller.py:4938-4945"
+    },
+    {
+      "id": "nakivo-profiler-issue-HH-duplicate-cleanup",
+      "topic": "nakivo_profiler duplicate cleanup",
+      "aliases": [
+        "two cleanup paths",
+        "cleanup race"
+      ],
+      "question": "Có bao nhiêu cleanup mechanism đang chạy?",
+      "answer": "🟡 MEDIUM CODE SMELL: 2 cleanup paths cùng tồn tại: (1) ir.cron `cleanup_old_logs()` ở models/profiler_log.py:412 — chạy theo lịch ir.cron, default 1 day interval. (2) Background worker `_cleanup_old_logs()` ở controllers/profiler_controller.py:4880 — chạy 30 phút/lần trong _log_worker_loop. Cả 2 đều DELETE FROM nakivo_profiler_log WHERE create_date < cutoff. Có thể race trên cùng DELETE. Default fallback retention KHÁC: cron path config-driven (default 7 days), worker path fallback 1 day (line 4905 'retention_days = row[0] if row else 1'). Recommendation: chọn 1 path thôi — bỏ background worker cleanup hoặc disable cron. Tránh confusing dev khi debug 'tại sao log mất'.",
+      "source": "models/profiler_log.py:412 + controllers/profiler_controller.py:4880"
+    },
+    {
+      "id": "nakivo-profiler-issue-JJ-dashboard-not-using-flag",
+      "topic": "nakivo_profiler dashboard not consuming sanity flag",
+      "aliases": [
+        "consistency badge missing",
+        "drift not displayed"
+      ],
+      "question": "Dashboard có hiển thị exact_partition_consistent badge không?",
+      "answer": "🟡 MEDIUM UX GAP: Fix #C1 lưu fields vào bottleneck_summary: exact_partition_consistent, exact_partition_overcount_ms/_pct, exact_partition_drift_ms/_pct/_direction (sau #AF), exact_partition_excluded_ms/_types. Verify grep tất cả views/*.xml và static/src/xml/profiler_dashboard.xml: KHÔNG có chỗ nào reference exact_partition_consistent / drift / overcount. Dashboard chỉ dùng exact_partition_flattened (1 flag duy nhất). Doc REVIEW_AND_OPTIMIZATION.md gợi ý 'badge Approximate ±X%' chưa được apply. Action: thêm vào profiler_dashboard.xml block t-if=action.bottleneck_summary.exact_partition_consistent === false để render badge hiển thị drift_pct và drift_direction. Effort: 30 phút.",
+      "source": "grep static/src/xml/profiler_dashboard.xml + views/*.xml"
+    },
+    {
+      "id": "nakivo-profiler-issue-KK-cleanup-interval-drift",
+      "topic": "nakivo_profiler cleanup interval drift",
+      "aliases": [
+        "cleanup_counter cycle vs wall clock",
+        "30 min not actually 30 min"
+      ],
+      "question": "Background cleanup chạy đều mỗi 30 phút không?",
+      "answer": "🟢 LOW (correctness OK, predictability không chính xác): controllers/profiler_controller.py:4940-4945 dùng `_cleanup_counter += 1` mỗi loop iteration. Với _CLEANUP_INTERVAL_CYCLES=3600 và _FLUSH_INTERVAL=0.5s sleep, comment claim '30 phút'. Nhưng sleep chỉ trigger khi batch empty (line 4961-4963). System busy với traces liên tục thì cleanup_counter tăng nhanh hơn 1/0.5s → cleanup có thể fire 3600 lần POPLEFT × ~1ms ≈ 3.6 giây. Hoặc system idle thì đúng 30 phút. Không deterministic. Fix gợi ý: track timestamp `_last_cleanup_at` và check elapsed seconds thay vì cycle count.",
+      "source": "controllers/profiler_controller.py:4938-4945"
+    },
+    {
+      "id": "nakivo-profiler-issue-LL-data-disappearance",
+      "topic": "nakivo_profiler data disappearance investigation",
+      "aliases": [
+        "traces gone",
+        "id 14-21 deleted unexpectedly"
+      ],
+      "question": "Tại sao traces id=14-21 từ 2026-05-07 đã biến mất chỉ sau 1 ngày dù retention=7?",
+      "answer": "🟡 MEDIUM INVESTIGATION: Earlier analysis showed 8 traces (id=14-21) trên Nakivo02 từ 2026-05-07. Sau ~4 giờ, query lại chỉ còn id=22-27 (6 từ 2026-05-08). Config retention_days=7 → traces 1 ngày tuổi không nên bị xoá. Khả năng: (1) module reload (-u nakivo_profiler) wipe table — không, data files noupdate=1; (2) cron với retention khác chạy giữa chừng; (3) manual TRUNCATE; (4) max_log_entries trigger — không, chỉ 8 rows << 50000; (5) my actions trên server. Khi nào reproducible thì cần audit cleanup invocation — log cleanup cron với retention được dùng. Add INFO log mỗi khi cleanup chạy với retention thực tế (đã có ở line 441-444 nhưng cần verify Odoo log có hit không).",
+      "source": "comparison Nakivo02 query 2026-05-08 morning vs afternoon"
+    },
+    {
+      "id": "nakivo-profiler-AF-fix-applied",
+      "topic": "nakivo_profiler AF double counting fix applied",
+      "aliases": [
+        "AF fixed",
+        "double counting resolved",
+        "exact_partition exclude infra"
+      ],
+      "question": "Fix #AF (double counting) đã apply chưa và validate ra sao trên real data?",
+      "answer": "✅ APPLIED tại models/deep_trace.py:6971-7044. Filter rows type IN ('INFRA','PROFILER','OUTSIDE') khỏi exact_partition_total_ms. Thêm signed drift fields: exact_partition_drift_ms / drift_pct / drift_direction (over/under/exact) / accounted_ms. Validation re-compute trên 4 traces có partition data: id=23 wall=59.5: drift +42.6ms (71%) → -7.1ms (-12%) [BLOCKER RESOLVED]; id=27 wall=55.2: drift +43.8ms (79%) → -4.9ms (-9%) [BLOCKER RESOLVED]; id=24 DE032139 wall=25389: drift +327ms (1.3%) → -369ms (-1.5%) [stays consistent]; id=25 wall=192: drift -32ms (-17%) → -109ms (-57%) [now under from top-N cap, no longer fake-positive]. Verdict: 2/4 traces had IMPOSSIBLE-PHYSICS positive drift before fix; ALL traces now show signed drift consistent with top-N cap losing long tail (negative drift = honest under-count). Fix ngừng over-count vĩnh viễn. New traces post-restart sẽ tự động surface signed drift fields.",
+      "source": "models/deep_trace.py:6971-7044 + .codex/tests/_validate_AF_fix.py 2026-05-08"
+    },
+    {
+      "id": "nakivo-profiler-AD-clarified",
+      "topic": "nakivo_profiler AD automation rules clarified",
+      "aliases": [
+        "AD downgraded",
+        "automation rules feature gap",
+        "cross_model rules"
+      ],
+      "question": "Issue #AD (automation 0 fired) có thực sự là bug không?",
+      "answer": "🟡 DOWNGRADED Blocker → Medium feature gap (NOT A BUG). Verify SQL trên Nakivo02 base_automation: sale.order = **0 active rules** với trigger IN ('on_create','on_create_or_write','on_write'). Top model là crm.lead (9 rules), helpdesk.ticket (3), account.invoice (2). `analyze_automation_rules('sale.order', ...)` trả total=0 là ĐÚNG semantic 'rules CONFIGURED on this model'. Doc REVIEW_AND_OPTIMIZATION.md claim '29 rules fire' là metric KHÁC: runtime cross-model fires from trace tree (e.g. _filter_post_export_domain called 474 lần trên crm.lead khi sale.order tạo crm.lead). ENHANCEMENT (đã apply tại models/deep_trace.py:7051-7080): thêm tham số `related_models=[...]` để analyze_automation_rules cũng quét rules trên related models, surface ra summary['cross_model'] và summary['cross_model_total']. Caller site controllers/profiler_controller.py:5248 cần pass related_models từ call_data hoặc bottleneck rows để hưởng cross-model coverage.",
+      "source": "verified base_automation join via action_server_id 2026-05-08"
+    },
+    {
+      "id": "nakivo-profiler-issue-AF-double-counting",
+      "topic": "nakivo_profiler double counting exact + skipped vs wall",
+      "aliases": [
+        "accounting equation negative",
+        "exact partition skipped overlap",
+        "INFRA double counted"
+      ],
+      "question": "Tại sao id=23, 27 có (exact_partition + skipped_infra + skipped_profiler) > wall_ms?",
+      "answer": "🔴 BIG BUG - DOUBLE COUNTING REAL DATA EVIDENCE: id=23: wall=59.5ms, exact=56.4 + skip_infra=45.0 + skip_prof=0.7 = 102.1ms → unaccounted = -42.6ms (vượt wall 71%). id=27: tương tự -43.8ms (vượt wall 79%). id=25 vs các trace lớn lệch 0-10%. Root cause: bottleneck_findings_partitioned (cơ sở của exact_partition_total_ms) chứa cả rows type='INFRA' (_authenticate 32ms, _call_kw 30ms, _find_handler 2.4ms, _dispatch 0.8ms) VÀ type='PROFILER' (_capture_call_data, _record_orm_call, etc). NHỮNG ROWS NÀY CŨNG được cộng vào skipped_infra_ms/skipped_profiler_ms → đếm 2 lần. Đây chính là Issue #C doc nói nhưng symptom mới: trên trace nhỏ (60ms) lệch 70%+ chứ không chỉ 5% như doc. Fix gợi ý: exclude type IN ('INFRA','PROFILER','OUTSIDE') khỏi sum exact_partition_total_ms, hoặc đảm bảo skipped buckets không cộng vào partition. Effort: 2-4 giờ + spec.",
+      "source": "real data Nakivo02 traces id=23,25,27 partitioned rows + skipped buckets"
+    },
+    {
+      "id": "nakivo-profiler-issue-AD-automation-broken",
+      "topic": "nakivo_profiler automation rules detector broken",
+      "aliases": [
+        "automation_rules 0 fired",
+        "base_automation tracker silent fail"
+      ],
+      "question": "Vì sao trace id=24 (DE032139) ghi 0 automation rules fired dù có 24 active rules trên sale.order?",
+      "answer": "🔴 CRITICAL DETECTOR BROKEN: DB Nakivo02 có 24 active rules trên sale.order với trigger IN ('on_create','on_create_or_write','on_write') (tổng 30 active của 315 rules). Doc REVIEW_AND_OPTIMIZATION.md từng claim '29 rules đang fire'. Trace id=24 hôm nay: total=0, user_join=0, heavy_eval=0, no_domain=0, simple=0, estimated_calls=0. trigger_filter đặt đúng ['on_create','on_create_or_write','on_write']. → automation_rules tracker SILENT FAIL: hooks vào base_automation._action_create/_action_write có thể không install, hoặc reset state trước khi flow start, hoặc filter logic bug. Cần audit chỗ install_automation_rules_hook + chỗ filter rules theo flow_root_model. Impact: dashboard hiện 0 rules nhưng trace thực sự fire 24+ rules → MISLEADING. Effort: 2-3 giờ.",
+      "source": "real data Nakivo02 id=24 vs base_automation table 2026-05-08"
+    },
+    {
+      "id": "nakivo-profiler-issue-AE-self-pollution",
+      "topic": "nakivo_profiler self instrumentation pollution",
+      "aliases": [
+        "profiler addon in bottleneck",
+        "self profiling pollution"
+      ],
+      "question": "Bottleneck rows có nhiều entries của nakivo_profiler addon — có phải pollution không?",
+      "answer": "🟡 MEDIUM (UI noise): Trên 3 trace nhỏ (id=23, 25, 27 wall 55-192ms), 13/40-46 rows trong bottleneck_findings_partitioned mang `addon='nakivo_profiler'` type='PROFILER' (28-32% số rows). Tổng impact 0.4-0.7ms (<1% wall) - không gây overcount, nhưng pollute UI. 13 hàm thấy: _capture_call_data, _record_orm_call, _capture_access_rule_call, profiled_domain_get, _wrapped_split_context, _safe_repr_truncated, _is_model_excluded, _build_orm_sample, _should_capture_call_data_entry, get_trace_capture_state, activate_call_data_store, activate_orm_call_tracker, _compute_domain_keys. Fix gợi ý: dashboard default filter type NOT IN ('PROFILER','INFRA') hoặc engine không emit PROFILER rows vào partitioned (chỉ giữ trong skipped_profiler bucket).",
+      "source": "real data Nakivo02 traces id=23,25,27 partitioned rows"
+    },
+    {
+      "id": "nakivo-profiler-issue-V-schema-units",
+      "topic": "nakivo_profiler top_breakdown unit mismatch",
+      "aliases": [
+        "cumtime seconds tottime ms",
+        "schema unit confusion"
+      ],
+      "question": "top_breakdown rows có self_ms / subtree_ms không?",
+      "answer": "🟡 MEDIUM SCHEMA: top_breakdown rows trong id=24 (1200 rows decompressed) chỉ có cumtime + tottime + calls, KHÔNG có self_ms hoặc subtree_ms. Sample first row: {func: action_create_quote_from_de, cumtime: 21.094329 (SECONDS!), tottime: 0.000369, calls: 1, depth: 0, ...}. cumtime đo bằng GIÂY trong khi bottleneck_findings dùng MILLISECONDS (subtree_ms, self_ms). Dashboard nếu mix-source dễ scale wrong. Fields populated 1200/1200 cho cumtime, tottime, calls, depth (1199/1200), nhưng 0/1200 cho self_ms, subtree_ms, wall_ms, self_time_ns, subtree_time_ns, ncalls. Impact: code đọc top_breakdown[i].self_ms sẽ lấy None → render rỗng. Fix: alias chuẩn hoá (cumtime_s → subtree_ms hoặc set self_ms=tottime*1000) ở persist site controllers/profiler_controller.py:5234.",
+      "source": "decompressed id=24 top_breakdown schema 2026-05-08"
+    },
+    {
+      "id": "nakivo-profiler-issue-U-flag-misnomer",
+      "topic": "nakivo_profiler overcount vs drift naming",
+      "aliases": [
+        "exact_partition_overcount_pct sign",
+        "drift not overcount"
+      ],
+      "question": "Sanity flag exact_partition_overcount_pct có chỉ overcount thực sự không?",
+      "answer": "🟢 LOW NAMING (đã active hoạt động đúng): Field tên 'overcount_pct' nhưng formula là abs(exact_total - wall) / wall * 100 → cả OVER và UNDER đều ra số dương. Real data: id=25 wall=192 exact=93.6 → overcount_pct=51.23 (thực ra UNDERCOUNT 51%); id=24 DE032139 wall=25389 exact=25395 → 0.03% (slight OVER); id=23 5.19% (under). Fix gợi ý: rename thành exact_partition_drift_pct (giữ abs) HOẶC tách 2 field: overcount_pct (signed positive) + undercount_pct. Hoặc bổ sung exact_partition_drift_direction='over'/'under'. Hiện sanity flag CONSISTENT/FALSE đúng (dưới 5% drift = consistent), chỉ tên fields gây confusing.",
+      "source": "self-review of fix at models/deep_trace.py:6993-7022"
+    },
+    {
+      "id": "nakivo-profiler-issue-X-call-data-type-missing",
+      "topic": "nakivo_profiler call_data type missing",
+      "aliases": [
+        "call_data type unknown",
+        "no-type orm entries"
+      ],
+      "question": "Tại sao 71/100 entries trong id=24 call_data không có 'type' field?",
+      "answer": "🟢 LOW (intentional but underdocumented): 71/100 ORM entries (search/read/create/write) không có field 'type', còn lại 4 mang type='compute' và 25 mang type='access_rule'. Schema: ORM hooks store {model, method, ts, duration_ms, domain/fields, result_count, result_ids} không emit type. compute hook và access_rule hook emit type vì cần phân biệt. Code site: profiler_engine.py:_capture_call_data không set type cho ORM ops; profiler_engine.py:_make_compute_capturer set type='compute'; profiler_engine.py:_make_access_rule_domain_get_profiler set type='access_rule'. Nếu dashboard filter type → 71 entries fall vào bucket '?'. Fix gợi ý: profiler_engine.py:_capture_call_data set type='orm' default, hoặc dashboard treat absent type as 'orm'.",
+      "source": "decompressed id=24 call_data 100 entries"
+    },
+    {
+      "id": "nakivo-profiler-issue-Z-engine-overhead",
+      "topic": "nakivo_profiler engine overhead vs skipped_profiler_ms",
+      "aliases": [
+        "engine_stop_result_build_ms",
+        "profiler self overhead undercounted"
+      ],
+      "question": "skipped_profiler_ms có capture toàn bộ profiler overhead không?",
+      "answer": "🟡 MEDIUM UNDERCOUNT: skipped_profiler_ms chỉ track ORM-hook profiler frames (_capture_call_data, _record_orm_call, ...), KHÔNG cộng engine internal phases. Trên data thực: id=27: engine_overhead = engine_start_internal_ms (0.13) + engine_stop_unhook_ms (0.09) + engine_stop_result_build_ms (4.21) = 4.43ms vs skipped_profiler = 0.6ms → ratio 7.38×. id=23: 5.02×. id=25: 3.23×. id=24 DE032139: engine_overhead 529.34ms, skipped_profiler 168.4ms → ratio 3.14× (engine_stop_result_build_ms = 519.58ms là chi phí build trace_result dictionary). Impact: dashboard report 'profiler overhead = skipped_profiler_ms' undercount 3-7×. Fix: surface skipped_profiler_ms_total = skipped_profiler_ms + engine_self_overhead vào bottleneck_summary, hoặc cộng engine_*_ms vào skipped_profiler ở chỗ persist controller.",
+      "source": "real data outside_phase_timings id=23,24,25,27"
+    },
+    {
+      "id": "nakivo-profiler-issue-G-fix-B1-validated",
+      "topic": "nakivo_profiler fix B1 validated real data",
+      "aliases": [
+        "B1 gzip working",
+        "compression real data",
+        "DE032139 compressed"
+      ],
+      "question": "Fix #B1 đã thực sự work trên real data như thế nào?",
+      "answer": "✅ XÁC NHẬN trên DE032139: id=24 (action_create_quote_from_de deal 228642, 25.9s) đã được nén từ 18.12 MB xuống 1.68 MB (9.3% original — savings 91%). 3/14 trace trong DB có _format='gzip+b64': id=22 (1.45MB → 110KB / 7.6%), id=24 (18MB → 1.68MB / 9.3%), id=26 (2.29MB → 200KB / 8.7%). Trace < 1MB stays raw JSON (id=23, 25, 27). Threshold 1MB hoạt động đúng. Tổng savings cho 3 trace lớn: 21.86 MB → 1.99 MB (giảm 91%). Vượt expectation 7-10× của doc.",
+      "source": "postgres MCP query Nakivo02.nakivo_profiler_log id=22,24,26 ngày 2026-05-08"
+    },
+    {
+      "id": "nakivo-profiler-issue-Q-ilike-regression",
+      "topic": "nakivo_profiler ilike regression",
+      "aliases": [
+        "compressed payload ilike fail",
+        "view filter break",
+        "B1 regression"
+      ],
+      "question": "Fix #B1 gây regression gì cho view filters và SQL ad-hoc queries?",
+      "answer": "🔴 BLOCKER REGRESSION (đã FIX): Khi payload đã compress, substring tag (vd 'ndb_deep_trace', 'deep_profile', 'auto_profile') nằm trong base64 _payload nên ILIKE plain-text trên TEXT column miss compressed rows. Verify trên data thực: id=23, 25, 27 (uncompressed) ILIKE '%ndb_deep_trace%' = TRUE; id=22, 24, 26 (compressed) ILIKE '%ndb_deep_trace%' = FALSE. → View filters trong views/profiler_log_views.xml:292,295,308,483 sẽ silently miss compressed traces. SQL ad-hoc queries dạng `additional_info::json ->> 'engine'` cũng trả NULL cho compressed rows. ĐÃ FIX bằng peek-through whitelist trong _maybe_compress_profiler_payload (controllers/profiler_controller.py:84-94): copy 16 scalar field (type, engine, uses_c_ext, c_ext_file, python_abi, mode, flow_id, flow_root_model, flow_view_type, action_id, node_count, effective_depth_used, max_observed_depth, depth_limit_hit, node_limit_hit, dropped_nodes) ra wrapper level → ILIKE và `->>` queries hoạt động cả trên compressed lẫn raw. 3 unit test mới validate.",
+      "source": "controllers/profiler_controller.py:84-94 + tests/test_profiler_fixes.py 3 new tests"
+    },
+    {
+      "id": "nakivo-profiler-issue-M-duration-vs-wall",
+      "topic": "nakivo_profiler duration vs wall always offset",
+      "aliases": [
+        "log duration mismatch",
+        "duration column wall_ms divergence"
+      ],
+      "question": "Tại sao duration column luôn hơn wall_ms 4-11ms ?",
+      "answer": "🟡 MEDIUM consistency issue: Trên 6 trace nhỏ, log_duration (column) luôn lớn hơn bottleneck_summary.wall_ms một khoảng cố định: id=23 +4.1ms (6.9%), id=25 +10.7ms (5.6%), id=27 +5.3ms (9.6%). Root cause: duration column dùng time.time() ngoài middleware, wall_ms dùng perf_counter_ns trong engine. Hai timer khác nhau lệch 4-11ms = profiler overhead (start engine + stop engine + result build). Khoảng lệch này là profiler overhead THẬT nhưng KHÔNG được account trong skipped_profiler_ms (chỉ 0.4-0.7ms). Dev nhìn dashboard sẽ thấy 'log time 60ms vs wall 55ms' và confused. Fix: hoặc đưa profiler self-overhead (5-10ms) vào skipped_profiler_ms, hoặc surface field 'duration_minus_wall_ms' để dev biết chênh lệch là profiler self-time.",
+      "source": "real data Nakivo02 traces id=23,25,27 ngày 2026-05-08"
+    },
+    {
+      "id": "nakivo-profiler-issue-N-coverage-incomplete",
+      "topic": "nakivo_profiler coverage incomplete",
+      "aliases": [
+        "unaccounted ms",
+        "top30 coverage low",
+        "self_ms small"
+      ],
+      "question": "Tại sao sum self_ms top 30 + skipped chỉ 43-84% wall (nhiều trace under)?",
+      "answer": "🟡 MEDIUM (limitation, không phải bug): bottleneck_findings_exclusive cap top-30 → sum self của top-30 KHÔNG đại diện full self-time accounting. id=25: sum_self=16.2ms, skipped=66.5ms, wall=192ms → coverage 43.1%, unaccounted 109ms (57%). id=23: 81%, id=27: 84%. Nguyên nhân: 30 row không cover hết long-tail của 28000 nodes — phần ms còn lại nằm trong subtree của orchestrator rows (đếm 1 lần ở subtree thay vì self của leaf). Đây là HẰNG ĐỊNH của top-N capping, chính xác về mặt accounting (partition cover 97.4% wall, đã tính đúng) nhưng UI có thể confuse user nếu cộng manually từ 30 rows. Fix gợi ý: surface 'top_n_coverage_pct' trong bottleneck_summary để dashboard cảnh báo 'Top 30 chỉ chiếm X% wall, phần còn lại trong subtree của parent'.",
+      "source": "real data Nakivo02 query coverage equation 8 traces"
+    },
+    {
+      "id": "nakivo-profiler-issue-D-depth-zero-confirmed",
+      "topic": "nakivo_profiler depth zero ALL TRACES",
+      "aliases": [
+        "depth field zero",
+        "max_observed_depth always zero"
+      ],
+      "question": "max_observed_depth và effective_depth_used = 0 có phải bug?",
+      "answer": "🟡 MEDIUM CONFIRMED: 8/8 trace cũ (id=14-21) ghi max_observed_depth=0 và effective_depth_used=0 dù node_count = 169-28003. Trace mới có gzip wrap (id=22, 24, 26) — fields sau peek-through fix tôi vừa add sẽ surface ra wrapper, nhưng giá trị nguồn vẫn 0 nếu engine không populate. Vị trí cần audit: trace_result_to_profiler_dashboard / deep.trace.engine.stop trong models/deep_trace.py — tìm chỗ set 2 field này. Có thể bị reset 0 khi convert từ ns sang display, hoặc engine never tracked depth. Effort: 1 giờ.",
+      "source": "real data Nakivo02 8/8 traces 2026-05-07/08"
+    },
+    {
+      "id": "nakivo-profiler-issue-F-wall-gt-duration",
+      "topic": "nakivo_profiler wall greater than duration",
+      "aliases": [
+        "trace_wall_ms > request_duration_ms",
+        "outside_ms negative clamp",
+        "phase math bug"
+      ],
+      "question": "Anomaly id=20: trace_wall_ms (19025.075) > request_duration_ms (19017.141) — vật lý không thể, đúng không?",
+      "answer": "🟡 NEW MEDIUM: trace_wall_ms (19025.075ms) lớn hơn request_duration_ms (19017.141ms) ~7.9ms. outside_ms = max(req - wall, 0) → bị clamp về 0 thay vì hiện thị âm. id=21 ngược lại bình thường (req=19518 > wall=19241, outside=277). Root cause khả nghi: trace_wall_ms tính từ ndb_trace_result['total_time_ns'] / 1e6 (controllers/profiler_controller.py:5873-5874), trong khi request_duration_ms = duration * 1000 (line 5875). Hai timer khác nhau (perf_counter_ns trong engine vs time.time() ngoài middleware) có thể drift vài ms. Impact: outside_ms âm bị giấu → dev không thấy được trace overhead implicit. Fix: hoặc làm cả 2 timer dùng cùng nguồn, hoặc allow outside_ms âm và document 'profiler internal jitter ~10ms'. Effort: 30 phút.",
+      "source": "real data Nakivo02 trace id=20 outside_phase_timings"
+    },
+    {
+      "id": "nakivo-profiler-real-bottleneck",
+      "topic": "nakivo_profiler real bottleneck",
+      "aliases": [
+        "action_create_quote_from_de chậm",
+        "deal 228642",
+        "DE032139",
+        "profiler chỉ điểm"
+      ],
+      "question": "Action action_create_quote_from_de chậm 88s là do profiler hay do business code?",
+      "answer": "Do BUSINESS CODE. Profiler chỉ là người ĐO, không phải nguyên nhân. 3 hotspot thực sự profiler đã chỉ điểm: (1) 643 lần sale.order.search = 43.24s trong _get_imi_email_partner của addon nakivo_invesment_tracking — N+1 nặng, cần audit có thể chuyển fetch-by-ids hoặc cache trong context. (2) _get_imi_email_partner gọi _search() ở website_mail mất 31.2s trong 1 lần gọi — query slow / full-scan có ir.rule, cần EXPLAIN ANALYZE qua MCP postgres trước khi sửa. (3) 29 base_automation rules fire trong flow này (_filter_post_export_domain 474 lần, _filter_pre 445 lần) — review xem rule nào có thể disable hoặc tối ưu domain. Tóm lại: thuật toán profiler đúng và đã làm việc của nó — issue thực nằm trong 3 hotspot business trên, không phải trong tracking algorithm.",
+      "source": "nakivo/nakivo_profiler/REVIEW_AND_OPTIMIZATION.md sec 6"
+    },
+    {
+      "id": "determinism-policy",
+      "topic": "determinism",
+      "aliases": [
+        "consistency",
+        "same answer",
+        "Q1 Q2"
+      ],
+      "question": "How do we keep answers consistent across conversations?",
+      "answer": "Before answering recurring questions, call lookup_canonical_decision via the nakivo_codebase MCP. If a match exists, return the registered answer verbatim and cite registry_path + version. If no match exists, propose adding a new entry instead of inventing a one-shot answer.",
+      "source": ".cursor/rules/decision-consistency.mdc"
+    },
+    {
+      "id": "audit-methodology",
+      "topic": "audit methodology",
+      "aliases": [
+        "deep review",
+        "exhaustive audit",
+        "phân tích sâu",
+        "review methodology",
+        "audit rules",
+        "audit consistency",
+        "what else to fix methodology"
+      ],
+      "question": "How do we run a deep review/audit so the count is consistent across sessions?",
+      "answer": "Follow .cursor/rules/audit-methodology.mdc. Step 0: read .codex/audit_findings_locked.md (or per-module variant) FIRST and cite the recorded count verbatim. Allowed to differ only when (a) code changed since the lock timestamp, verified via git log, (b) reproducible proof contradicts a verified entry, or (c) the user requests a re-audit. Step 1: cover all 14 dimensions in ONE pass (JSON schema, SQL, cron, controllers, hooks, view XML, JS, tests, config XML, edge cases, units, naming, double-counting, drift). Step 2: severity criteria are uniform — BLOCKER = data loss/corruption/unusable feature with reproducible proof; MEDIUM = correctness gap with workaround OR security/perf risk with proof; LOW = cleanup or speculative bug needing unlikely conditions. Step 3: every BLOCKER and MEDIUM has a one-line PROOF tracing trigger → failure. Step 4: write to lock file with REV header. Step 5: refresh canonical decision pointer. Drip-feed across sessions is forbidden.",
+      "source": ".cursor/rules/audit-methodology.mdc"
+    },
+    {
+      "id": "nakivo-profiler-audit-count",
+      "topic": "nakivo_profiler audit count",
+      "aliases": [
+        "profiler issue count",
+        "profiler findings count",
+        "profiler còn cái gì fix",
+        "profiler what else to fix",
+        "nakivo_profiler open issues"
+      ],
+      "question": "How many open findings exist on the nakivo_profiler module?",
+      "answer": "Per .codex/audit_findings_locked.md REV-4 (2026-05-08, IMPLEMENTATION-VERIFIED): 0 BLOCKER open (3 fixed: #TT, #XX, #RR), 5 MEDIUM open (4 fixed: #M-worker-flush, #M-utf8, #M-decompress-bomb, #M-retention; 3 false-positives confirmed during implementation: #M-csrf, #M-leak-watchdog, #M-pagination), 31 LOW (incl. 1 demoted from MEDIUM: #M-orphan). #TT live-verified on Nakivo02: id=23 (59.5ms wall) and id=25 (192ms wall) flipped from false-pass to correctly-flagged. #RR live-verified: 6/6 bs_* aliases promoted on 2.4MB compressed payload. All 33 unit tests pass. Do NOT propose a different number unless code changed since 2026-05-08 (verify via git log) OR you can produce reproducible proof contradicting a verified entry.",
+      "source": ".codex/audit_findings_locked.md"
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+---
+description: Odoo 12 backend - ORM, views, performance, security, manifest
+globs: "{nakivo,base_addons,nakivooca,OCA,nakivo-server/addons,nakivo-server/odoo/addons}/**/*"
+alwaysApply: false
+---
+
+## ORM
+Use `@api.multi` for recordsets and `@api.model` for model-level methods.
+Avoid `@api.one`. Call `ensure_one()` when a single record is required.
+Use parameterized SQL only. Batch `write()` and `unlink()` operations.
+Document every `sudo()` with a short reason.
+Prefer ORM over SQL. If SQL writes are unavoidable, invalidate or refresh affected caches.
+
+## Performance
+Avoid `search()` or `browse(id)` inside loops.
+Prefer `read_group(..., lazy=False)` for grouped counts and sums.
+Push filtering into domains when possible.
+Use `search_count()` instead of `len(search())`.
+Batch recordset work with `mapped`, `filtered`, grouped domains, and set operations.
+Keep computed fields prefetch-friendly; declare complete `@api.depends`.
+Store computed fields only when they are searched, grouped, sorted, or repeatedly displayed at scale.
+
+## Views and models
+Use standard Odoo 12 xpath positions and attrs dictionaries.
+Keep model methods small and focused.
+Declare complete `@api.depends`.
+Use `_sql_constraints` or `@api.constrains` for validation.
+Keep XML IDs stable and verify manifest data order when adding views, security, or data files.
+
+## Security and style
+Keep `ir.model.access` and `ir.rule` aligned with new models.
+Raise `UserError` for business rules and `ValidationError` for bad data.
+Use `_logger`, not `print()`.
+Keep imports ordered: stdlib, third-party, odoo, local.
+Respect multi-company and record rules unless the task explicitly requires privileged behavior.
+
+## Verification
+Prefer the narrowest module-level check available.
+For install/update verification, use the project venv and run `-u <module> --stop-after-init` against the relevant database when safe.

@@ -1,0 +1,117 @@
+---
+description: Audit & deep-review methodology — single exhaustive pass with reproducible proof per finding; locked counts must not drift across sessions.
+alwaysApply: true
+---
+
+# Audit Methodology
+
+When the user asks for a deep review, audit, "phân tích sâu", "review module/codebase",
+or "what else needs to be fixed?", follow this methodology STRICTLY. Locked counts must
+not drift between sessions — that is a methodology bug, not a code bug.
+
+## Step 0 — Lock-file precedence
+
+Before doing ANY new audit work, check for an existing lock file:
+
+```
+.codex/audit_findings_locked.md          # global module audit log
+.codex/audit_findings_<module>_locked.md # per-module variant if present
+```
+
+If a lock file exists for the module in scope:
+
+1. Read it and cite the recorded count verbatim (e.g. "3 BLOCKER + 9 MEDIUM + 30 LOW = 42").
+2. Do NOT propose a different number unless one of these conditions is true:
+   - Code in scope has changed since the lock timestamp (verify with `git log` since the
+     timestamp). New findings MUST reference code lines written after that timestamp.
+   - You can produce reproducible proof that contradicts a specific verified entry.
+   - The user explicitly requests a re-audit (then update the file with a new
+     timestamp, do not silently rewrite).
+3. If you change the count, update the lock file's revision header and explain WHY in
+   one paragraph. Never silently rewrite.
+
+## Step 1 — Exhaustive single-pass coverage
+
+If no lock file exists (or user requests fresh audit), cover ALL relevant dimensions in
+ONE pass before reporting. Spawn parallel Explore agents when the workspace is large.
+
+| # | Dimension | What to probe |
+|---|-----------|---------------|
+| 1 | Persisted JSON / data schema | All keys producers write; orphan fields; producer-consumer mismatch |
+| 2 | SQL touchpoints | Index coverage; ILIKE on encoded blobs; gzip/compression transparency |
+| 3 | Cron + background workers | State, drift, race; queue cap; graceful shutdown |
+| 4 | HTTP controllers | Auth, CSRF, size cap, decompression bombs, error swallowing |
+| 5 | ORM hooks / monkey-patches | Registry rebuild safety, install/uninstall symmetry |
+| 6 | View XML field references | Cross-check against producer-side keys |
+| 7 | Frontend consumers (JS / OWL / QWeb) | Cross-check against producer-side keys |
+| 8 | Test coverage gaps | Untested branches; fixture variety; round-trip equality |
+| 9 | Config / security / data XML | noupdate flags, hard-coded refs, default-value drift |
+| 10 | Edge cases | Empty / huge / concurrent / error / unicode / time anomalies |
+| 11 | Unit consistency | ms / s / ns mixed without conversion |
+| 12 | Naming consistency | Same concept, different names across surfaces |
+| 13 | Double-counting in aggregations | Parent + child subtree overlap; recursive sums |
+| 14 | Drift formulas | accounted vs wall; sign convention; tolerance threshold |
+
+If a dimension is skipped (e.g. data unavailable), say so EXPLICITLY in the report.
+Never silently leave a gap — gaps re-surface as "newly discovered" issues next session.
+
+## Step 2 — Severity criteria (apply uniformly)
+
+Assign severity by these criteria, NOT by audit-agent claims:
+
+- **BLOCKER**: Causes data loss, silent corruption, or makes a feature unusable.
+  Must have reproducible proof — a code path traced from trigger to failure.
+- **MEDIUM**: Correctness gap that has a workaround, OR security/performance risk
+  under specific conditions. Must have reproducible proof.
+- **LOW**: Cleanup, naming, documentation, OR speculative bugs that need unlikely
+  runtime conditions to fire (e.g. "if setattr() raises on BaseModel" — it doesn't
+  in CPython).
+
+If a finding cannot meet its severity's proof bar, demote it. Do not keep speculative
+BLOCKERS; the user loses trust faster from overstatement than from missed findings.
+
+## Step 3 — Per-finding proof line
+
+Every finding in the lock file gets one mandatory PROOF line:
+
+> **Proof**: <one sentence tracing the bug from code line A to observable
+> failure mode at code line B>.
+
+If you cannot write the proof, the finding does not exist. Do not list it.
+
+## Step 4 — Lock the result
+
+Write the consolidated list to `.codex/audit_findings_locked.md` (or per-module
+variant). Header includes:
+
+- Timestamp
+- Revision number
+- Pass-by-pass count history (REV-1 / REV-2 / REV-3 with what changed)
+- Methodology lock paragraph that names the 4 criteria above and forbids silent
+  count changes.
+
+## Step 5 — Update the canonical pointer
+
+Add or refresh a canonical decision in `.codex/canonical_decisions.json` whose answer
+cites the lock file path + revision + count. Future "is there anything else to fix?"
+queries can then resolve through `lookup_canonical_decision` deterministically.
+
+## Anti-patterns (do not do these)
+
+- Drip-feed: "I found 5 issues this session, 5 more next session". User loses trust.
+- Recount-on-demand: same module + same code → different count two sessions in a row.
+- Trust audit-agent severity: agents overstate. Verify each cite by reading code.
+- Speculative BLOCKER: "if X happens, Y breaks" without showing X can happen.
+- Silent severity flip: changing BLOCKER → LOW between sessions without revising the
+  lock file or explaining why.
+
+## Example self-check
+
+Before reporting an audit count, the agent silently asks itself:
+
+1. "Does a lock file exist for this scope? Did I read it first?"
+2. "If my count differs from the lock file, can I justify the change in writing?"
+3. "Is every BLOCKER and MEDIUM backed by a one-line PROOF that traces real code?"
+4. "Did I cover all relevant dimensions, or did I skip some without saying so?"
+
+If any answer is "no", redo the step.

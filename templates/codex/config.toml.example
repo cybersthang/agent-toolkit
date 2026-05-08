@@ -1,0 +1,27 @@
+# Append these sections to %USERPROFILE%/.codex/config.toml for this source checkout.
+# IMPORTANT: `command` must point at the project venv Python (3.8.8) so MCP servers
+# import the same Python the Odoo runtime uses. Do NOT use the system Python.
+
+[mcp_servers.nakivo_codebase]
+command = 'C:\Users\thang.vo\Desktop\NAKIVO\venv\Scripts\python.exe'
+args = ['C:\Users\thang.vo\Desktop\NAKIVO\Cursor_NAKIVO\.codex\start_codebase_mcp.py']
+
+[mcp_servers.nakivo_postgres]
+command = 'C:\Users\thang.vo\Desktop\NAKIVO\venv\Scripts\python.exe'
+args = ['C:\Users\thang.vo\Desktop\NAKIVO\Cursor_NAKIVO\.codex\start_postgres_mcp.py']
+
+[mcp_servers.nakivo_realdata_test]
+command = 'C:\Users\thang.vo\Desktop\NAKIVO\venv\Scripts\python.exe'
+args = ['C:\Users\thang.vo\Desktop\NAKIVO\Cursor_NAKIVO\.codex\start_realdata_test_mcp.py']
+
+[mcp_servers.jira_production]
+command = 'C:\Users\thang.vo\Desktop\NAKIVO\venv\Scripts\python.exe'
+args = ['C:\Users\thang.vo\Desktop\NAKIVO\Cursor_NAKIVO\.codex\start_jira_production_mcp.py']
+
+[mcp_servers.jira_preproduction]
+command = 'C:\Users\thang.vo\Desktop\NAKIVO\venv\Scripts\python.exe'
+args = ['C:\Users\thang.vo\Desktop\NAKIVO\Cursor_NAKIVO\.codex\start_jira_preproduction_mcp.py']
+
+[projects.'C:\Users\thang.vo\Desktop\NAKIVO\Cursor_NAKIVO']
+trust_level = 'trusted'
+model_instructions_file = 'C:\Users\thang.vo\Desktop\NAKIVO\Cursor_NAKIVO\.codex\model_instructions.md'

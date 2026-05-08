@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "updated_at": "2026-05-08",
+  "purpose": "Single source of truth for recurring project questions on this Odoo 17 workspace. Agents MUST consult this registry before answering 'how do we do X in this project'. Adding/changing entries requires explicit user approval - this protects determinism.",
+  "decisions": [
+    {
+      "id": "stack",
+      "topic": "stack",
+      "aliases": ["technology stack", "tech stack", "odoo version"],
+      "question": "What is the project stack?",
+      "answer": "Odoo 17 on Python {{STACK_LANGUAGE_VERSION}} (project venv at {{PYTHON_BIN}}), PostgreSQL, OWL frontend. Workspace root: {{WORKSPACE_ROOT}}. Database: {{DEFAULT_DB}}.",
+      "source": ".cursor/rules/odoo-17-project-context.mdc"
+    },
+    {
+      "id": "python-bin",
+      "topic": "python binary",
+      "aliases": ["python interpreter", "venv python", "which python", "project python"],
+      "question": "Which Python interpreter do we run for this project?",
+      "answer": "Always use the project venv: {{PYTHON_BIN}} (Python {{STACK_LANGUAGE_VERSION}}). Never use a system-PATH `python`; it can resolve to an interpreter without the project's dependencies and silently diverge from the runtime. The venv path is exported in .codex/mcp.local.env so MCP wrappers, Odoo shell, and test runners stay aligned.",
+      "source": ".codex/mcp.local.env"
+    },
+    {
+      "id": "addon-roots",
+      "topic": "addon roots",
+      "aliases": ["where are modules", "addon path", "module location"],
+      "question": "Where do custom and vendored addons live?",
+      "answer": "Addon roots: {{ADDON_ROOTS_CSV}}. Run `codebase.workspace_status` for the live list.",
+      "source": "AGENTS.md"
+    },
+    {
+      "id": "api-decorators",
+      "topic": "api decorators",
+      "aliases": ["api.multi", "api.model", "api.model_create_multi", "decorator"],
+      "question": "Which Odoo 17 API decorators do we use?",
+      "answer": "Methods are recordset by default in Odoo 17 — `@api.multi` is removed and must NOT be reintroduced. Use `@api.model` only for class-level methods that don't need a recordset. Use `@api.model_create_multi` to override `create()` so batch creates work. Call `ensure_one()` when a method assumes a single record.",
+      "source": ".cursor/rules/odoo-17-backend.mdc"
+    },
+    {
+      "id": "loop-anti-patterns",
+      "topic": "loop anti-patterns",
+      "aliases": ["search in loop", "browse in loop", "performance loop"],
+      "question": "What ORM calls are forbidden inside loops?",
+      "answer": "Never call search(), browse(id), write(), or unlink() inside loops. Push filtering into domains, batch with mapped/filtered/read_group, and use search_count() instead of len(search()).",
+      "source": ".cursor/rules/odoo-17-backend.mdc"
+    },
+    {
+      "id": "sudo-policy",
+      "topic": "sudo",
+      "aliases": ["sudo()", "privileged"],
+      "question": "When may we use sudo()?",
+      "answer": "Avoid sudo() unless clearly required. Document every sudo() call with a one-line reason. Default to standard ACL/record-rule security.",
+      "source": ".cursor/rules/odoo-17-backend.mdc"
+    },
+    {
+      "id": "verification-default",
+      "topic": "verification",
+      "aliases": ["how to test", "verify changes", "smoke test"],
+      "question": "How do we verify Odoo 17 changes?",
+      "answer": "Prefer the narrowest module-level check: odoo-bin -u <module> --stop-after-init -d {{DEFAULT_DB}}. For real-data smoke checks, use the realdata_test MCP run_smoke_test tool. For algorithm correctness, use eval_orm_expression + consistency_check_eval (the same expression must produce identical fingerprints across runs).",
+      "source": ".codex/mcp_servers/realdata_test_server.py"
+    },
+    {
+      "id": "mcp-routing",
+      "topic": "mcp routing",
+      "aliases": ["which mcp", "tool selection", "mcp choice"],
+      "question": "Which MCP do we use for which question?",
+      "answer": "Codebase discovery, manifests, models, XML IDs => codebase. Read-only DB schema/data => postgres. Real-data smoke and algorithm verification => realdata_test. Never broad-read files before asking the codebase MCP.",
+      "source": "AGENTS.md"
+    },
+    {
+      "id": "language-policy",
+      "topic": "response language",
+      "aliases": ["language", "reply language"],
+      "question": "Which language do we reply in?",
+      "answer": "Reply in {{RESPONSE_LANGUAGE}} unless the user asks otherwise. Code comments stay in English.",
+      "source": "AGENTS.md"
+    },
+    {
+      "id": "module-agnostic-rule",
+      "topic": "module agnostic",
+      "aliases": ["generic rule", "any module", "no hardcoded module"],
+      "question": "Should rules and skills hard-code specific module names?",
+      "answer": "No. Rules and skills must be generic and operate on any Odoo 17 module. Use addon roots, manifests, model names and inheritance chains discovered at runtime via the codebase MCP — never embed concrete module names into invariant rules.",
+      "source": ".cursor/rules/odoo-17-generic.mdc"
+    },
+    {
+      "id": "determinism",
+      "topic": "determinism",
+      "aliases": ["consistency", "Q1 Q2", "reproducible answer"],
+      "question": "How do we keep recurring answers consistent across sessions?",
+      "answer": "Recurring 'how do we do X' answers come from this canonical decisions registry, not re-derived per conversation. Before answering such a question, call codebase.lookup_canonical_decision; if no match, propose adding an entry rather than guessing.",
+      "source": ".cursor/rules/decision-consistency.mdc"
+    }
+  ]
+}

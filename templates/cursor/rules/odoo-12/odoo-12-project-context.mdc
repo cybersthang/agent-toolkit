@@ -1,0 +1,20 @@
+---
+description: NAKIVO Odoo 12 project context and agent rules - always apply
+alwaysApply: true
+---
+
+**Stack**: Odoo 12 Enterprise, Python 3.8, PostgreSQL, QWeb/jQuery
+**Root**: `C:/Users/thang.vo/Desktop/NAKIVO/Cursor_NAKIVO`
+**Custom addons**: `nakivo/`
+**Database**: `Nakivo01`
+**Venv**: `../venv` (`C:/Users/thang.vo/Desktop/NAKIVO/venv`)
+**Run**: `../venv/Scripts/python.exe nakivo-server/odoo-bin -c odoo-12-enterprise-master/odoo.conf` (cwd: `Cursor_NAKIVO`)
+
+**Agent rules**:
+- Keep output concise and result-focused.
+- Answer in Vietnamese when the user writes in Vietnamese.
+- Read the target file before editing it.
+- Keep diffs small and stay inside scope.
+- Do not add features outside the request without asking first.
+- Prefer ORM helpers such as `mapped`, `filtered`, and `read_group`.
+- Avoid `search()` calls inside loops.

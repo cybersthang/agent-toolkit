@@ -53,9 +53,8 @@ matching `templates/cursor/rules/<name>/` and `templates/memory/<name>/`.
 | Skill | Scope | What it does |
 |-------|-------|--------------|
 | `code-review` | `_common` (every preset) | Exhaustive single-pass review — surfaces ALL Blocker + Medium + Low findings in one session, with a reproducible PROOF line per finding. Opens on "review / audit / phân tích sâu / tìm bug / còn gì cần fix?". |
-| `odoo-12-code-review` | `odoo-12` | Odoo-12 overlay on `code-review` — `@api.multi`, `attrs/states` (correct in 12), QWeb+jQuery, NAKIVO monkey-patch checklist. |
-| `odoo-17-code-review` | `odoo-17` | Odoo-17 overlay — recordset-default ORM, `@api.model_create_multi`, removed `attrs/states`, OWL, removed jQuery. |
-| `odoo-17-code-patterns`, `odoo-17-codebase-discovery`, `odoo-17-data-verification`, `odoo-17-module-scaffold` | `odoo-17` | Patterns, MCP routing, real-data verification, scaffolding (unchanged). |
+| `odoo-code-review` | `odoo` (both `odoo-12` and `odoo-17` presets) | **Version-aware (12 + 17 + 18 + 19 + 20 pre-GA)**: Step 0 reads `__manifest__.py` `version` via `read_manifest` MCP, then loads the matching cascade: 12 standalone, 17→18→19→20 chained. Same skill handles mixed-version monorepos. Each finding labeled `(v<N>)`. |
+| `odoo-17-code-patterns`, `odoo-17-codebase-discovery`, `odoo-17-data-verification`, `odoo-17-module-scaffold` | `odoo-17` | Patterns, MCP routing, real-data verification, scaffolding (version-specific, unchanged). |
 
 ## CLI
 
@@ -107,8 +106,12 @@ agent-toolkit/
 │   │   │   └── odoo-17/      # backend, generic, project-context, data-verification
 │   │   └── skills/
 │   │       ├── _common/      # code-review (stack-agnostic exhaustive Blocker/Medium/Low pass)
-│   │       ├── odoo-12/      # odoo-12-code-review (Odoo-12 overlay on code-review)
-│   │       └── odoo-17/      # odoo-17-code-review + codebase-discovery, code-patterns, data-verification, module-scaffold
+│   │       │   └── code-review/
+│   │       │       └── references/   # security-checklist.md, performance-checklist.md
+│   │       ├── odoo/         # odoo-code-review (version-aware 12/17/18/19/20; both presets pull from here)
+│   │       │   └── odoo-code-review/
+│   │       │       └── references/   # odoo-12-rules, odoo-17-rules, odoo-18-rules, odoo-19-rules, odoo-20-rules (pre-GA stub)
+│   │       └── odoo-17/      # codebase-discovery, code-patterns, data-verification, module-scaffold (version-specific)
 │   ├── memory/
 │   │   ├── _common/          # user_profile, feedback_*, reference_karpathy, MEMORY.md
 │   │   ├── odoo-12/          # project_workspace, project_mcp_routing

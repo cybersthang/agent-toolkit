@@ -32,6 +32,6 @@
     "default_user": "nakivo"
   },
   "rules": ["_common", "odoo-12"],
-  "skills": ["_common", "odoo-12"],
+  "skills": ["_common", "odoo", "odoo-12"],
   "memory_packs": ["odoo-12"]
 }

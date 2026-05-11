@@ -48,6 +48,15 @@ python setup.py list-presets
 Add a new preset by dropping a JSON file into `presets/`. Optionally add
 matching `templates/cursor/rules/<name>/` and `templates/memory/<name>/`.
 
+### Shipped skills
+
+| Skill | Scope | What it does |
+|-------|-------|--------------|
+| `code-review` | `_common` (every preset) | Exhaustive single-pass review — surfaces ALL Blocker + Medium + Low findings in one session, with a reproducible PROOF line per finding. Opens on "review / audit / phân tích sâu / tìm bug / còn gì cần fix?". |
+| `odoo-12-code-review` | `odoo-12` | Odoo-12 overlay on `code-review` — `@api.multi`, `attrs/states` (correct in 12), QWeb+jQuery, NAKIVO monkey-patch checklist. |
+| `odoo-17-code-review` | `odoo-17` | Odoo-17 overlay — recordset-default ORM, `@api.model_create_multi`, removed `attrs/states`, OWL, removed jQuery. |
+| `odoo-17-code-patterns`, `odoo-17-codebase-discovery`, `odoo-17-data-verification`, `odoo-17-module-scaffold` | `odoo-17` | Patterns, MCP routing, real-data verification, scaffolding (unchanged). |
+
 ## CLI
 
 ```bash
@@ -97,8 +106,9 @@ agent-toolkit/
 │   │   │   ├── odoo-12/      # backend, generic, project-context, nakivo-modules
 │   │   │   └── odoo-17/      # backend, generic, project-context, data-verification
 │   │   └── skills/
-│   │       ├── _common/      # (empty placeholder)
-│   │       └── odoo-17/      # codebase-discovery, code-patterns, data-verification, module-scaffold
+│   │       ├── _common/      # code-review (stack-agnostic exhaustive Blocker/Medium/Low pass)
+│   │       ├── odoo-12/      # odoo-12-code-review (Odoo-12 overlay on code-review)
+│   │       └── odoo-17/      # odoo-17-code-review + codebase-discovery, code-patterns, data-verification, module-scaffold
 │   ├── memory/
 │   │   ├── _common/          # user_profile, feedback_*, reference_karpathy, MEMORY.md
 │   │   ├── odoo-12/          # project_workspace, project_mcp_routing

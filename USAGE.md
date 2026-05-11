@@ -275,6 +275,7 @@ python ~/agent-toolkit/setup.py init /path/to/Cursor_NAKIVO \
 Project nhận:
 - **5 MCP servers**: `codebase`, `postgres`, `realdata_test`, `jira_production`, `jira_preproduction`
 - **8 cursor rules**: 4 Odoo 12 specific + 4 stack-agnostic (audit, decision-consistency, karpathy, mcp-routing)
+- **2 cursor skills** (toolkit-shipped): `code-review` (_common) + `odoo-12-code-review` — exhaustive single-pass review tìm đủ Blocker / Medium / Low, mỗi finding kèm PROOF.
 - **9 memory files**: workspace, MCP routing, user profile, feedback policy, karpathy reference…
 - **canonical_decisions.json**: 47 entry NAKIVO-curated (audit findings, JIRA URLs, profiler decisions)
 
@@ -290,7 +291,7 @@ python ~/agent-toolkit/setup.py init /path/to/odoo17-project \
 Project nhận:
 - **3 MCP servers**: `codebase`, `postgres`, `realdata_test` (không có JIRA — thêm sau nếu cần)
 - **8 cursor rules**: 4 Odoo 17 specific + 4 stack-agnostic
-- **4 cursor skills**: `odoo-17-codebase-discovery`, `odoo-17-data-verification`, `odoo-17-code-patterns`, `odoo-17-module-scaffold`
+- **6 cursor skills**: `code-review` (_common, exhaustive Blocker/Medium/Low pass) + `odoo-17-code-review` (Odoo-17 overlay) + `odoo-17-codebase-discovery`, `odoo-17-data-verification`, `odoo-17-code-patterns`, `odoo-17-module-scaffold`
 - **10 memory files**: workspace + MCP routing + 8 file `_common`
 - **canonical_decisions.json**: 11 entry generic (recordset-default, `@api.model_create_multi`, OWL…)
 
@@ -309,6 +310,7 @@ python ~/agent-toolkit/setup.py init /path/to/python-app --preset generic --yes
 Project nhận:
 - **1 MCP server**: `codebase` (chỉ discovery, không có Postgres/Odoo)
 - **3 cursor rules**: `_common` (audit, decision-consistency, karpathy, mcp-routing)
+- **1 cursor skill**: `code-review` (_common) — stack-agnostic exhaustive review (Blocker/Medium/Low + PROOF).
 - **8 memory files**: `_common` only
 - Không có Odoo-specific gì
 

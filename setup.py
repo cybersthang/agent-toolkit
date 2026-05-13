@@ -264,7 +264,7 @@ def cmd_init(args):
         ok(f'  {mode:<10} {dst.relative_to(target)}')
 
     seed_memory(preset, ctx, target, force=args.force)
-    write_cursor_mcp(ctx, target, force=args.force)
+    write_mcp_configs(ctx, target, force=args.force)
     write_gitignore(target)
     write_project_config(target, ctx, args.preset)
 
@@ -412,7 +412,20 @@ def build_plan(preset, ctx, target):
         if src.exists():
             plan.append((src, target / top_template, 'TEMPLATE'))
 
-    # 5. .gitignore added later (via write_gitignore)
+    # 5. .claude/ — Claude Code project-scoped settings + hooks
+    claude_src = TEMPLATES / 'claude'
+    if claude_src.exists():
+        for src in claude_src.rglob('*'):
+            if not src.is_file():
+                continue
+            rel = src.relative_to(claude_src)
+            if '__pycache__' in rel.parts or src.suffix == '.pyc':
+                continue
+            dst = target / '.claude' / rel
+            is_template = src.suffix in ('.j2', '.tmpl') or _looks_templated(src)
+            plan.append((src, dst, 'TEMPLATE' if is_template else 'COPY'))
+
+    # 6. .gitignore added later (via write_gitignore)
     return plan
 
 
@@ -444,10 +457,8 @@ def seed_memory(preset, ctx, target, force):
     info(f'  seeded {n} memory files into {target_mem}')
 
 
-def write_cursor_mcp(ctx, target, force):
-    cursor_mcp = target / '.cursor' / 'mcp.json'
-    if cursor_mcp.exists() and not force:
-        return
+def _build_mcp_servers_payload(ctx, target):
+    """Build the shared `{servers, count}` payload reused by every agent harness."""
     py = ctx['PYTHON_BIN'] or 'python'
     codex = (target / '.codex').as_posix()
     servers = {}
@@ -455,11 +466,36 @@ def write_cursor_mcp(ctx, target, force):
         starter = f'{codex}/start_{s}_mcp.py'
         if (target / '.codex' / f'start_{s}_mcp.py').exists():
             servers[s] = {'command': py, 'args': [starter]}
-    payload = {'mcpServers': servers}
-    cursor_mcp.parent.mkdir(parents=True, exist_ok=True)
-    cursor_mcp.write_text(
-        json.dumps(payload, indent=2) + '\n', encoding='utf-8')
-    ok(f'  wrote {cursor_mcp.relative_to(target)} ({len(servers)} servers)')
+    return servers
+
+
+def write_mcp_configs(ctx, target, force):
+    """Write MCP discovery files for every supported agent harness.
+
+    Cursor and Claude Code use different file paths for the *same* MCP
+    server set:
+      - Cursor: `.cursor/mcp.json` (Cursor reads this directly)
+      - Claude Code: `.mcp.json` at workspace root (project-scoped MCP
+        config; loaded automatically when Claude Code opens the workspace)
+
+    Codex CLI reuses `.cursor/mcp.json` via its own config — no extra file
+    needed there. Both files contain only command/args (no secrets);
+    credentials live in `.codex/mcp.local.env` which the server scripts
+    load at startup.
+    """
+    servers = _build_mcp_servers_payload(ctx, target)
+    payload_text = json.dumps({'mcpServers': servers}, indent=2) + '\n'
+
+    targets = [
+        ('cursor', target / '.cursor' / 'mcp.json'),
+        ('claude-code', target / '.mcp.json'),
+    ]
+    for label, path in targets:
+        if path.exists() and not force:
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(payload_text, encoding='utf-8')
+        ok(f'  wrote {path.relative_to(target)} for {label} ({len(servers)} servers)')
 
 
 def write_gitignore(target):
@@ -467,6 +503,9 @@ def write_gitignore(target):
     snippets = [
         '.codex/mcp.local.env',
         '.cursor/mcp.json',
+        '.mcp.json',
+        '.claude/settings.json',
+        '.claude/settings.local.json',
         '__pycache__/',
         '*.pyc',
     ]

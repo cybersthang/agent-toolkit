@@ -13,6 +13,31 @@ Same question asked twice -> same answer. The agent enforces this by routing rec
 - Schema: `{ version, decisions[] }` where each decision has `id, topic, aliases[], question, answer, source`.
 - Mutation requires explicit user approval (the registry is the contract).
 
+### Source citation requirement (every new entry)
+
+The `source` field is **not optional padding**. Each decision must point to
+the artifact that grounds the answer, in one of these forms:
+
+| Source kind | Format | Example |
+|---|---|---|
+| Code line | `path:line` (or range) | `nakivo/models/cron.py:118-124` |
+| Manifest / config | `path` | `nakivo/__manifest__.py` |
+| Framework doc | URL + section title | `https://www.odoo.com/documentation/12.0/reference/orm.html#methods` |
+| Locked finding | `.codex/audit_findings_locked.md#<id>` | `.codex/audit_findings_locked.md#BLOCKER-3` |
+| Stack convention | `<stack>:<rule>` referring to a `.cursor/rules/*.mdc` file | `odoo-12:backend.api-multi-decorator` |
+| User decision (rare) | `user-decision:<date>` + 1-line rationale stored in entry | `user-decision:2026-04-12 — approved deviation from Odoo norm` |
+
+Entries without one of these source forms are **proposals**, not decisions
+— they must not be merged into the registry. "common knowledge",
+"obviously correct", and "the audit agent said so" are not valid sources.
+
+### Why this matters
+
+The registry deduplicates the answer space; the source field deduplicates
+the *reason*. Without a source, a future contradiction (a refactor, an
+Odoo upgrade, a CVE) has no way to invalidate the entry, and the registry
+silently encodes a wrong answer forever.
+
 ## Lookup workflow (mandatory before answering recurring questions)
 
 1. Call `nakivo_codebase.lookup_canonical_decision({ topic })`.

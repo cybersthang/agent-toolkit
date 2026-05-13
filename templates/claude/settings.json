@@ -1,0 +1,16 @@
+{
+  "_doc": "Project-scoped Claude Code settings managed by agent-toolkit. Edit `.claude/settings.local.json` for per-developer overrides (gitignored). Re-run `setup.py update` to refresh.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/intent_router.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

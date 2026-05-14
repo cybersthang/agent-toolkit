@@ -69,14 +69,29 @@ CASES = [
         [],
     ),
     (
-        "ambiguous-reference",
+        "ambiguous-reference-vague",
         "2 cái này khác nhau ko cùng là action load kanban nhưng trên 1 kiểu dưới 1 kiểu",
-        # No action verb, but a vague reference. Currently no skill
-        # matches — we let the user clarify implicitly. This case
-        # documents the limitation. A future improvement could add a
-        # dedicated "ambiguous-reference" trigger.
+        # Demonstrative "2 cái này" triggers the gate even without an
+        # action verb (Trap 1 + Trap 5).
+        ["clarification-gate"],
         [],
+    ),
+    (
+        "numeric-quantifier-bare-noun",
+        "werkzeug chỉ chạy 6 cái, xác định được trên dashboard 6 cái nào",
+        # "6 cái" without explicit noun (Trap 5). The gate must fire
+        # so the agent quotes the literal "cái" and asks instead of
+        # silently filling in "thread"/"worker".
+        ["clarification-gate"],
         [],
+    ),
+    (
+        "explicit-noun-no-trigger",
+        "có 5 record trong bảng nakivo đếm đúng không",
+        # "5 record" — number + EXPLICIT noun "record" — no trap.
+        # No action verb either. Should stay silent.
+        [],
+        ["clarification-gate"],
     ),
 ]
 

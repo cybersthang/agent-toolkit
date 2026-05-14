@@ -58,7 +58,23 @@ is in Vietnamese, keep Vietnamese; do NOT translate):
 
 **Paraphrase** (2-4 sentences, your own words, naming the artifact, the
 change, and the observable success condition. This block proves you
-understood — copying the prompt back verbatim here is a red flag):
+understood — copying the prompt back verbatim here is a red flag.
+
+CRITICAL: every ambiguous noun/pronoun/quantifier from Traps 1-5 MUST
+remain VISIBLY UNRESOLVED in the paraphrase. Mark with
+`[?<original-word> — chưa rõ X/Y/Z]` and carry that marker into
+QUESTIONS. NEVER fill in a candidate noun in the paraphrase even when
+you are 90% sure from context — the 10% case is where the user is
+testing whether you'll ask.
+
+Examples of correct vs incorrect paraphrase fill-in:
+
+- Prompt: *"werkzeug chỉ chạy 6 cái"*
+  - ❌ Wrong: "Werkzeug chỉ chạy 6 worker thread cùng lúc..."
+  - ✅ Right: "Werkzeug chỉ chạy 6 [?cái — chưa rõ request/thread/worker] cùng lúc, anh muốn dashboard chỉ ra cụ thể 6 [?] nào đang chiếm slot."
+- Prompt: *"2 cái này khác nhau"*
+  - ❌ Wrong: "Hai widget khác nhau..."
+  - ✅ Right: "[?2 cái này — chưa xác định là 2 widget / 2 view / 2 record] hiển thị khác nhau..."):
 <...>
 
 ### ASSUMPTIONS
@@ -129,27 +145,15 @@ A good question has:
 4. **Rationale, not just verdict**: the Recommended label is useless
    if the user can't tell why. Always add the "because…" clause.
 
-**Bad question** *(no options, no rationale)*: "Threshold for stuck =
-30 minutes?"
+**Bad question** *(no options, no rationale)*: "Threshold = 30 minutes?"
 
-**Good question**:
+**Good question** *(options + Recommended + rationale)*:
 ```
-Q1: Ngưỡng "treo" lấy giá trị từ đâu?
-  (a) Recommended — `ir.config_parameter` `<module>.stuck_threshold_minutes`,
-      fallback 30 phút. Lý do: ops có thể tune mà không phải redeploy code.
-  (b) Hard-coded constant 30 phút trong model. Lý do: đơn giản hơn nếu
-      anh không có nhu cầu tune theo môi trường.
-```
-
-**Bad question** *(open-ended, no defaults)*: "Should I add tests?"
-
-**Good question** *(reframed — destructive scope choice):*
-```
-Q1: Detector behavior khi gặp job bị treo:
-  (a) Recommended — chỉ flag (set field), không thay đổi state.
-      Lý do: an toàn, anh check thủ công trước khi cancel.
-  (b) Auto-cancel sau N phút quá ngưỡng. Lý do: nếu anh có monitor
-      bên ngoài + đã accept rủi ro mất job.
+Q1: Threshold value lấy từ đâu?
+  (a) Recommended — runtime config parameter, fallback N. Lý do: ops
+      tune được mà không redeploy code.
+  (b) Hard-coded constant N. Lý do: đơn giản nếu không cần tune theo
+      môi trường.
 ```
 
 ## Anti-rationalizations
@@ -165,6 +169,8 @@ Q1: Detector behavior khi gặp job bị treo:
 | "The user used phrase X but I know they really mean Y (a more meaningful alternative)" | **Anti-swap rule**: keep X in literal-phrases, raise Y as Q1 with default. The user may not know Y exists; let them choose. Never swap silently. Recovering from a silently-swapped concept after the code is written costs 10× the cost of asking. |
 | "The user said 'this' / '2 cái này' / 'cái kia' — I can guess from context" | Demonstratives without explicit antecedents are ALWAYS questions. Context from earlier in the conversation may itself be wrong, or the user may have switched topics. Quote the demonstrative literally + ask. |
 | "Technically X doesn't make sense — they must mean Z" | Technical impracticality is a REASON to ask, not a license to redefine. Phrase the technical concern as the question body, propose Z as default, let the user decide if Z is what they want. |
+| "The technical context (Werkzeug / OWL / Postgres) tells me 'cái' = thread / record" | Technical context is a **hint**, not a definition. Generic counter-nouns ("cái", "thằng", "item") are MISSING NOUNS regardless of surrounding context. Quote literal, propose the context-derived guess as **(a) Recommended** in Q, but ALWAYS ask. The cost of one extra question is far less than the cost of building 6-worker dashboards when the user meant 6-request. |
+| "I scanned the conversation and found the antecedent — I'm sure now" | High confidence still requires confirmation. Quote the prior turn that supplied the antecedent, mark it Recommended, ask. The user may have changed topic between turns; a one-line "yes/go" reply costs nothing. |
 
 ## Red flags — the gate is failing if any are true
 
@@ -179,6 +185,9 @@ Q1: Detector behavior khi gặp job bị treo:
 - The agent opened ≥3 SKILL.md files in the same turn as emitting the gate (likely caused by a hook that suggested multiple skills without prioritizing the gate — fix the hook, not the symptom).
 - A question lacks 2-3 labelled options OR has no option marked **Recommended** — user is forced to spell out an answer they could have said "go" to.
 - The Recommended option lacks a one-line *rationale* (just "Recommended" without "because…") — the label is unhelpful when the user can't tell why it's safe.
+- An ambiguous noun/quantifier from the prompt (Trap 5: "6 cái", "N thằng", "có 5 items") appears FILLED-IN in the Paraphrase block (e.g. "6 thread", "5 record") instead of carrying its `[?<word> — chưa rõ X/Y/Z]` marker.
+- The agent did not scan the last ~10 user turns for an antecedent before raising an ambiguous-quantifier Q. (Without scanning, the Q's Recommended option is uninformed and the user has to repeat themselves.)
+- A Q for ambiguous quantifier was skipped because the agent felt "sure from context". Sure ≠ correct; the gate exists to catch the surprise case.
 
 ## Anti-swap rule (load-bearing — read carefully)
 
@@ -226,10 +235,43 @@ For every literal phrase you quote, scan for these traps:
    literally** ("tốc độ user gửi lên" cho 100-byte POST): keep the
    user's wording in literal-phrases, raise the technical issue as
    QUESTION — do NOT swap.
+5. **Numeric quantifier without explicit noun** ("6 cái", "2 cái này",
+   "3 thằng", "N items", "có 5 cái"): bare-number plus generic
+   counter-noun is a MISSING NOUN, even when the surrounding technical
+   context (Werkzeug, OWL, Postgres) suggests a likely candidate.
+   QUESTION the noun. DO NOT silently infer "thread" / "worker" /
+   "record" / "row" from the technical context — that context is a
+   hint to propose as Recommended, not a license to fill in.
 
 If you cannot quote the user's phrase AND restate it without violating
-any of the four traps above, the prompt is ambiguous — questions are
+any of the five traps above, the prompt is ambiguous — questions are
 mandatory.
+
+### Before raising as QUESTION — scan prior conversation
+
+For each ambiguous reference (Traps 1-5), BEFORE listing it as Q:
+
+1. Scan the **last ~10 user turns** in this conversation for a
+   previously-stated antecedent. The same phrasing typically returns
+   when the user is still on the same topic.
+2. If you find a turn that **explicitly named** the noun (e.g. earlier
+   the user said *"với werkzeug thì chạy 1 lúc đc 6 request"*, and now
+   says *"werkzeug chỉ chạy 6 cái"* → `6 cái = 6 request` with high
+   confidence):
+   - Quote the prior turn verbatim in your Q text.
+   - Propose that interpretation as **(a) Recommended** with rationale
+     "anh đã chốt ở turn trước".
+   - List 1-2 plausible alternatives as (b)/(c).
+   - **Still ASK** — do NOT silently apply, even with high confidence.
+     The user may have changed topic, or the prior phrasing may itself
+     have been ambiguous.
+3. If you find NO prior turn with the antecedent:
+   - Q with no Recommended-from-history; offer the 2-3 most plausible
+     options based on the technical context, marking the most
+     defensible one as Recommended.
+
+This rule is what separates "polite ask" from "stubborn ask". Use
+context — but use it to **inform a question**, never to **replace one**.
 
 ## Worked micro-examples
 
@@ -275,43 +317,57 @@ là biết bottleneck chiều nào.
 
 → STOP. Đợi anh chọn Q1(a)/Q1(b) + Q2.
 
-### Example 2 — vague-reference trap
+### Example 2 — numeric-quantifier-without-noun trap (Trap 5)
 
-User prompt: *"thấy dữ liệu hiển thị ở 2 cái này khác nhau ko cùng là
-action load cái kanban nhưng ở trên hiển thị 1 kiểu dưới 1 kiểu"*
+Conversation context (last 10 user turns include):
+- Earlier user turn: *"với werkzeug thì chạy 1 lúc đc 6 request"*
+- This turn (current prompt): *"werkzeug chỉ chạy 6 cái, xác định được trên dashboard 6 cái nào không"*
 
+❌ **WRONG paraphrase** (silently fills "cái" = thread/worker):
+```
+Paraphrase: Werkzeug chỉ chạy 6 worker thread cùng lúc; anh muốn
+dashboard chỉ ra cụ thể 6 thread nào đang chiếm slot...
+```
+
+✅ **CORRECT gate**:
 ```
 ### UNDERSTANDING
 
 **Literal phrases from prompt**:
-- "2 cái này khác nhau"
-- "cùng là action load cái kanban"
-- "trên hiển thị 1 kiểu dưới 1 kiểu"
+- "werkzeug chỉ chạy 6 cái"
+- "xác định được trên dashboard 6 cái nào"
 
-**Paraphrase**: Anh báo có 2 chỗ trong UI cùng trigger 1 action load
-kanban view nhưng dữ liệu/format hiển thị ra khác nhau. Em CHƯA xác
-định được "2 cái" cụ thể, "trên/dưới" là vị trí gì, và "khác kiểu" là
-khác về gì.
+**Paraphrase**: Werkzeug chỉ chạy được 6 [?cái — chưa rõ
+request/thread/worker] cùng lúc; anh muốn dashboard chỉ ra cụ thể
+6 [?] nào đang chiếm slot, đang chạy gì, đã chiếm bao lâu — để dev
+nhìn ra thủ phạm khi nghẽn.
 
 ### ASSUMPTIONS
-- (no safe assumptions — every load-bearing reference is unresolved)
+- "Dashboard" = trang profiler hiện có (không tạo trang mới).
+- Mục tiêu là *diagnostic visibility*, không phải auto-kill 6 [?] đó.
 
 ### QUESTIONS
-- Q1: "2 cái này" cụ thể là gì? (vd: 2 widget khác trong cùng dashboard
-  / 2 view khác cùng model / 2 tab khác). Anh có thể paste tên widget,
-  model, hoặc đường dẫn menu. Default: em sẽ dùng codebase MCP discover
-  view nào trigger "action load kanban" gần đây, nhưng có thể sai.
-- Q2: "Trên / dưới" là (a) trên-dưới trên màn hình (vd: header section
-  vs body section), (b) trên-dưới trong card (vd: title row vs detail
-  row), hay (c) thứ tự xếp trong list/kanban? (default: hỏi anh —
-  không đoán)
-- Q3: "Khác kiểu" là khác về (a) số cột, (b) format số/text, (c) màu
-  sắc / icon, (d) raw data từ backend (server trả khác giữa 2 chỗ), hay
-  (e) khác khác? Anh có thấy data từ DB giống nhau cả 2 nơi (cùng query
-  cùng record) hay khác? (default: hỏi — không đoán)
+- **Q1**: "6 cái" cụ thể là gì?
+  - **(a) Recommended** — 6 **request** đồng thời. Lý do: ở turn
+    trước anh đã chốt *"với werkzeug thì chạy 1 lúc đc 6 request"*
+    — cùng topic, "cái" likely refer back to "request".
+  - (b) 6 **thread** Werkzeug pool (`werkzeug.serving.ThreadedWSGI`
+    có thread pool — nếu anh đang nói về thread workers).
+  - (c) 6 **worker process** (Odoo `--workers=N`, không phải Werkzeug
+    threaded mode — nếu deployment dùng prefork).
+- **Q2**: Dashboard hiện đang track gì cho mỗi request/thread/worker?
+  Anh có cell sẵn cho URL + duration không, hay phải thêm cột mới?
+  - (a) Recommended — Em discover trước qua codebase MCP, báo cáo,
+    rồi propose cột thiếu. Lý do: tránh duplicate cột đã có.
+  - (b) Anh paste tên view/template em edit thẳng.
 ```
 
-→ STOP. Without anh trả lời 3 Q này, mọi action mutating đều là vibe-fix.
+→ STOP. Đây là pattern đúng: high confidence (90% từ context trước)
+nhưng vẫn ASK. Nếu anh reply "go" thì Recommended (a) applied.
+
+→ Đây là evidence-based example: AI trong một chat khác đã vi phạm
+chính trap này khi paraphrase "6 cái" thành "6 worker thread" mà
+không hỏi, dẫn tới build dashboard chỉ N worker thay vì N request.
 
 ## Sibling skills
 

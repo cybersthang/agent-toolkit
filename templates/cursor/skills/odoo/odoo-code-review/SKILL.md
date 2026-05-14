@@ -23,7 +23,7 @@ of every module in scope. Wrong version → wrong rules → bogus findings.
    - `'17.0.1.0.0'` → major **17**.
    - Pattern: `^(\d+)\.0\.`.
    - MCP call: `codebase.read_manifest({module_path})` (Odoo-17 setups) or
-     `nakivo_codebase.read_manifest({module_path})` (NAKIVO Odoo-12 setup).
+     `codebase.read_manifest({module_path})`.
 2. **Fallback signals** when manifest is missing or unparseable. Signals
    are listed from "narrowest version" to "broadest":
    - `from odoo.api import multi` import or `@api.multi` decorator → ≤13 (12 expected in our scope).
@@ -164,7 +164,7 @@ If detection returned 13–16 / 21+, see the routing table in Step 0.
 
 ## 4. Tool routing
 
-MCP names differ by setup (`nakivo_codebase` for NAKIVO Odoo-12 workspace, plain `codebase` for newer setups). Tool names are identical.
+MCP server name is `codebase` (registered key in `.cursor/mcp.json` / `.mcp.json`). Tool names below are identical across setups.
 
 | Need                              | Tool                                              |
 |-----------------------------------|---------------------------------------------------|

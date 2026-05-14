@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Odoo 12 — Generic Rules (Module-Agnostic)
 
-This file applies to **any** addon under any addon root. Never embed a specific module name (e.g. `nakivo_sale`, `oca_*`, `web_*`) into an invariant rule. When you need a concrete module, discover it at runtime via the `nakivo_codebase` MCP.
+This file applies to **any** addon under any addon root. Never embed a specific module name (e.g. `nakivo_sale`, `oca_*`, `web_*`) into an invariant rule. When you need a concrete module, discover it at runtime via the `codebase` MCP.
 
 ## Discovery (always before edits)
 
@@ -60,4 +60,4 @@ This file applies to **any** addon under any addon root. Never embed a specific 
 - Specific menu / model paths.
 - Specific JIRA project keys.
 
-If you need any of those, look them up via the `nakivo_codebase` MCP or the canonical decisions registry — do not hard-code them here.
+If you need any of those, look them up via the `codebase` MCP or the canonical decisions registry — do not hard-code them here.

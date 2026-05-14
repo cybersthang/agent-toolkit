@@ -1,5 +1,5 @@
 {
-  "version": 10,
+  "version": 11,
   "updated_at": "2026-05-08",
   "purpose": "Single source of truth for recurring project questions. Agents MUST consult this registry before answering 'how do we do X in this project'. Adding/changing entries requires explicit user approval - this protects determinism.",
   "decisions": [
@@ -86,7 +86,7 @@
         "smoke test"
       ],
       "question": "How do we verify Odoo 12 changes?",
-      "answer": "Prefer the narrowest module-level check: -u <module> --stop-after-init against the configured DB. For real-data smoke checks, use the nakivo_realdata_test MCP run_smoke_test or build_module_test_command tool. For algorithm correctness, use eval_orm_expression + consistency_check_eval.",
+      "answer": "Prefer the narrowest module-level check: -u <module> --stop-after-init against the configured DB. For real-data smoke checks, use the realdata_test MCP run_smoke_test or build_module_test_command tool. For algorithm correctness, use eval_orm_expression + consistency_check_eval.",
       "source": ".codex/mcp_servers/realdata_test_server.py"
     },
     {
@@ -98,7 +98,7 @@
         "mcp choice"
       ],
       "question": "Which MCP do we use for which question?",
-      "answer": "Codebase discovery, manifests, models, XML IDs => nakivo_codebase. Read-only DB schema/data => nakivo_postgres. Real-data smoke and algorithm verification => nakivo_realdata_test. JIRA Production tickets => jira_production. JIRA Pre-Production tickets => jira_preproduction. Never broad-read files before asking the codebase MCP.",
+      "answer": "Codebase discovery, manifests, models, XML IDs => codebase. Read-only DB schema/data => postgres. Real-data smoke and algorithm verification => realdata_test. JIRA Production tickets => jira_production. JIRA Pre-Production tickets => jira_preproduction. Never broad-read files before asking the codebase MCP.",
       "source": "AGENTS.md"
     },
     {
@@ -527,7 +527,7 @@
         "Q1 Q2"
       ],
       "question": "How do we keep answers consistent across conversations?",
-      "answer": "Before answering recurring questions, call lookup_canonical_decision via the nakivo_codebase MCP. If a match exists, return the registered answer verbatim and cite registry_path + version. If no match exists, propose adding a new entry instead of inventing a one-shot answer.",
+      "answer": "Before answering recurring questions, call lookup_canonical_decision via the codebase MCP. If a match exists, return the registered answer verbatim and cite registry_path + version. If no match exists, propose adding a new entry instead of inventing a one-shot answer.",
       "source": ".cursor/rules/decision-consistency.mdc"
     },
     {

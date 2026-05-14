@@ -109,7 +109,7 @@ env['<model>'].search([], limit=10).mapped(lambda r: r.additional_info)
 ```
 
 When raw SQL is needed (e.g. ILIKE on a gzip-wrapped JSON blob), route
-through `nakivo_postgres.run_select` — `realdata_test` accepts only single
+through `postgres.run_select` — `realdata_test` accepts only single
 ORM expressions, no statements.
 
 ## Anti-patterns specific to Odoo-12 review

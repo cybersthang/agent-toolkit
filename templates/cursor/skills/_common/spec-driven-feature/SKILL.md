@@ -45,10 +45,10 @@ acceptable; silently omitting it is not.
 One sentence stating what the user gets when the feature is done. Phrased
 as a user-observable outcome, not as an implementation detail.
 
-> ❌ "Add a JSON field to res.partner."
+> ❌ "Add a JSON field to `<model>`."
 >
-> ✅ "When the API exporter runs, partners flagged `is_nakivo_customer`
-> appear in the dump with their NAKIVO contract id."
+> ✅ "When the `<exporter>` runs, records flagged `<flag_field>`
+> appear in the dump with their `<correlated_field>`."
 
 ### 2. Commands / Entry points
 The exact ways the feature is invoked. Buttons, cron jobs, controllers,
@@ -90,7 +90,7 @@ Three lists that prevent scope creep mid-implementation.
 - **Ask first:** decisions the user owns (e.g. "if a related record is
   missing, fail-fast vs silently skip — ask").
 - **Never do:** explicit out-of-scope (e.g. "do not touch the legacy
-  `partner_v1` table", "do not introduce a new dependency").
+  `<legacy_table>` table", "do not introduce a new dependency").
 
 ## Phase 2: PLAN — components + order
 
@@ -100,7 +100,7 @@ After SPECIFY is approved:
 2. Mark dependencies (`B needs A first`).
 3. Flag any *unknown unknowns* — places where you'll need to read code
    or run a probe before writing the next file. Spec them as discovery
-   tasks (e.g. "T0 — read existing `nakivo_export.py` to confirm field
+   tasks (e.g. "T0 — read existing `<sibling_file>.py` to confirm field
    ordering"), not "I'll figure it out".
 
 Stop and ask for OK before producing tasks.

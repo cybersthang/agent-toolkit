@@ -11,7 +11,7 @@ The agent must answer the same project question the same way every conversation.
 
 `.codex/canonical_decisions.json` (registry, version-controlled with explicit `version` integer).
 
-Tools (via `nakivo_codebase` MCP):
+Tools (via `codebase` MCP):
 
 | Tool                        | Purpose                                                  |
 |-----------------------------|----------------------------------------------------------|

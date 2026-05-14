@@ -40,7 +40,7 @@ silently encodes a wrong answer forever.
 
 ## Lookup workflow (mandatory before answering recurring questions)
 
-1. Call `nakivo_codebase.lookup_canonical_decision({ topic })`.
+1. Call `codebase.lookup_canonical_decision({ topic })`.
 2. If `match_count >= 1`: return the registered `answer` verbatim, then cite `registry_path` + `version`.
 3. If `match_count == 0`:
    - Do NOT invent a one-shot answer.

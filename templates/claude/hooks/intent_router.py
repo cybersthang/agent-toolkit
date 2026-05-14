@@ -58,6 +58,21 @@ INTENT_MAP: List[Tuple[str, List[str]]] = [
         ["clarification-gate"],
     ),
 
+    # ---------- Clarification gate (ambiguous reference triggers) ----------
+    # Fire the gate even WITHOUT an action verb when the prompt contains
+    # high-risk ambiguity markers — demonstratives, spatial words, vague
+    # qualitative words, and (most importantly) numeric quantifiers with
+    # generic counter-nouns ("6 cái", "2 thằng"). The skill's Trap 5
+    # documents why these need a Q, not a silent inference. Without this
+    # trigger, prompts like *"werkzeug chạy 6 cái"* or *"2 cái này khác
+    # nhau"* would slip past the gate and the agent would vibe-translate.
+    (
+        r"(\b\d+\s*(cái|cái này|cái kia|thằng|thằng này|thằng kia|items?|things?|cụm|chỗ)\b"
+        r"|\b2\s*cái\s*này\b|\bcái\s*này\b|\bcái\s*kia\b|\bchỗ\s*này\b|\bchỗ\s*kia\b"
+        r"|\bnày\s*khác\b|\bcùng\s*một\b)",
+        ["clarification-gate"],
+    ),
+
     # ---------- Review / audit ----------
     (
         r"\b(review|audit|phân\s*tích\s*sâu|tìm\s*bug|kiểm\s*tra\s*code|còn\s*gì.*fix|lỗ\s*hổng|nguy\s*hiểm)\b",

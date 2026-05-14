@@ -1,11 +1,11 @@
 ---
 name: odoo-12-data-verification
-description: Verify Odoo 12 algorithms against real or staging data using the nakivo_realdata_test MCP. Use when the question is "is this calculation correct?" or "does this method behave the same way every time?". Module-agnostic.
+description: Verify Odoo 12 algorithms against real or staging data using the realdata_test MCP. Use when the question is "is this calculation correct?" or "does this method behave the same way every time?". Module-agnostic.
 ---
 
 # Odoo 12 — Data Verification on Real Data
 
-The `nakivo_realdata_test` MCP runs read-only ORM expressions against the configured DB through `odoo-bin shell`. Mutation tokens (`write`, `create`, `unlink`, `commit`, `=`, `import`, dunders, etc.) are statically rejected.
+The `realdata_test` MCP runs read-only ORM expressions against the configured DB through `odoo-bin shell`. Mutation tokens (`write`, `create`, `unlink`, `commit`, `=`, `import`, dunders, etc.) are statically rejected.
 
 ## When to use this skill
 

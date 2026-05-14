@@ -9,7 +9,7 @@ description: Scaffold a new Odoo 12 module under any addon root. Module-agnostic
 
 1. **Module name** (snake_case). Honour the local convention (e.g. `nakivo_*` only when the target root is the NAKIVO custom layer).
 2. **Addon root** (e.g. `nakivo/`, `base_addons/`, `OCA/`). Ask if ambiguous — never assume.
-3. **`depends`** list. Read existing siblings via `nakivo_codebase.discover_modules` if unsure.
+3. **`depends`** list. Read existing siblings via `codebase.discover_modules` if unsure.
 4. **Whether mail / chatter is needed** (drives manifest depends and form layout).
 
 ## Minimum layout
@@ -98,7 +98,7 @@ access_my_model_user,my.model.user,model_my_model,base.group_user,1,1,1,1
 
 1. `-u <module> --stop-after-init` against the dev DB.
 2. Confirm XML IDs are unique inside the module.
-3. If the module touches existing models, run `nakivo_codebase.find_inheritance_chain` to confirm there are no naming collisions across addon roots.
+3. If the module touches existing models, run `codebase.find_inheritance_chain` to confirm there are no naming collisions across addon roots.
 
 ## Hard rules
 

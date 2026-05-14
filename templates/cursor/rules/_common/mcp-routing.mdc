@@ -9,10 +9,10 @@ Five MCP servers are wired into this workspace. Pick the right one before openin
 
 | Class of question                                   | MCP server               | Primary tools                                          |
 |-----------------------------------------------------|--------------------------|--------------------------------------------------------|
-| Module discovery, manifests, model lookup, XML IDs  | `nakivo_codebase`        | `discover_modules`, `read_manifest`, `find_inheritance_chain`, `search_xml_ids`, `search_text`, `read_file_chunk` |
-| Read-only DB schema and data inspection             | `nakivo_postgres`        | `list_databases`, `list_schemas`, `describe_table`, `query_readonly` |
-| Real-data smoke, registry boot, module tests, ORM eval | `nakivo_realdata_test`| `run_smoke_test`, `run_registry_boot`, `run_module_test`, `eval_orm_expression`, `consistency_check_eval`, `compare_with_expected` |
-| Canonical project answers ("how do we do X")        | `nakivo_codebase`        | `list_canonical_decisions`, `lookup_canonical_decision` |
+| Module discovery, manifests, model lookup, XML IDs  | `codebase`        | `discover_modules`, `read_manifest`, `find_inheritance_chain`, `search_xml_ids`, `search_text`, `read_file_chunk` |
+| Read-only DB schema and data inspection             | `postgres`        | `list_databases`, `list_schemas`, `describe_table`, `query_readonly` |
+| Real-data smoke, registry boot, module tests, ORM eval | `realdata_test`| `run_smoke_test`, `run_registry_boot`, `run_module_test`, `eval_orm_expression`, `consistency_check_eval`, `compare_with_expected` |
+| Canonical project answers ("how do we do X")        | `codebase`        | `list_canonical_decisions`, `lookup_canonical_decision` |
 | JIRA tickets on the production server               | `jira_production`        | `get_issue`, `search_issues`, `my_assigned_issues`, `list_projects` |
 | JIRA tickets on the pre-production server           | `jira_preproduction`     | (same toolset as production)                            |
 

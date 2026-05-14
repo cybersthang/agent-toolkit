@@ -221,9 +221,11 @@ After any refactor / migration / removal in the change-set:
    - referenced by an external integration not in the workspace,
    - read by raw SQL that grep won't catch,
    - used by a noupdate XML record on a different DB.
-4. Use `nakivo_codebase.search_text` / `search_xml_ids` (Odoo 12) or
-   `codebase.search_text` / `search_xml_ids` (Odoo 17) to prove
-   non-reference before recommending deletion.
+4. Use the project's `codebase` MCP tools (`search_text`,
+   `search_xml_ids`, `search_model_definitions`) to prove non-reference
+   before recommending deletion. The MCP server name comes from the
+   preset (see `.cursor/mcp.json` / `.mcp.json`); do not hard-code a
+   project-specific prefix.
 
 Speculative deletion is a LOW finding ("possibly unused — verify before
 delete"), not a recommended action.

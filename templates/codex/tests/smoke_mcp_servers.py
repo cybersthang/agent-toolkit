@@ -17,7 +17,7 @@ PYTHON = sys.executable
 
 SERVERS = [
     {
-        "name": "nakivo_codebase",
+        "name": "codebase",
         "wrapper": ROOT / ".codex" / "start_codebase_mcp.py",
         "expected_tools": [
             "workspace_status",
@@ -32,13 +32,13 @@ SERVERS = [
         ],
     },
     {
-        "name": "nakivo_postgres",
+        "name": "postgres",
         "wrapper": ROOT / ".codex" / "start_postgres_mcp.py",
         "expected_tools": ["env_status", "list_databases", "describe_table", "query_readonly"],
         "extra_calls": [{"name": "env_status", "arguments": {}}],
     },
     {
-        "name": "nakivo_realdata_test",
+        "name": "realdata_test",
         "wrapper": ROOT / ".codex" / "start_realdata_test_mcp.py",
         "expected_tools": [
             "env_status",

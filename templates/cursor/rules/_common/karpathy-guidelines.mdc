@@ -35,3 +35,34 @@ Use these rules for writing, reviewing, and refactoring code in this project.
 - Prefer tests or narrow verification that proves the requested behavior.
 - Loop until the success criteria are met or a concrete blocker is found.
 - Keep summaries concise and focused on what changed and how it was verified.
+
+## No Hardcoding — Dynamic by Default
+
+**Rule:** never embed project-specific values in code logic, skills,
+rules, hooks, or tests. Reach for one of these dynamic sources instead:
+
+| Hardcoded thing | Dynamic replacement |
+|---|---|
+| Module name (`nakivo_profiler`, `sale_order`) | Discover at runtime via `codebase.discover_modules` / `search_xml_ids`. In templates use `<module>` / `{{MODULE_NAME}}` placeholder. |
+| Model name (`queue.job`, `res.partner`) | Discover via `codebase.search_model_definitions`. In docs use `<model>` placeholder. |
+| Stack / framework / version (`odoo`, `12`, `python-3.8`) | Use toolkit placeholders `{{STACK_FRAMEWORK}}` / `{{STACK_FRAMEWORK_VERSION}}` / `{{STACK_LANGUAGE_VERSION}}` — rendered per preset. |
+| Path constants (`C:/Users/.../venv/python.exe`) | Use `{{PYTHON_BIN}}` / `{{WORKSPACE_ROOT}}` placeholders; per-machine values come from `agent-toolkit.config.json`. |
+| Database / credentials | Always read from `.codex/mcp.local.env` (gitignored); never embed in committed code. |
+| Magic thresholds (30 minutes, 6 workers, port 5432) | Make configurable via `ir.config_parameter` / settings file / preset JSON. State the default explicitly + cite where it can be overridden. |
+| Field names (`stuck_at`, `is_active`) tied to one project's schema | Quote them as examples only; in reusable logic use parameters or `_fields` introspection. |
+
+**Self-check before committing code:** scan the diff for any string
+literal that names a specific module, model, version, path, or
+threshold. For each hit, ask: *would this still be correct on a
+sibling project / another Odoo version / a different machine?* If no
+→ replace with placeholder, parameter, or discovery call.
+
+**Self-check before writing a skill/rule:** worked examples and
+checklists MUST use `<module>` / `<view>` / `<model>` style
+placeholders, not real project names. Real names belong in
+`canonical_decisions.json` (project-scoped) or in MCP-discovered
+runtime data, never in the methodology files themselves.
+
+This rule is enforced by `feedback_module_agnostic` memory and by
+explicit user feedback (2026-05-13): *"không được fix cứng bất cứ cái
+gì hết luôn hướng tới giải pháp Dynamic để nó áp dụng được tổng thể"*.

@@ -13,17 +13,15 @@ from common import SimpleMcpServer, ToolDefinition
 
 
 WORKSPACE_ROOT = Path(
-    os.environ.get("NAKIVO_WORKSPACE", Path(__file__).resolve().parents[2])
+    os.environ.get("{{ENV_PREFIX}}_WORKSPACE", Path(__file__).resolve().parents[2])
 ).resolve()
-DEFAULT_ADDON_ROOTS = (
-    "nakivo",
-    "base_addons",
-    "nakivooca",
-    "OCA",
-    "nakivo-server/addons",
-    "nakivo-server/odoo/addons",
-    "odoo-12-enterprise-master/addons",
-    "odoo-12-enterprise-master/odoo/addons",
+# Addon roots come from the toolkit preset at install time; override at
+# runtime with `{{ENV_PREFIX}}_ADDON_ROOTS=root1,root2,...` in .codex/mcp.local.env.
+DEFAULT_ADDON_ROOTS = tuple(
+    r.strip() for r in (
+        os.environ.get("{{ENV_PREFIX}}_ADDON_ROOTS")
+        or "{{ADDON_ROOTS_CSV}}"
+    ).split(",") if r.strip()
 )
 TEXT_EXTENSIONS = {
     ".py",
@@ -543,7 +541,7 @@ def lookup_canonical_decision(arguments: dict[str, Any]) -> dict[str, Any]:
 
 
 SERVER = SimpleMcpServer(
-    name="nakivo_codebase",
+    name="{{PROJECT_NAME_SLUG}}_codebase",
     version="0.1.0",
     tools=[
         ToolDefinition(

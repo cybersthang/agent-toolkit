@@ -1,11 +1,23 @@
 ---
-description: NAKIVO modules and addon roots for work under nakivo/
-globs: nakivo/**/*
+description: Custom modules and addon-root layout for this Odoo 12 workspace
+globs: "{{ADDON_ROOTS_CSV}}"
 alwaysApply: false
 ---
 
-**Addon roots**: `nakivo-server/odoo/addons`, `nakivo-server/addons`, `nakivooca/`, `base_addons/`, `nakivo/`
+**Addon roots** (resolved at install time from preset + `agent-toolkit.config.json`):
 
-**Main custom modules**: `nakivo_sale`, `nakivo_helpdesk`, `nakivo_crm_kpi`, `nakivo_dashboard`, `nakivo_base_security`, `nakivo_queue_jobs`, `nakivo_partner_level_management`, `nakivo_payments_import`, `odoo_ai_assistance`, connector modules, and `web_*`
+{{ADDON_ROOTS}}
 
-**Addon layout**: `__manifest__.py`, `__init__.py`, `models/`, `views/`, `data/`, `security/`, `wizard/`, `controllers/`, `static/src/`
+**Discover modules dynamically** — never hard-code module names in committed rules:
+
+- Use `codebase` MCP `discover_modules(root_hint=...)` to list installed modules.
+- Use `read_manifest(module=...)` to inspect a single module's metadata.
+- Use `module_dependencies(module=...)` to trace inheritance / `depends`.
+
+**Standard addon layout** (Odoo 12): `__manifest__.py`, `__init__.py`, `models/`, `views/`, `data/`, `security/`, `wizard/`, `controllers/`, `static/src/`.
+
+> The toolkit ships this rule generic on purpose. If your project has a
+> stable set of "main custom modules" worth surfacing to the agent, add
+> them to `.agent-toolkit/decision-log.md` via `/adr-add` rather than
+> hard-coding here — that way the list travels with the project, not
+> the toolkit.

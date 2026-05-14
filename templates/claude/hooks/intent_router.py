@@ -181,15 +181,23 @@ def _already_referenced(prompt: str, skills: List[str]) -> bool:
 SKILL_OUTPUT_FIELDS = {
     "clarification-gate": (
         "UNDERSTANDING (quote 1-3 literal phrases from the prompt + "
-        "paraphrase) + ASSUMPTIONS (2-5 items) + QUESTIONS (max 3, "
-        "each with 2-3 labelled options (a)/(b)/(c) and EXACTLY ONE "
-        "marked **Recommended** + one-line rationale). STOP — do not "
-        "call Edit/Write/Bash until the user replies 'go' or answers "
-        "the questions."
+        "paraphrase) + ASSUMPTIONS (2-5 items) + QUESTIONS (max 3). "
+        "EACH question MUST include a `Searched:` line listing what "
+        "you grep'd / read / looked up via MCP before asking — if "
+        "the answer is derivable from code/config/registry, DO NOT "
+        "ask; verify it yourself. Questions that look like they could "
+        "have been answered by `grep` or `lookup_canonical_decision` "
+        "will be rejected. Each question gets 2-3 options (a)/(b)/(c) "
+        "with EXACTLY ONE marked **Recommended** + one-line rationale. "
+        "STOP — do not call Edit/Write/Bash until the user replies."
     ),
     "code-review": (
         "Count table (BLOCKER/MEDIUM/LOW) + per-finding Proof line "
-        "tracing trigger → observable failure."
+        "tracing trigger → observable failure. Proof line MUST cite "
+        "`path:line` AND the MCP/tool call you used to verify (e.g. "
+        "`postgres.query_readonly` for runtime claims, `Read` for "
+        "static claims). Claims without a tool reference are rejected "
+        "by the `evidence-audit` Stop hook."
     ),
     "doubt-driven-review": (
         "Each finding adds a `Doubt-pass:` line stating the strongest "
@@ -197,7 +205,10 @@ SKILL_OUTPUT_FIELDS = {
     ),
     "spec-driven-feature": (
         "6-field spec (Objective / Commands / Project Structure / "
-        "Code Style / Testing / Boundaries) then STOP for approval."
+        "Code Style / Testing / Boundaries) then STOP for approval. "
+        "Before writing the spec, run codebase MCP discovery for the "
+        "affected modules — Project Structure section must cite "
+        "concrete `path:line` refs from the search, not invented paths."
     ),
 }
 
@@ -226,7 +237,17 @@ def _format_reminder(skills: List[str]) -> str:
         f"[intent-router] Detected intent in user prompt. Open these "
         f"skills BEFORE answering: {skill_list}. Apply each skill's "
         f"STOP checkpoints." + format_note +
-        " Suppress this reminder by referencing the skill name "
+        "\n\nHARD RULES (enforced by other hooks, not optional):\n"
+        "- `invariant-guard` will BLOCK any Edit/Write that strips a "
+        "  pattern listed in `.agent-toolkit/invariants.json`.\n"
+        "- `evidence-audit` will REJECT the response if it makes claims "
+        "  ('X is slow', 'root cause is Y', 'Z is missing') without a "
+        "  prior Read/Grep/Glob/MCP call in this turn — tag as "
+        "  `[assumption]` if you cannot verify.\n"
+        "- DO NOT ASK the user a question whose answer is in the code; "
+        "  search first. The clarification-gate skill rejects questions "
+        "  without a `Searched:` line.\n\n"
+        "Suppress this reminder by referencing the skill name "
         "explicitly in your next turn."
     )
 

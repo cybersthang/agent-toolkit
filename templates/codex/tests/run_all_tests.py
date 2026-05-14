@@ -1,10 +1,11 @@
 """Unified test runner: forces the project venv Python, then runs unit tests,
 live MCP smoke, and the AGENT structure check. Exits non-zero on any failure.
 
-Usage (from workspace root, any shell):
-    C:\\Users\\thang.vo\\Desktop\\NAKIVO\\venv\\Scripts\\python.exe .codex/tests/run_all_tests.py
+Usage (from workspace root):
+    {{PYTHON_BIN}} .codex/tests/run_all_tests.py
 
-If you invoke this with the wrong interpreter, it re-execs itself with the venv binary.
+If invoked with the wrong interpreter, the script re-execs itself with the
+project venv binary configured at install time (`{{PYTHON_BIN}}`).
 """
 from __future__ import annotations
 
@@ -16,7 +17,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-VENV_PYTHON = ROOT.parent / "venv" / "Scripts" / "python.exe"
+# `{{PYTHON_BIN}}` is filled in at install time by `setup.py`. If the
+# project moves, override via `{{ENV_PREFIX}}_PYTHON_BIN` in mcp.local.env.
+VENV_PYTHON = Path(os.environ.get("{{ENV_PREFIX}}_PYTHON_BIN", "{{PYTHON_BIN}}"))
 
 
 def ensure_venv_python() -> None:

@@ -8,9 +8,9 @@ from pathlib import Path
 
 PROFILE = "production"
 PROFILE_ALIASES = {
-    "NAKIVO_JIRA_PRODUCTION_BASE_URL": "NAKIVO_JIRA_BASE_URL",
-    "NAKIVO_JIRA_PRODUCTION_USER": "NAKIVO_JIRA_USER",
-    "NAKIVO_JIRA_PRODUCTION_PASSWORD": "NAKIVO_JIRA_PASSWORD",
+    "{{ENV_PREFIX}}_JIRA_PRODUCTION_BASE_URL": "{{ENV_PREFIX}}_JIRA_BASE_URL",
+    "{{ENV_PREFIX}}_JIRA_PRODUCTION_USER": "{{ENV_PREFIX}}_JIRA_USER",
+    "{{ENV_PREFIX}}_JIRA_PRODUCTION_PASSWORD": "{{ENV_PREFIX}}_JIRA_PASSWORD",
 }
 
 
@@ -32,8 +32,8 @@ def apply_profile(env: dict[str, str]) -> None:
         source_value = env.get(source_key)
         if source_value:
             env[target_key] = source_value
-    env["NAKIVO_JIRA_PROFILE"] = PROFILE
-    env["NAKIVO_JIRA_SERVER_NAME"] = f"jira_{PROFILE}"
+    env["{{ENV_PREFIX}}_JIRA_PROFILE"] = PROFILE
+    env["{{ENV_PREFIX}}_JIRA_SERVER_NAME"] = f"jira_{PROFILE}"
 
 
 def main() -> None:
@@ -45,7 +45,7 @@ def main() -> None:
         repo_root / ".cursor" / "mcp.local.env", env
     )
     apply_profile(env)
-    env["NAKIVO_WORKSPACE"] = str(repo_root)
+    env["{{ENV_PREFIX}}_WORKSPACE"] = str(repo_root)
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONUTF8"] = "1"
     env["PYTHONDONTWRITEBYTECODE"] = "1"

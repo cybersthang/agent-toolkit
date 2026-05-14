@@ -1,93 +1,228 @@
-# Agent Toolkit
+# agent-toolkit
 
+Reusable Claude Code / Cursor / Codex agent infrastructure. Clone once,
+install into any project — Odoo 12, Odoo 17, plain Python, etc.
 
+> **Hướng dẫn chi tiết bằng tiếng Việt:** xem [USAGE.md](USAGE.md).
 
-## Getting started
+## What you get
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+For any project where you run `setup.py init`:
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+- **`.codex/`** — MCP server implementations (codebase, postgres, jira, realdata_test) + canonical decisions registry + tests
+- **`.cursor/rules/`** — Cursor IDE rules (always-apply) for the chosen stack
+- **`.cursor/skills/`** — Cursor skills
+- **`.cursor/mcp.json`** — auto-generated MCP server config with absolute paths
+- **`AGENTS.md`** + **`CLAUDE.md`** — agent entry-points pre-filled with project facts
+- **`~/.claude/projects/<encoded>/memory/*.md`** — Claude Code memory seeded with workspace + Python paths
+- **`.codex/mcp.local.env`** — credentials template (you fill the secrets)
+- **`.gitignore`** snippets
 
-## Add your files
+## Quick start
 
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+```bash
+# Clone toolkit once on any machine
+git clone <toolkit-repo> ~/agent-toolkit
+
+# Install into any project
+python ~/agent-toolkit/setup.py init /path/to/your/project --preset odoo-12 --yes
+
+# Edit credentials
+$EDITOR /path/to/your/project/.codex/mcp.local.env
+
+# Restart Cursor / Claude Code → MCP servers load automatically
+```
+
+## Available presets
+
+```bash
+python setup.py list-presets
+```
+
+| Preset | Stack | MCP servers | Rules | Skills | Memory |
+|--------|-------|-------------|-------|--------|--------|
+| `odoo-12` | Odoo 12 Enterprise, Python 3.8, QWeb+jQuery, `@api.multi` | codebase, postgres, realdata_test, jira×2 | _common + odoo-12 | _common + odoo-12 | _common + odoo-12 |
+| `odoo-17` | Odoo 17, Python 3.10+, OWL, recordset-by-default, `@api.model_create_multi` | codebase, postgres, realdata_test | _common + odoo-17 | _common + odoo-17 | _common + odoo-17 |
+| `generic` | Plain Python | codebase | _common | _common | (none) |
+
+Add a new preset by dropping a JSON file into `presets/`. Optionally add
+matching `templates/cursor/rules/<name>/` and `templates/memory/<name>/`.
+
+### Shipped skills
+
+| Skill | Scope | What it does |
+|-------|-------|--------------|
+| `code-review` | `_common` (every preset) | Exhaustive single-pass review — surfaces ALL Blocker + Medium + Low findings in one session, with a reproducible PROOF line per finding. Opens on "review / audit / phân tích sâu / tìm bug / còn gì cần fix?". |
+| `odoo-code-review` | `odoo` (both `odoo-12` and `odoo-17` presets) | **Version-aware (12 + 17 + 18 + 19 + 20 pre-GA)**: Step 0 reads `__manifest__.py` `version` via `read_manifest` MCP, then loads the matching cascade: 12 standalone, 17→18→19→20 chained. Same skill handles mixed-version monorepos. Each finding labeled `(v<N>)`. |
+| `odoo-17-code-patterns`, `odoo-17-codebase-discovery`, `odoo-17-data-verification`, `odoo-17-module-scaffold` | `odoo-17` | Patterns, MCP routing, real-data verification, scaffolding (version-specific, unchanged). |
+
+## CLI
+
+```bash
+# List presets
+python setup.py list-presets
+
+# Interactive install (prompts for paths + preset)
+python setup.py init /path/to/project
+
+# Non-interactive
+python setup.py init /path/to/project \
+    --preset odoo-12 \
+    --python /path/to/venv/bin/python \
+    --psql /usr/bin/psql \
+    --project-name "My Project" \
+    --yes
+
+# Dry-run
+python setup.py init /path/to/project --preset odoo-17 --dry-run
+
+# Refresh templates in an installed project (preserves mcp.local.env)
+python setup.py update /path/to/project
+```
+
+## Layout
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/nosafarm/agent-toolkit.git
-git branch -M main
-git push -uf origin main
+agent-toolkit/
+├── setup.py                  # CLI entry
+├── lib/installer.py          # render + detect helpers
+├── presets/
+│   ├── odoo-12.json
+│   ├── odoo-17.json
+│   └── generic.json
+├── templates/
+│   ├── codex/
+│   │   ├── mcp_servers/                      # 5 MCP server impls (codebase, postgres, realdata_test, jira, common)
+│   │   ├── start_*_mcp.py                    # stdio launcher wrappers
+│   │   ├── canonical_decisions.json          # default seed (Odoo 12 / NAKIVO)
+│   │   ├── canonical_decisions.odoo-17.json  # preset-specific seed
+│   │   ├── config.toml.example
+│   │   ├── mcp.local.env.example
+│   │   └── tests/
+│   ├── cursor/
+│   │   ├── rules/
+│   │   │   ├── _common/      # stack-agnostic: karpathy, decision-consistency, mcp-routing, audit-methodology
+│   │   │   ├── odoo-12/      # backend, generic, project-context, nakivo-modules
+│   │   │   └── odoo-17/      # backend, generic, project-context, data-verification
+│   │   └── skills/
+│   │       ├── _common/      # code-review (stack-agnostic exhaustive Blocker/Medium/Low pass)
+│   │       │   └── code-review/
+│   │       │       └── references/   # security-checklist.md, performance-checklist.md
+│   │       ├── odoo/         # odoo-code-review (version-aware 12/17/18/19/20; both presets pull from here)
+│   │       │   └── odoo-code-review/
+│   │       │       └── references/   # odoo-12-rules, odoo-17-rules, odoo-18-rules, odoo-19-rules, odoo-20-rules (pre-GA stub)
+│   │       └── odoo-17/      # codebase-discovery, code-patterns, data-verification, module-scaffold (version-specific)
+│   ├── memory/
+│   │   ├── _common/          # user_profile, feedback_*, reference_karpathy, MEMORY.md
+│   │   ├── odoo-12/          # project_workspace, project_mcp_routing
+│   │   └── odoo-17/          # project_workspace, project_mcp_routing
+│   ├── AGENTS.md             # template with {{PLACEHOLDERS}}
+│   └── CLAUDE.md
+└── README.md
 ```
 
-## Integrate with your tools
+## Placeholders (filled by setup.py)
 
-* [Set up project integrations](https://gitlab.com/nosafarm/agent-toolkit/-/settings/integrations)
+Templates use `{{KEY}}` substitution. Available keys:
 
-## Collaborate with your team
+| Placeholder | Source |
+|-------------|--------|
+| `{{WORKSPACE_ROOT}}` | target install path |
+| `{{PROJECT_NAME}}` | `--project-name` flag (defaults to dir name) |
+| `{{PYTHON_BIN}}` | detected or `--python` flag |
+| `{{PSQL_BIN}}` | detected or `--psql` flag |
+| `{{STACK_LABEL}}`, `{{STACK_LANGUAGE}}`, `{{STACK_FRAMEWORK}}`, `{{STACK_LANGUAGE_VERSION}}`, `{{STACK_FRAMEWORK_VERSION}}` | from preset |
+| `{{ADDON_ROOTS}}` | preset list (rendered as `- item` bullets in Markdown) |
+| `{{ADDON_ROOTS_CSV}}` | preset list joined with `, ` (for inline strings) |
+| `{{MCP_SERVERS}}` | preset list |
+| `{{MCP_SERVERS_CSV}}` | preset list joined with `, ` |
+| `{{DEFAULT_DB}}`, `{{DEFAULT_PG_PORT}}` | preset |
+| `{{RESPONSE_LANGUAGE}}` | preset |
+| `{{PRESET_NAME}}` | the preset chosen |
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+## Adding a new stack preset (example: Django)
 
-## Test and Deploy
+1. Drop `presets/django.json`:
+```json
+{
+  "description": "Django project — Python 3.11, Postgres",
+  "stack_label": "Django",
+  "response_language": "English",
+  "stack": {
+    "language": "python",
+    "language_version": "3.11",
+    "framework": "django",
+    "framework_version": "5"
+  },
+  "addon_roots": ["apps", "core"],
+  "mcp_servers": ["codebase", "postgres"],
+  "db": {"default_db": "myproject", "default_port": 5432, "default_user": "django"},
+  "rules": ["_common", "django"],
+  "skills": ["_common"],
+  "memory_packs": ["django"]
+}
+```
 
-Use the built-in continuous integration in GitLab.
+2. Optionally add `templates/cursor/rules/django/*.mdc` (Django-specific
+   rules). If the dir is missing, only `_common` rules ship.
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+3. Optionally add `templates/memory/django/*.md` for stack-specific
+   memory templates with `{{PLACEHOLDERS}}`.
 
-***
+4. `python setup.py init /path/to/django-proj --preset django` works
+   immediately.
 
-# Editing this README
+## Re-seeding memory after edits
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+When the agent saves new memory in your live install
+(`~/.claude/projects/<encoded>/memory/*.md`), to make it portable for
+the next install:
 
-## Suggestions for a good README
+1. Copy generic learnings (cross-project) into
+   `templates/memory/_common/` with `{{WORKSPACE_ROOT}}` placeholders
+   replacing absolute paths.
+2. Copy stack-specific learnings into `templates/memory/<stack>/`.
+3. Commit toolkit. Next `setup.py init` will seed the new memory.
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+## Per-preset canonical decisions registry
 
-## Name
-Choose a self-explaining name for your project.
+`canonical_decisions.json` is the single source of truth for recurring "how do we
+do X" answers. The toolkit ships per-preset starter registries:
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+- `templates/codex/canonical_decisions.json` — default seed (Odoo 12 / NAKIVO).
+- `templates/codex/canonical_decisions.<preset>.json` — preset-specific seed
+  (e.g. `canonical_decisions.odoo-17.json`).
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+Install behaviour:
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+- On **fresh install**, the preset-specific seed is rendered with placeholders
+  filled and copied as `.codex/canonical_decisions.json`.
+- On **update** or any subsequent install, an existing
+  `.codex/canonical_decisions.json` is **never overwritten** (mode
+  `SKIP_EXISTS`) — the project owner curates entries locally.
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+To add a new preset's registry, drop `canonical_decisions.<preset>.json` next
+to the default file and the installer will pick it up automatically.
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+## Verifying an install
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+```bash
+python /path/to/project/.codex/tests/test_mcp_wrappers.py
+# Odoo 12: Ran 27 tests in <X>s — OK
+# Odoo 17: Ran 27 tests in <X>s — OK (skipped=6  # JIRA tests skipped, not installed)
+```
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+## Why JSON presets (not YAML)
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+Stays dependency-free — no `pip install pyyaml` needed. JSON is verbose
+but unambiguous, and the toolkit installer is < 300 lines. If you prefer
+YAML, install pyyaml and drop a `.yaml` file into `presets/`; the loader
+prefers JSON when both exist.
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+## What's NOT in the toolkit
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+- Per-project ad-hoc probes / dev scripts (those belong in your project)
+- `.codex/audit_findings_locked.md` (project-specific)
+- Real credentials (always machine-local in `.codex/mcp.local.env`)
+- Python venv binary (project-specific install)
+- Postgres data (project-specific)

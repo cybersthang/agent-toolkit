@@ -11,7 +11,7 @@ def main() -> None:
     target = repo_root / ".codex" / "mcp_servers" / "codebase_server.py"
 
     env = os.environ.copy()
-    env["NAKIVO_WORKSPACE"] = str(repo_root)
+    env["{{ENV_PREFIX}}_WORKSPACE"] = str(repo_root)
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONUTF8"] = "1"
     env["PYTHONDONTWRITEBYTECODE"] = "1"

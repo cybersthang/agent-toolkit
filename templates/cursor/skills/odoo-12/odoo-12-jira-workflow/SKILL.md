@@ -7,12 +7,12 @@ description: Read and search JIRA tickets through the jira_production and jira_p
 
 Two profiles are wired up. **Pick the right one.**
 
-| Profile         | MCP server name      | Base URL                      | When                                                            |
-|-----------------|----------------------|-------------------------------|-----------------------------------------------------------------|
-| Production      | `jira_production`    | `http://10.170.180.181:8080/` | Live tickets, sprint/standup queries, post-merge bug triage.    |
-| Pre-Production  | `jira_preproduction` | `http://10.170.179.41/`       | UAT verification, regression tickets, release rehearsal.        |
+| Profile         | MCP server name      | When                                                            |
+|-----------------|----------------------|-----------------------------------------------------------------|
+| Production      | `jira_production`    | Live tickets, sprint/standup queries, post-merge bug triage.    |
+| Pre-Production  | `jira_preproduction` | UAT verification, regression tickets, release rehearsal.        |
 
-Credentials live in `.codex/mcp.local.env` under `NAKIVO_JIRA_PRODUCTION_*` and `NAKIVO_JIRA_PREPRODUCTION_*`. Never hard-code them anywhere else.
+Base URLs and credentials live ONLY in `.codex/mcp.local.env` under `{{ENV_PREFIX}}_JIRA_PRODUCTION_*` and `{{ENV_PREFIX}}_JIRA_PREPRODUCTION_*`. The MCP starter wrappers map the profile-prefixed vars onto the generic `{{ENV_PREFIX}}_JIRA_*` vars at launch. To see the URL the current session resolved to, call `env_status` on the corresponding MCP server. Never hard-code URLs or credentials anywhere else.
 
 ## Tools (same on both servers)
 

@@ -1,0 +1,26 @@
+{
+  "_doc": "Project invariants enforced by .claude/hooks/invariant_guard.py (PreToolUse). Add an entry when the user gives a durable rule that future edits must respect (e.g. 'list views must always sort by type'). The hook reads this file on every Edit/Write/MultiEdit and BLOCKS the tool call if a `blocker` severity invariant is being violated.",
+  "_schema": {
+    "id": "kebab-case unique slug",
+    "description": "one-line human summary",
+    "applies_to": "list of glob patterns (workspace-relative). Empty = applies everywhere.",
+    "rules": {
+      "must_keep_regex": "list of regex patterns; if old_string matched, new_string must too",
+      "must_keep_call": "list of bare function/attribute names; matches `name(` and `.name(`"
+    },
+    "severity": "blocker (deny edit) or warn (allow + inject reminder)",
+    "rationale": "why this rule exists — surface in the block message",
+    "added": "YYYY-MM-DD",
+    "added_by": "user|agent|<email>",
+    "related_adr": "optional ADR-NNN reference in decision-log.md"
+  },
+  "_workflow": [
+    "1. User states a durable rule: 'sort theo type cố định'.",
+    "2. Run /adr-add to capture the WHY in decision-log.md.",
+    "3. Run /inv-add to translate the rule into must_keep_regex / must_keep_call patterns.",
+    "4. Verify with /inv-list before committing.",
+    "5. The hook now BLOCKS any edit that strips the pattern."
+  ],
+  "version": 1,
+  "invariants": []
+}

@@ -10,7 +10,7 @@ from common import SimpleMcpServer, ToolDefinition
 
 
 WORKSPACE_ROOT = Path(
-    os.environ.get("NAKIVO_WORKSPACE", Path(__file__).resolve().parents[2])
+    os.environ.get("{{ENV_PREFIX}}_WORKSPACE", Path(__file__).resolve().parents[2])
 ).resolve()
 READONLY_START = ("select", "with", "values")
 FORBIDDEN_SQL = re.compile(
@@ -23,36 +23,36 @@ SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 def env_status(_: dict[str, Any]) -> dict[str, Any]:
     env_values = {
-        "NAKIVO_PSQL_BIN": os.environ.get("NAKIVO_PSQL_BIN", ""),
-        "NAKIVO_PGHOST": os.environ.get("NAKIVO_PGHOST", ""),
-        "NAKIVO_PGPORT": os.environ.get("NAKIVO_PGPORT", ""),
-        "NAKIVO_PGUSER": os.environ.get("NAKIVO_PGUSER", ""),
-        "NAKIVO_PGADMIN_DB": os.environ.get("NAKIVO_PGADMIN_DB", ""),
-        "NAKIVO_PGDATABASE": os.environ.get("NAKIVO_PGDATABASE", ""),
+        "{{ENV_PREFIX}}_PSQL_BIN": os.environ.get("{{ENV_PREFIX}}_PSQL_BIN", ""),
+        "{{ENV_PREFIX}}_PGHOST": os.environ.get("{{ENV_PREFIX}}_PGHOST", ""),
+        "{{ENV_PREFIX}}_PGPORT": os.environ.get("{{ENV_PREFIX}}_PGPORT", ""),
+        "{{ENV_PREFIX}}_PGUSER": os.environ.get("{{ENV_PREFIX}}_PGUSER", ""),
+        "{{ENV_PREFIX}}_PGADMIN_DB": os.environ.get("{{ENV_PREFIX}}_PGADMIN_DB", ""),
+        "{{ENV_PREFIX}}_PGDATABASE": os.environ.get("{{ENV_PREFIX}}_PGDATABASE", ""),
     }
     return {
         "workspace_root": str(WORKSPACE_ROOT),
         "env": env_values,
-        "psql_exists": bool(env_values["NAKIVO_PSQL_BIN"])
-        and Path(env_values["NAKIVO_PSQL_BIN"]).exists(),
+        "psql_exists": bool(env_values["{{ENV_PREFIX}}_PSQL_BIN"])
+        and Path(env_values["{{ENV_PREFIX}}_PSQL_BIN"]).exists(),
     }
 
 
 def psql_command(database: str, sql: str) -> list[str]:
-    psql_bin = os.environ.get("NAKIVO_PSQL_BIN")
+    psql_bin = os.environ.get("{{ENV_PREFIX}}_PSQL_BIN")
     if not psql_bin:
-        raise ValueError("NAKIVO_PSQL_BIN is not configured")
+        raise ValueError("{{ENV_PREFIX}}_PSQL_BIN is not configured")
     if not Path(psql_bin).exists():
         raise ValueError(f"psql binary not found: {psql_bin}")
 
     return [
         psql_bin,
         "-h",
-        os.environ.get("NAKIVO_PGHOST", "127.0.0.1"),
+        os.environ.get("{{ENV_PREFIX}}_PGHOST", "127.0.0.1"),
         "-p",
-        os.environ.get("NAKIVO_PGPORT", "5432"),
+        os.environ.get("{{ENV_PREFIX}}_PGPORT", "5432"),
         "-U",
-        os.environ.get("NAKIVO_PGUSER", ""),
+        os.environ.get("{{ENV_PREFIX}}_PGUSER", ""),
         "-d",
         database,
         "-v",
@@ -92,14 +92,14 @@ def run_psql(database: str, sql: str) -> dict[str, Any]:
 
 
 def get_database(arguments: dict[str, Any]) -> str:
-    database = str(arguments.get("database", "")).strip() or os.environ.get("NAKIVO_PGDATABASE", "")
+    database = str(arguments.get("database", "")).strip() or os.environ.get("{{ENV_PREFIX}}_PGDATABASE", "")
     if not database:
-        raise ValueError("database is required or set NAKIVO_PGDATABASE")
+        raise ValueError("database is required or set {{ENV_PREFIX}}_PGDATABASE")
     return database
 
 
 def list_databases(_: dict[str, Any]) -> dict[str, Any]:
-    admin_db = os.environ.get("NAKIVO_PGADMIN_DB", "postgres")
+    admin_db = os.environ.get("{{ENV_PREFIX}}_PGADMIN_DB", "postgres")
     sql = (
         "SELECT datname FROM pg_database "
         "WHERE datistemplate = FALSE ORDER BY datname"
@@ -159,7 +159,7 @@ def query_readonly(arguments: dict[str, Any]) -> dict[str, Any]:
 
 
 SERVER = SimpleMcpServer(
-    name="nakivo_postgres",
+    name="{{PROJECT_NAME_SLUG}}_postgres",
     version="0.1.0",
     tools=[
         ToolDefinition(

@@ -26,6 +26,7 @@ adding a preset + (optionally) a new rules/<stack>/ folder.
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import os
 import re
@@ -94,6 +95,7 @@ def write_project_config(target: Path, ctx: Dict[str, Any], preset_name: str):
         },
         'addon_roots': list(ctx.get('ADDON_ROOTS', []) or []),
         'mcp_servers': list(ctx.get('MCP_SERVERS', []) or []),
+        'env_prefix': ctx.get('ENV_PREFIX', ''),
         'db': {
             'default_db': ctx.get('DEFAULT_DB', ''),
             'default_port': int(ctx.get('DEFAULT_PG_PORT') or 5432),
@@ -211,6 +213,17 @@ def cmd_init(args):
     stack_cfg = project_cfg.get('stack') or {}
     preset_stack = preset.get('stack', {}) or {}
 
+    # ENV_PREFIX governs the env-var prefix used by every MCP wrapper +
+    # server (`<PREFIX>_PGHOST`, `<PREFIX>_JIRA_*`, `<PREFIX>_WORKSPACE`).
+    # Priority: CLI not exposed yet > project config > preset default >
+    # auto-derive from project name. Stays uppercase, alphanum + underscore.
+    env_prefix = (
+        project_cfg.get('env_prefix')
+        or preset.get('env_prefix')
+        or re.sub(r'[^A-Z0-9_]', '_', project_name.upper()).strip('_')
+        or 'PROJECT'
+    )
+
     ctx: Dict[str, Any] = {
         'WORKSPACE_ROOT': str(target).replace('\\', '/'),
         'WORKSPACE_NAME': project_name,
@@ -233,6 +246,10 @@ def cmd_init(args):
         'MCP_SERVERS_CSV': ', '.join(mcp_servers),
         'PRESET_NAME': args.preset,
         'RESPONSE_LANGUAGE': response_language,
+        'ENV_PREFIX': env_prefix,
+        'PROJECT_NAME_SLUG': re.sub(r'[^a-z0-9_]', '_',
+                                    project_name.lower()).strip('_') or 'project',
+        'TODAY_ISO_DATE': datetime.date.today().isoformat(),
     }
 
     info('\nResolved context:')
@@ -425,7 +442,23 @@ def build_plan(preset, ctx, target):
             is_template = src.suffix in ('.j2', '.tmpl') or _looks_templated(src)
             plan.append((src, dst, 'TEMPLATE' if is_template else 'COPY'))
 
-    # 6. .gitignore added later (via write_gitignore)
+    # 6. .agent-toolkit/ — per-project runtime files (invariants, decision log).
+    # These are user-curated after install; preserve existing content on update.
+    runtime_src = TEMPLATES / 'agent_toolkit'
+    if runtime_src.exists():
+        for src in runtime_src.rglob('*'):
+            if not src.is_file():
+                continue
+            rel = src.relative_to(runtime_src)
+            dst = target / '.agent-toolkit' / rel
+            if dst.exists():
+                # Never overwrite a project's curated invariants/decisions.
+                plan.append((src, dst, 'SKIP_EXISTS'))
+                continue
+            is_template = src.suffix in ('.j2', '.tmpl') or _looks_templated(src)
+            plan.append((src, dst, 'TEMPLATE' if is_template else 'COPY'))
+
+    # 7. .gitignore added later (via write_gitignore)
     return plan
 
 
@@ -504,7 +537,6 @@ def write_gitignore(target):
         '.codex/mcp.local.env',
         '.cursor/mcp.json',
         '.mcp.json',
-        '.claude/settings.json',
         '.claude/settings.local.json',
         '__pycache__/',
         '*.pyc',

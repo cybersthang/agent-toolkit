@@ -111,7 +111,7 @@ ones that apply to the surface in scope; mark the rest N/A.
 
 - [ ] New Python deps audited with `pip-audit` (or equivalent).
 - [ ] Odoo addons from external sources reviewed for the same items in this checklist before bundling.
-- [ ] License compatible with the project (LGPL-3 / OEEL-1 typical for NAKIVO; GPL conflicts with proprietary Enterprise modules).
+- [ ] License compatible with the project (LGPL-3 / OEEL-1 typical for Odoo Enterprise workspaces; GPL conflicts with proprietary Enterprise modules — check the host project's policy).
 
 ## Install / uninstall symmetry (Odoo)
 

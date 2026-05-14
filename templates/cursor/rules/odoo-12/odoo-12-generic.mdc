@@ -56,7 +56,7 @@ This file applies to **any** addon under any addon root. Never embed a specific 
 
 ## What this rule **does not** mention by design
 
-- Specific NAKIVO module names.
+- Specific project module names.
 - Specific menu / model paths.
 - Specific JIRA project keys.
 

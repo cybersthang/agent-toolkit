@@ -15,7 +15,7 @@ from common import SimpleMcpServer, ToolDefinition
 
 
 WORKSPACE_ROOT = Path(
-    os.environ.get("NAKIVO_WORKSPACE", Path(__file__).resolve().parents[2])
+    os.environ.get("{{ENV_PREFIX}}_WORKSPACE", Path(__file__).resolve().parents[2])
 ).resolve()
 DEFAULT_ODOO_BIN = WORKSPACE_ROOT / "nakivo-server" / "odoo-bin"
 DEFAULT_ODOO_CONF = WORKSPACE_ROOT / "odoo-12-enterprise-master" / "odoo.conf"
@@ -88,9 +88,9 @@ def bool_arg(arguments: Dict[str, Any], name: str, default: bool = False) -> boo
 def get_database(arguments: Dict[str, Any]) -> str:
     database = str(arguments.get("database", "")).strip()
     if not database:
-        database = os.environ.get("NAKIVO_PGDATABASE", "") or os.environ.get("PGDATABASE", "")
+        database = os.environ.get("{{ENV_PREFIX}}_PGDATABASE", "") or os.environ.get("PGDATABASE", "")
     if not database:
-        raise ValueError("database is required or set NAKIVO_PGDATABASE")
+        raise ValueError("database is required or set {{ENV_PREFIX}}_PGDATABASE")
     return database
 
 
@@ -104,21 +104,21 @@ def is_production_like(database: str) -> bool:
 def get_python_bin(arguments: Dict[str, Any]) -> str:
     return str(
         arguments.get("python_bin")
-        or os.environ.get("NAKIVO_PYTHON_BIN")
+        or os.environ.get("{{ENV_PREFIX}}_PYTHON_BIN")
         or sys.executable
     )
 
 
 def get_odoo_bin(arguments: Dict[str, Any]) -> Path:
     return resolve_workspace_path(
-        str(arguments.get("odoo_bin") or os.environ.get("NAKIVO_ODOO_BIN", "")),
+        str(arguments.get("odoo_bin") or os.environ.get("{{ENV_PREFIX}}_ODOO_BIN", "")),
         DEFAULT_ODOO_BIN,
     )
 
 
 def get_odoo_conf(arguments: Dict[str, Any]) -> Path:
     return resolve_workspace_path(
-        str(arguments.get("odoo_conf") or os.environ.get("NAKIVO_ODOO_CONF", "")),
+        str(arguments.get("odoo_conf") or os.environ.get("{{ENV_PREFIX}}_ODOO_CONF", "")),
         DEFAULT_ODOO_CONF,
     )
 
@@ -142,18 +142,18 @@ def command_text(command: List[str]) -> str:
 def base_env() -> Dict[str, str]:
     env = os.environ.copy()
     mappings = {
-        "NAKIVO_PGHOST": "PGHOST",
-        "NAKIVO_PGPORT": "PGPORT",
-        "NAKIVO_PGUSER": "PGUSER",
-        "NAKIVO_PGPASSWORD": "PGPASSWORD",
-        "NAKIVO_PGDATABASE": "PGDATABASE",
+        "{{ENV_PREFIX}}_PGHOST": "PGHOST",
+        "{{ENV_PREFIX}}_PGPORT": "PGPORT",
+        "{{ENV_PREFIX}}_PGUSER": "PGUSER",
+        "{{ENV_PREFIX}}_PGPASSWORD": "PGPASSWORD",
+        "{{ENV_PREFIX}}_PGDATABASE": "PGDATABASE",
     }
     for source_key, target_key in mappings.items():
         value = env.get(source_key)
         if value and not env.get(target_key):
             env[target_key] = value
 
-    psql_bin = env.get("NAKIVO_PSQL_BIN", "")
+    psql_bin = env.get("{{ENV_PREFIX}}_PSQL_BIN", "")
     if psql_bin and Path(psql_bin).exists():
         psql_dir = str(Path(psql_bin).resolve().parent)
         env["PATH"] = psql_dir + os.pathsep + env.get("PATH", "")
@@ -188,20 +188,20 @@ def run_command(command: List[str], timeout: int) -> Dict[str, Any]:
 
 
 def env_status(_: Dict[str, Any]) -> Dict[str, Any]:
-    database = os.environ.get("NAKIVO_PGDATABASE", "") or os.environ.get("PGDATABASE", "")
-    psql_bin = os.environ.get("NAKIVO_PSQL_BIN", "")
-    odoo_bin = Path(os.environ.get("NAKIVO_ODOO_BIN", "") or DEFAULT_ODOO_BIN)
-    odoo_conf = Path(os.environ.get("NAKIVO_ODOO_CONF", "") or DEFAULT_ODOO_CONF)
+    database = os.environ.get("{{ENV_PREFIX}}_PGDATABASE", "") or os.environ.get("PGDATABASE", "")
+    psql_bin = os.environ.get("{{ENV_PREFIX}}_PSQL_BIN", "")
+    odoo_bin = Path(os.environ.get("{{ENV_PREFIX}}_ODOO_BIN", "") or DEFAULT_ODOO_BIN)
+    odoo_conf = Path(os.environ.get("{{ENV_PREFIX}}_ODOO_CONF", "") or DEFAULT_ODOO_CONF)
     smoke_test = DEFAULT_SMOKE_TEST
     return {
         "workspace_root": str(WORKSPACE_ROOT),
         "database": database,
         "database_looks_production": bool(database and is_production_like(database)),
-        "pg_host": os.environ.get("NAKIVO_PGHOST", "") or os.environ.get("PGHOST", ""),
-        "pg_port": os.environ.get("NAKIVO_PGPORT", "") or os.environ.get("PGPORT", ""),
-        "pg_user": os.environ.get("NAKIVO_PGUSER", "") or os.environ.get("PGUSER", ""),
+        "pg_host": os.environ.get("{{ENV_PREFIX}}_PGHOST", "") or os.environ.get("PGHOST", ""),
+        "pg_port": os.environ.get("{{ENV_PREFIX}}_PGPORT", "") or os.environ.get("PGPORT", ""),
+        "pg_user": os.environ.get("{{ENV_PREFIX}}_PGUSER", "") or os.environ.get("PGUSER", ""),
         "pg_password_configured": bool(
-            os.environ.get("NAKIVO_PGPASSWORD") or os.environ.get("PGPASSWORD")
+            os.environ.get("{{ENV_PREFIX}}_PGPASSWORD") or os.environ.get("PGPASSWORD")
         ),
         "psql_bin": psql_bin,
         "psql_exists": bool(psql_bin and Path(psql_bin).exists()),
@@ -225,11 +225,11 @@ def smoke_test_command(arguments: Dict[str, Any]) -> List[str]:
         "--db-name",
         get_database(arguments),
         "--db-host",
-        os.environ.get("NAKIVO_PGHOST", "") or os.environ.get("PGHOST", "localhost"),
+        os.environ.get("{{ENV_PREFIX}}_PGHOST", "") or os.environ.get("PGHOST", "localhost"),
         "--db-port",
-        os.environ.get("NAKIVO_PGPORT", "") or os.environ.get("PGPORT", "5432"),
+        os.environ.get("{{ENV_PREFIX}}_PGPORT", "") or os.environ.get("PGPORT", "5432"),
         "--db-user",
-        os.environ.get("NAKIVO_PGUSER", "") or os.environ.get("PGUSER", "odoo"),
+        os.environ.get("{{ENV_PREFIX}}_PGUSER", "") or os.environ.get("PGUSER", "odoo"),
         "--odoo-bin",
         str(get_odoo_bin(arguments)),
         "--odoo-conf",
@@ -523,7 +523,7 @@ def compare_with_expected(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
 
 SERVER = SimpleMcpServer(
-    name="nakivo_realdata_test",
+    name="{{PROJECT_NAME_SLUG}}_realdata_test",
     version="0.1.0",
     tools=[
         ToolDefinition(

@@ -21,25 +21,25 @@ MAX_BODY_CHARS = 120_000
 
 
 def configured_profile() -> str:
-    return (os.environ.get("NAKIVO_JIRA_PROFILE") or "production").strip().lower()
+    return (os.environ.get("{{ENV_PREFIX}}_JIRA_PROFILE") or "production").strip().lower()
 
 
 def configured_server_name() -> str:
-    return os.environ.get("NAKIVO_JIRA_SERVER_NAME") or f"jira_{configured_profile()}"
+    return os.environ.get("{{ENV_PREFIX}}_JIRA_SERVER_NAME") or f"jira_{configured_profile()}"
 
 
 def configured_base_url() -> str:
-    base_url = os.environ.get("NAKIVO_JIRA_BASE_URL", "").strip()
+    base_url = os.environ.get("{{ENV_PREFIX}}_JIRA_BASE_URL", "").strip()
     if not base_url:
-        raise ValueError("NAKIVO_JIRA_BASE_URL is required")
+        raise ValueError("{{ENV_PREFIX}}_JIRA_BASE_URL is required")
     return base_url.rstrip("/")
 
 
 def jira_credentials() -> tuple[str, str]:
-    user = os.environ.get("NAKIVO_JIRA_USER", "").strip()
-    password = os.environ.get("NAKIVO_JIRA_PASSWORD", "")
+    user = os.environ.get("{{ENV_PREFIX}}_JIRA_USER", "").strip()
+    password = os.environ.get("{{ENV_PREFIX}}_JIRA_PASSWORD", "")
     if not user or not password:
-        raise ValueError("NAKIVO_JIRA_USER and NAKIVO_JIRA_PASSWORD are required")
+        raise ValueError("{{ENV_PREFIX}}_JIRA_USER and {{ENV_PREFIX}}_JIRA_PASSWORD are required")
     return user, password
 
 
@@ -156,9 +156,9 @@ def env_status(_: dict[str, Any]) -> dict[str, Any]:
     return {
         "profile": configured_profile(),
         "server_name": configured_server_name(),
-        "base_url": os.environ.get("NAKIVO_JIRA_BASE_URL", ""),
-        "user": os.environ.get("NAKIVO_JIRA_USER", ""),
-        "password_configured": bool(os.environ.get("NAKIVO_JIRA_PASSWORD")),
+        "base_url": os.environ.get("{{ENV_PREFIX}}_JIRA_BASE_URL", ""),
+        "user": os.environ.get("{{ENV_PREFIX}}_JIRA_USER", ""),
+        "password_configured": bool(os.environ.get("{{ENV_PREFIX}}_JIRA_PASSWORD")),
     }
 
 

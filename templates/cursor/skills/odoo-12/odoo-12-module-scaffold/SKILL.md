@@ -7,8 +7,8 @@ description: Scaffold a new Odoo 12 module under any addon root. Module-agnostic
 
 ## Inputs to confirm before writing files
 
-1. **Module name** (snake_case). Honour the local convention (e.g. `nakivo_*` only when the target root is the NAKIVO custom layer).
-2. **Addon root** (e.g. `nakivo/`, `base_addons/`, `OCA/`). Ask if ambiguous — never assume.
+1. **Module name** (snake_case). Honour the local convention — discover the prefix used in the target addon root via `codebase.discover_modules` before picking a name.
+2. **Addon root** (one of the entries in `agent-toolkit.config.json` → `addon_roots`). Ask if ambiguous — never assume.
 3. **`depends`** list. Read existing siblings via `codebase.discover_modules` if unsure.
 4. **Whether mail / chatter is needed** (drives manifest depends and form layout).
 

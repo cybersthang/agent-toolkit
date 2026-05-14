@@ -1,0 +1,16 @@
+# agent-toolkit
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+.vscode/
+.idea/
+
+# Local dev artifacts — never commit
+.codex/mcp.local.env
+.cursor/mcp.local.env
+.mcp.json
+.cursor/mcp.json
+agent-toolkit.config.json
+.agent-toolkit-install.json

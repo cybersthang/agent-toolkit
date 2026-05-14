@@ -118,19 +118,19 @@ class TestCodexMcpWrappers(unittest.TestCase):
         for index, server_path in enumerate(server_paths):
             if server_path.name == "common.py":
                 continue
-            # JIRA server reads NAKIVO_JIRA_SERVER_NAME at import time; provide a stub.
-            previous = os.environ.get("NAKIVO_JIRA_SERVER_NAME")
+            # JIRA server reads {{ENV_PREFIX}}_JIRA_SERVER_NAME at import time; provide a stub.
+            previous = os.environ.get("{{ENV_PREFIX}}_JIRA_SERVER_NAME")
             if server_path.name == "jira_server.py":
-                os.environ["NAKIVO_JIRA_SERVER_NAME"] = "jira_test"
+                os.environ["{{ENV_PREFIX}}_JIRA_SERVER_NAME"] = "jira_test"
             try:
                 module = load_module(server_path, f"test_mcp_server_name_{index}")
                 self.assertRegex(module.SERVER.name, r"^[a-zA-Z0-9_-]+$")
             finally:
                 if server_path.name == "jira_server.py":
                     if previous is None:
-                        os.environ.pop("NAKIVO_JIRA_SERVER_NAME", None)
+                        os.environ.pop("{{ENV_PREFIX}}_JIRA_SERVER_NAME", None)
                     else:
-                        os.environ["NAKIVO_JIRA_SERVER_NAME"] = previous
+                        os.environ["{{ENV_PREFIX}}_JIRA_SERVER_NAME"] = previous
 
     def test_codebase_wrapper_sets_workspace_and_target(self):
         module_path = ROOT / ".codex" / "start_codebase_mcp.py"
@@ -146,11 +146,12 @@ class TestCodexMcpWrappers(unittest.TestCase):
         chdir_mock.assert_called_once_with(str(ROOT))
         run_mock.assert_called_once_with(str(expected_target), run_name="__main__")
         self.assertEqual(module.sys.argv, [str(expected_target)])
-        self.assertEqual(module.os.environ["NAKIVO_WORKSPACE"], str(ROOT))
+        self.assertEqual(module.os.environ["{{ENV_PREFIX}}_WORKSPACE"], str(ROOT))
         self.assertEqual(module.os.environ["PYTHONIOENCODING"], "utf-8")
         self.assertEqual(module.os.environ["PYTHONUTF8"], "1")
         self.assertEqual(module.os.environ["PYTHONDONTWRITEBYTECODE"], "1")
 
+    @unittest.skipUnless(POSTGRES_INSTALLED, "postgres server not installed by this preset")
     def test_postgres_load_env_file_reads_key_values(self):
         module_path = ROOT / ".codex" / "start_postgres_mcp.py"
         module = load_module(module_path, "test_start_postgres_mcp_env")
@@ -170,6 +171,7 @@ class TestCodexMcpWrappers(unittest.TestCase):
             {"PGHOST": "127.0.0.1", "PGPORT": "5433", "EMPTY": ""},
         )
 
+    @unittest.skipUnless(POSTGRES_INSTALLED, "postgres server not installed by this preset")
     def test_postgres_normalize_env_maps_odoo_style_keys(self):
         module_path = ROOT / ".codex" / "start_postgres_mcp.py"
         module = load_module(module_path, "test_start_postgres_mcp_normalize")
@@ -184,18 +186,19 @@ class TestCodexMcpWrappers(unittest.TestCase):
         }
         module.normalize_postgres_env(env)
 
-        self.assertEqual(env["NAKIVO_PGHOST"], "localhost")
-        self.assertEqual(env["NAKIVO_PGPORT"], "5435")
-        self.assertEqual(env["NAKIVO_PGUSER"], "nakivo")
-        self.assertEqual(env["NAKIVO_PGPASSWORD"], "123456")
-        self.assertEqual(env["NAKIVO_PGDATABASE"], "Nakivo01")
-        self.assertEqual(env["NAKIVO_HTTP_PORT"], "12")
+        self.assertEqual(env["{{ENV_PREFIX}}_PGHOST"], "localhost")
+        self.assertEqual(env["{{ENV_PREFIX}}_PGPORT"], "5435")
+        self.assertEqual(env["{{ENV_PREFIX}}_PGUSER"], "nakivo")
+        self.assertEqual(env["{{ENV_PREFIX}}_PGPASSWORD"], "123456")
+        self.assertEqual(env["{{ENV_PREFIX}}_PGDATABASE"], "Nakivo01")
+        self.assertEqual(env["{{ENV_PREFIX}}_HTTP_PORT"], "12")
         self.assertEqual(env["PGHOST"], "localhost")
         self.assertEqual(env["PGPORT"], "5435")
         self.assertEqual(env["PGUSER"], "nakivo")
         self.assertEqual(env["PGPASSWORD"], "123456")
         self.assertEqual(env["PGDATABASE"], "Nakivo01")
 
+    @unittest.skipUnless(POSTGRES_INSTALLED, "postgres server not installed by this preset")
     def test_postgres_wrapper_prefers_codex_env_before_cursor_env(self):
         module_path = ROOT / ".codex" / "start_postgres_mcp.py"
         module = load_module(module_path, "test_start_postgres_mcp")
@@ -220,9 +223,10 @@ class TestCodexMcpWrappers(unittest.TestCase):
         chdir_mock.assert_called_once_with(str(ROOT))
         run_mock.assert_called_once_with(str(expected_target), run_name="__main__")
         self.assertEqual(module.sys.argv, [str(expected_target)])
-        self.assertEqual(module.os.environ["NAKIVO_WORKSPACE"], str(ROOT))
+        self.assertEqual(module.os.environ["{{ENV_PREFIX}}_WORKSPACE"], str(ROOT))
         self.assertEqual(module.os.environ["LOADED_FROM"], "mcp.local.env")
 
+    @unittest.skipUnless(POSTGRES_INSTALLED, "postgres server not installed by this preset")
     def test_postgres_wrapper_falls_back_to_cursor_env(self):
         module_path = ROOT / ".codex" / "start_postgres_mcp.py"
         module = load_module(module_path, "test_start_postgres_mcp_fallback")
@@ -243,6 +247,7 @@ class TestCodexMcpWrappers(unittest.TestCase):
         chdir_mock.assert_called_once_with(str(ROOT))
         self.assertEqual(calls, [codex_env, cursor_env])
 
+    @unittest.skipUnless(REALDATA_INSTALLED, "realdata_test server not installed by this preset")
     def test_realdata_test_wrapper_prefers_codex_env_before_cursor_env(self):
         module_path = ROOT / ".codex" / "start_realdata_test_mcp.py"
         module = load_module(module_path, "test_start_realdata_test_mcp")
@@ -266,7 +271,7 @@ class TestCodexMcpWrappers(unittest.TestCase):
         chdir_mock.assert_called_once_with(str(ROOT))
         run_mock.assert_called_once_with(str(expected_target), run_name="__main__")
         self.assertEqual(module.sys.argv, [str(expected_target)])
-        self.assertEqual(module.os.environ["NAKIVO_WORKSPACE"], str(ROOT))
+        self.assertEqual(module.os.environ["{{ENV_PREFIX}}_WORKSPACE"], str(ROOT))
         self.assertEqual(module.os.environ["LOADED_FROM"], "mcp.local.env")
 
     @unittest.skipUnless(JIRA_INSTALLED, "JIRA server not installed by this preset")
@@ -294,7 +299,7 @@ class TestCodexMcpWrappers(unittest.TestCase):
         chdir_mock.assert_called_once_with(str(ROOT))
         run_mock.assert_called_once_with(str(expected_target), run_name="__main__")
         self.assertEqual(module.sys.argv, [str(expected_target)])
-        self.assertEqual(module.os.environ["NAKIVO_WORKSPACE"], str(ROOT))
+        self.assertEqual(module.os.environ["{{ENV_PREFIX}}_WORKSPACE"], str(ROOT))
         self.assertEqual(module.os.environ["LOADED_FROM"], "mcp.local.env")
 
     def test_codebase_resolve_path_supports_python38(self):
@@ -307,6 +312,7 @@ class TestCodexMcpWrappers(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.resolve_path("..")
 
+    @unittest.skipUnless(REALDATA_INSTALLED, "realdata_test server not installed by this preset")
     def test_realdata_test_builds_guarded_module_test_command(self):
         module_path = ROOT / ".codex" / "mcp_servers" / "realdata_test_server.py"
         module = load_module(module_path, "test_realdata_test_server")
@@ -338,17 +344,17 @@ class TestCodexMcpWrappers(unittest.TestCase):
         module = load_module(module_path, "test_start_jira_production_profile")
 
         env = {
-            "NAKIVO_JIRA_PRODUCTION_BASE_URL": "http://10.170.180.181:8080/",
-            "NAKIVO_JIRA_PRODUCTION_USER": "thang.vo",
-            "NAKIVO_JIRA_PRODUCTION_PASSWORD": "secret",
+            "{{ENV_PREFIX}}_JIRA_PRODUCTION_BASE_URL": "https://jira.example.test/",
+            "{{ENV_PREFIX}}_JIRA_PRODUCTION_USER": "test.user",
+            "{{ENV_PREFIX}}_JIRA_PRODUCTION_PASSWORD": "secret",
         }
         module.apply_profile(env)
 
-        self.assertEqual(env["NAKIVO_JIRA_BASE_URL"], "http://10.170.180.181:8080/")
-        self.assertEqual(env["NAKIVO_JIRA_USER"], "thang.vo")
-        self.assertEqual(env["NAKIVO_JIRA_PASSWORD"], "secret")
-        self.assertEqual(env["NAKIVO_JIRA_PROFILE"], "production")
-        self.assertEqual(env["NAKIVO_JIRA_SERVER_NAME"], "jira_production")
+        self.assertEqual(env["{{ENV_PREFIX}}_JIRA_BASE_URL"], "https://jira.example.test/")
+        self.assertEqual(env["{{ENV_PREFIX}}_JIRA_USER"], "test.user")
+        self.assertEqual(env["{{ENV_PREFIX}}_JIRA_PASSWORD"], "secret")
+        self.assertEqual(env["{{ENV_PREFIX}}_JIRA_PROFILE"], "production")
+        self.assertEqual(env["{{ENV_PREFIX}}_JIRA_SERVER_NAME"], "jira_production")
 
     @unittest.skipUnless(JIRA_INSTALLED, "JIRA server not installed by this preset")
     def test_jira_preproduction_wrapper_maps_profile_env_to_generic_keys(self):
@@ -356,17 +362,17 @@ class TestCodexMcpWrappers(unittest.TestCase):
         module = load_module(module_path, "test_start_jira_preproduction_profile")
 
         env = {
-            "NAKIVO_JIRA_PREPRODUCTION_BASE_URL": "http://10.170.179.41/",
-            "NAKIVO_JIRA_PREPRODUCTION_USER": "thang.vo",
-            "NAKIVO_JIRA_PREPRODUCTION_PASSWORD": "secret",
+            "{{ENV_PREFIX}}_JIRA_PREPRODUCTION_BASE_URL": "https://jira-staging.example.test/",
+            "{{ENV_PREFIX}}_JIRA_PREPRODUCTION_USER": "test.user",
+            "{{ENV_PREFIX}}_JIRA_PREPRODUCTION_PASSWORD": "secret",
         }
         module.apply_profile(env)
 
-        self.assertEqual(env["NAKIVO_JIRA_BASE_URL"], "http://10.170.179.41/")
-        self.assertEqual(env["NAKIVO_JIRA_USER"], "thang.vo")
-        self.assertEqual(env["NAKIVO_JIRA_PASSWORD"], "secret")
-        self.assertEqual(env["NAKIVO_JIRA_PROFILE"], "preproduction")
-        self.assertEqual(env["NAKIVO_JIRA_SERVER_NAME"], "jira_preproduction")
+        self.assertEqual(env["{{ENV_PREFIX}}_JIRA_BASE_URL"], "https://jira-staging.example.test/")
+        self.assertEqual(env["{{ENV_PREFIX}}_JIRA_USER"], "test.user")
+        self.assertEqual(env["{{ENV_PREFIX}}_JIRA_PASSWORD"], "secret")
+        self.assertEqual(env["{{ENV_PREFIX}}_JIRA_PROFILE"], "preproduction")
+        self.assertEqual(env["{{ENV_PREFIX}}_JIRA_SERVER_NAME"], "jira_preproduction")
 
     @unittest.skipUnless(JIRA_INSTALLED, "JIRA server not installed by this preset")
     def test_jira_preproduction_wrapper_invokes_shared_jira_server(self):
@@ -402,18 +408,18 @@ class TestCodexMcpWrappers(unittest.TestCase):
     def test_jira_server_uses_profile_aware_name(self):
         module_path = ROOT / ".codex" / "mcp_servers" / "jira_server.py"
         previous = {key: os.environ.get(key) for key in (
-            "NAKIVO_JIRA_PROFILE",
-            "NAKIVO_JIRA_SERVER_NAME",
-            "NAKIVO_JIRA_BASE_URL",
-            "NAKIVO_JIRA_USER",
-            "NAKIVO_JIRA_PASSWORD",
+            "{{ENV_PREFIX}}_JIRA_PROFILE",
+            "{{ENV_PREFIX}}_JIRA_SERVER_NAME",
+            "{{ENV_PREFIX}}_JIRA_BASE_URL",
+            "{{ENV_PREFIX}}_JIRA_USER",
+            "{{ENV_PREFIX}}_JIRA_PASSWORD",
         )}
         try:
-            os.environ["NAKIVO_JIRA_PROFILE"] = "preproduction"
-            os.environ.pop("NAKIVO_JIRA_SERVER_NAME", None)
-            os.environ["NAKIVO_JIRA_BASE_URL"] = "http://10.170.179.41/"
-            os.environ["NAKIVO_JIRA_USER"] = "thang.vo"
-            os.environ["NAKIVO_JIRA_PASSWORD"] = "stub"
+            os.environ["{{ENV_PREFIX}}_JIRA_PROFILE"] = "preproduction"
+            os.environ.pop("{{ENV_PREFIX}}_JIRA_SERVER_NAME", None)
+            os.environ["{{ENV_PREFIX}}_JIRA_BASE_URL"] = "https://jira-staging.example.test/"
+            os.environ["{{ENV_PREFIX}}_JIRA_USER"] = "test.user"
+            os.environ["{{ENV_PREFIX}}_JIRA_PASSWORD"] = "stub"
             module = load_module(module_path, "test_jira_server_profile_aware")
             self.assertEqual(module.SERVER.name, "jira_preproduction")
         finally:
@@ -425,6 +431,7 @@ class TestCodexMcpWrappers(unittest.TestCase):
 
     # --- New: ORM eval sandbox (read-only guarantee) -----------------------
 
+    @unittest.skipUnless(REALDATA_INSTALLED, "realdata_test server not installed by this preset")
     def test_realdata_test_orm_eval_rejects_mutation_tokens(self):
         module_path = ROOT / ".codex" / "mcp_servers" / "realdata_test_server.py"
         module = load_module(module_path, "test_realdata_orm_sandbox")
@@ -445,6 +452,7 @@ class TestCodexMcpWrappers(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     module.ensure_readonly_expression(expression)
 
+    @unittest.skipUnless(REALDATA_INSTALLED, "realdata_test server not installed by this preset")
     def test_realdata_test_orm_eval_accepts_readonly_expression(self):
         module_path = ROOT / ".codex" / "mcp_servers" / "realdata_test_server.py"
         module = load_module(module_path, "test_realdata_orm_sandbox_ok")
@@ -452,6 +460,7 @@ class TestCodexMcpWrappers(unittest.TestCase):
         accepted = "env['sale.order'].search_count([('state','in',['sale','done'])])"
         self.assertEqual(module.ensure_readonly_expression(accepted), accepted)
 
+    @unittest.skipUnless(REALDATA_INSTALLED, "realdata_test server not installed by this preset")
     def test_realdata_test_orm_fingerprint_is_stable(self):
         module_path = ROOT / ".codex" / "mcp_servers" / "realdata_test_server.py"
         module = load_module(module_path, "test_realdata_fingerprint")
@@ -473,17 +482,19 @@ class TestCodexMcpWrappers(unittest.TestCase):
         required_always = {
             "stack",
             "addon roots",
-            "api decorators",
-            "loop anti-patterns",
-            "sudo",
             "verification",
             "mcp routing",
             "determinism",
             "module agnostic",
+            "response language",
         }
-        # JIRA topics are only required when the JIRA server is installed.
+        # Odoo-specific topics only when the postgres+realdata pair is installed
+        # (proxy for an Odoo-like stack — they ship together in odoo-* presets).
+        if POSTGRES_INSTALLED and REALDATA_INSTALLED:
+            required_always |= {"api decorators", "loop anti-patterns", "sudo"}
+        # JIRA topic only when the JIRA server is installed.
         if JIRA_INSTALLED:
-            required_always |= {"jira production", "jira preproduction"}
+            required_always |= {"jira"}
         for required in required_always:
             self.assertIn(required, topics, f"missing canonical topic: {required}")
 
@@ -491,7 +502,8 @@ class TestCodexMcpWrappers(unittest.TestCase):
         module_path = ROOT / ".codex" / "mcp_servers" / "codebase_server.py"
         module = load_module(module_path, "test_codebase_lookup_alias")
 
-        result = module.lookup_canonical_decision({"topic": "Q1 Q2"})
+        # "consistency" is an alias of the `determinism` decision.
+        result = module.lookup_canonical_decision({"topic": "consistency"})
         self.assertGreaterEqual(result["match_count"], 1)
         self.assertTrue(any("determinism" == m.get("topic") for m in result["matches"]))
 

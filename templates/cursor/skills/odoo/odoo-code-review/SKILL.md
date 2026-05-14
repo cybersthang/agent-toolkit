@@ -154,7 +154,7 @@ in the chain back to 17. 12 is standalone (load only `odoo-12-rules.md`).
 
 What each file covers:
 
-- **`odoo-12-rules.md`** — `@api.multi` required, `attrs/states` correct in 12, jQuery+QWeb, single-record `create(vals)`, NAKIVO addon roots, Odoo-12 severity calibration.
+- **`odoo-12-rules.md`** — `@api.multi` required, `attrs/states` correct in 12, jQuery+QWeb, single-record `create(vals)`, project-resolved addon roots (from `agent-toolkit.config.json`), Odoo-12 severity calibration.
 - **`odoo-17-rules.md`** — `@api.multi` removed, recordset by default, `@api.model_create_multi` mandatory, `attrs/states` removed (use `invisible="<expr>"`), OWL, no jQuery.
 - **`odoo-18-rules.md`** (delta on 17) — `args`→`domain` keyword rename, `group_operator`→`aggregator`, `name_get()` deprecated (use `_compute_display_name()`), `SQL` wrapper, unified `check_access()`, removed `inselect`/`_mapped_cache`/`_sequence`/`limit-on-x2many`, `<list>` preferred over `<tree>`, manifest `'assets'` key.
 - **`odoo-19-rules.md`** (delta on 18) — controller `type='json'` → `type='jsonrpc'` (and new `type='json2'`), `odoo.Domain` API + `any!` operator, declarative `_constraints` / `_indexes` as model attributes, Python 3.12 recommended, AI-powered server actions.

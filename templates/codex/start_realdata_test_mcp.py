@@ -7,21 +7,21 @@ from pathlib import Path
 
 
 ALIASES = {
-    "db_host": "NAKIVO_PGHOST",
-    "db_port": "NAKIVO_PGPORT",
-    "db_user": "NAKIVO_PGUSER",
-    "db_password": "NAKIVO_PGPASSWORD",
-    "db_name": "NAKIVO_PGDATABASE",
-    "database": "NAKIVO_PGDATABASE",
-    "http_port": "NAKIVO_HTTP_PORT",
+    "db_host": "{{ENV_PREFIX}}_PGHOST",
+    "db_port": "{{ENV_PREFIX}}_PGPORT",
+    "db_user": "{{ENV_PREFIX}}_PGUSER",
+    "db_password": "{{ENV_PREFIX}}_PGPASSWORD",
+    "db_name": "{{ENV_PREFIX}}_PGDATABASE",
+    "database": "{{ENV_PREFIX}}_PGDATABASE",
+    "http_port": "{{ENV_PREFIX}}_HTTP_PORT",
 }
 
 PSQL_ENV_ALIASES = {
-    "NAKIVO_PGHOST": "PGHOST",
-    "NAKIVO_PGPORT": "PGPORT",
-    "NAKIVO_PGUSER": "PGUSER",
-    "NAKIVO_PGPASSWORD": "PGPASSWORD",
-    "NAKIVO_PGDATABASE": "PGDATABASE",
+    "{{ENV_PREFIX}}_PGHOST": "PGHOST",
+    "{{ENV_PREFIX}}_PGPORT": "PGPORT",
+    "{{ENV_PREFIX}}_PGUSER": "PGUSER",
+    "{{ENV_PREFIX}}_PGPASSWORD": "PGPASSWORD",
+    "{{ENV_PREFIX}}_PGDATABASE": "PGDATABASE",
 }
 
 
@@ -58,7 +58,7 @@ def main() -> None:
         repo_root / ".cursor" / "mcp.local.env", env
     )
     normalize_env(env)
-    env["NAKIVO_WORKSPACE"] = str(repo_root)
+    env["{{ENV_PREFIX}}_WORKSPACE"] = str(repo_root)
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONUTF8"] = "1"
     env["PYTHONDONTWRITEBYTECODE"] = "1"

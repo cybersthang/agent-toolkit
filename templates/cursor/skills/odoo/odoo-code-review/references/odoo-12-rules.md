@@ -15,7 +15,7 @@ and the cross-version checklists under `_common/code-review/references/`.
 
 ### Severity calibration
 
-| Severity | Concrete example (anchored in NAKIVO audit history) |
+| Severity | Concrete example (anchor cases from prior Odoo 12 audit history) |
 |----------|------------------------------------------------------|
 | BLOCKER  | Override `create()` declared without `@api.multi` returning a recordset with the wrong dimensionality |
 | BLOCKER  | `@api.one` used on a method called from a batch context — silently returns a list of returns instead of the recordset |
@@ -69,14 +69,14 @@ and the cross-version checklists under `_common/code-review/references/`.
 - `depends`: lists exactly what the module imports / inherits. No "transitive" dependencies (don't list `mail` if only `base` is imported).
 - `installable: True`; `application` only when the module is a top-level app.
 
-## H. NAKIVO-specific notes (Odoo-12 NAKIVO workspace only)
+## H. Project-specific notes (this Odoo-12 workspace)
 
-- Addon roots (canonical): `nakivo/`, `nakivo-server/addons/`, `nakivo-server/odoo/addons/`, `nakivooca/`, `base_addons/`, `OCA/`, `odoo-12-enterprise-master/addons/`, `odoo-12-enterprise-master/odoo/addons/`.
+- Addon roots come from `agent-toolkit.config.json` (rendered into AGENTS.md "Addon / Code roots"). Read that file first instead of memorizing paths.
 - Always pass `root_hint` to `discover_modules` / `search_text` to avoid scanning all roots.
 - Before answering "is there anything else to fix in `<module>`?", read `.codex/audit_findings_locked.md` (or `.codex/audit_findings_<module>_locked.md`) and cite the locked count.
-- JIRA: production at `10.170.180.181:8080`, preproduction at `10.170.179.41`. Use `jira_production` MCP / `jira_preproduction` MCP for ticket context — never hard-code credentials.
+- JIRA URLs live ONLY in `.codex/mcp.local.env` (env vars `{{ENV_PREFIX}}_JIRA_PRODUCTION_*` / `{{ENV_PREFIX}}_JIRA_PREPRODUCTION_*`); call `env_status` on the matching MCP to see the active URL. Never hard-code URLs or credentials in committed files.
 
-## Severity anchors (Odoo-12, from NAKIVO REV-4 audit)
+## Severity anchors (Odoo-12 audit examples — keep these even when the project differs)
 
 | Severity | Concrete example |
 |----------|------------------|

@@ -1,0 +1,50 @@
+name: tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ['3.8', '3.10', '3.12']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install dev deps
+        run: python -m pip install --upgrade pip pytest
+
+      - name: Run pytest suite
+        run: python -m pytest tests/ -v
+
+      - name: Smoke-test setup.py CLI
+        shell: bash
+        run: |
+          python setup.py --version
+          python setup.py list-presets
+
+      - name: Dry-run install into tmp project
+        shell: bash
+        run: |
+          mkdir -p /tmp/agent-toolkit-smoke
+          python setup.py init /tmp/agent-toolkit-smoke --preset generic --yes --dry-run
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip ruff
+      - run: ruff check setup.py lib/ tests/

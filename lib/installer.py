@@ -1,6 +1,7 @@
 """Shared install helpers — kept dependency-free (stdlib only)."""
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -8,109 +9,157 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 
+# Toolkit version. Bump when schema_version of agent-toolkit.config.json
+# changes or when CLI flags break backward compatibility.
+__version__ = '0.2.0'
+
+
 # ----------------------------------------------------- preset loader ---
 def load_preset(path: Path) -> dict:
-    """Load a preset.
+    """Load a preset from JSON.
 
-    Accepts JSON (.json) or YAML (.yaml/.yml). YAML support requires
-    PyYAML; if not installed, JSON is the only option (toolkit ships
-    JSON presets to stay dependency-free).
+    JSON only; if you want YAML, install pyyaml and import it yourself.
+    The toolkit dropped its hand-rolled YAML parser (H3) — it was 50 lines
+    of dead code that didn't support flow style, anchors, or multi-line
+    strings, and JSON covers every shipped preset.
     """
-    text = path.read_text(encoding='utf-8')
-    if path.suffix.lower() == '.json':
-        import json
-        return json.loads(text)
+    if path.suffix.lower() not in ('.json',):
+        raise ValueError(
+            f'unsupported preset format: {path.suffix}. '
+            f'Use .json (drop pyyaml in if you need YAML).'
+        )
+    return json.loads(path.read_text(encoding='utf-8'))
+
+
+# --- Preset schema (lightweight hand-rolled — no jsonschema dep) ---
+# Tier 3 fix: validate preset JSON shape so typos like `addon_root` (singular)
+# fail at load-time with a clear message, instead of silently using the
+# preset default (empty list) and breaking install downstream.
+_PRESET_REQUIRED = {'description', 'stack'}
+_PRESET_KNOWN = {
+    'description', 'stack', 'stack_label', 'response_language',
+    'addon_roots', 'mcp_servers', 'db', 'rules', 'skills', 'memory_packs',
+    'env_prefix',
+    # Inheritance + additive overrides (Tier 3 extensibility)
+    'extends', 'addon_roots_append', 'mcp_servers_append',
+    'mcp_servers_remove', 'rules_append', 'skills_append',
+    'memory_packs_append',
+}
+
+
+def validate_preset(data: dict, name: str = '<preset>') -> list:
+    """Return a list of human-readable validation errors (empty list = OK).
+
+    Doesn't raise; caller decides whether to fail-hard or warn.
+    """
+    errors = []
+    for req in _PRESET_REQUIRED:
+        if req not in data:
+            errors.append(f'{name}: missing required field `{req}`')
+    for key in data.keys():
+        if key.startswith('_'):
+            continue  # private/meta fields
+        if key not in _PRESET_KNOWN:
+            # Likely typo. Suggest closest match.
+            suggestion = _closest_match(key, _PRESET_KNOWN)
+            hint = f' (did you mean `{suggestion}`?)' if suggestion else ''
+            errors.append(f'{name}: unknown field `{key}`{hint}')
+    # Type sanity for list fields.
+    for list_key in ('addon_roots', 'mcp_servers', 'rules', 'skills',
+                     'memory_packs', 'addon_roots_append',
+                     'mcp_servers_append', 'mcp_servers_remove',
+                     'rules_append', 'skills_append', 'memory_packs_append'):
+        if list_key in data and not isinstance(data[list_key], list):
+            errors.append(
+                f'{name}: `{list_key}` must be a list, got '
+                f'{type(data[list_key]).__name__}'
+            )
+    return errors
+
+
+def _closest_match(needle: str, haystack) -> Optional[str]:
+    """Levenshtein-cheap closest-string lookup for 'did you mean' hints."""
+    import difflib
+    matches = difflib.get_close_matches(needle, list(haystack), n=1, cutoff=0.6)
+    return matches[0] if matches else None
+
+
+def resolve_preset(name: str, presets_dir: Path,
+                   _seen: Optional[set] = None) -> dict:
+    """Load a preset and recursively merge any `extends:` parent chain.
+
+    Additive override fields (`*_append`, `mcp_servers_remove`) let a child
+    preset tweak its parent without redeclaring the full list. Plain fields
+    overwrite the parent. Inheritance cycles are detected and rejected.
+    """
+    _seen = _seen or set()
+    if name in _seen:
+        raise ValueError(f'preset inheritance cycle through `{name}`')
+    _seen.add(name)
+
+    path = presets_dir / f'{name}.json'
+    if not path.exists():
+        suggestion = _closest_match(name, [p.stem for p in presets_dir.glob('*.json')])
+        hint = f' (did you mean `{suggestion}`?)' if suggestion else ''
+        raise FileNotFoundError(f'preset not found: {name}{hint}')
+
+    data = load_preset(path)
+    errors = validate_preset(data, name=name)
+    if errors:
+        msg = 'preset validation failed:\n  ' + '\n  '.join(errors)
+        raise ValueError(msg)
+
+    parent_name = data.get('extends')
+    if not parent_name:
+        return data
+
+    parent = resolve_preset(parent_name, presets_dir, _seen)
+    # Start from parent, then overlay child.
+    merged: Dict[str, Any] = dict(parent)
+    for k, v in data.items():
+        if k == 'extends':
+            continue
+        if k.endswith('_append'):
+            # `addon_roots_append: [...]` extends parent's `addon_roots`.
+            base_key = k[:-len('_append')]
+            base = list(merged.get(base_key, []) or [])
+            base.extend(v)
+            merged[base_key] = base
+        elif k == 'mcp_servers_remove':
+            base = [m for m in (merged.get('mcp_servers') or []) if m not in v]
+            merged['mcp_servers'] = base
+        elif isinstance(v, dict) and isinstance(merged.get(k), dict):
+            # Shallow merge for dicts (e.g. `db`, `stack`).
+            merged[k] = {**merged[k], **v}
+        else:
+            merged[k] = v
+    return merged
+
+
+# --- Git-aware safety (Tier 3) ---
+def git_dirty_status(target: Path) -> Optional[str]:
+    """Return a short status summary if target is a dirty git repo, else None.
+
+    Returns None when:
+    - target is not a git repo
+    - target is clean
+    - git is not installed
+    """
+    import subprocess
     try:
-        import yaml  # type: ignore
-        return yaml.safe_load(text) or {}
-    except ImportError:
-        # Fall back to the tiny stdlib parser
-        return _parse_yaml(text)
-
-
-def _parse_yaml(text: str) -> dict:
-    """Tiny stdlib YAML reader.
-
-    Supports: top-level + nested key/value, lists with `- item`,
-    string/int/float/bool coercion. Comments (`#`) and blank lines
-    skipped. Indentation must be consistent within a block.
-
-    Not supported: flow style (`[a,b]`), anchors, multi-line strings.
-    """
-    root: dict = {}
-    # Each stack entry: (indent_of_children, container, parent_key_for_list_items)
-    stack = [(-1, root, None)]
-    pending_key = None  # last key whose value might be a list/dict on next line
-    for raw in text.splitlines():
-        if not raw.strip() or raw.lstrip().startswith('#'):
-            continue
-        indent = len(raw) - len(raw.lstrip())
-        line = raw.strip()
-
-        # Pop stack until top frame's children-indent < current indent
-        while stack and stack[-1][0] >= indent and stack[-1][2] is None:
-            stack.pop()
-        # For list frames, pop only when indent is shallower
-        while stack and stack[-1][2] is not None and stack[-1][0] > indent:
-            stack.pop()
-
-        _, container, list_parent_key = stack[-1]
-
-        if line.startswith('- '):
-            value = _coerce(line[2:].strip())
-            # We expect container == parent dict, list_parent_key == key name
-            if list_parent_key is None:
-                # First list item under pending_key in container
-                key = pending_key
-                if key is None:
-                    continue
-                if not isinstance(container.get(key), list):
-                    container[key] = []
-                container[key].append(value)
-                stack.append((indent, container, key))
-            else:
-                container[list_parent_key].append(value)
-            continue
-
-        if ':' in line:
-            key, _, val = line.partition(':')
-            key = key.strip()
-            val = val.strip()
-            # If we were inside a list frame, pop it (current line is a key, not list)
-            while stack and stack[-1][2] is not None:
-                stack.pop()
-            _, container, _ = stack[-1]
-            if val == '':
-                # nested dict OR list — decide on next line
-                container[key] = {}
-                pending_key = key
-                # Push a frame whose children belong to container[key]
-                # but only if next line is a dict (key:val); if it's `- item`,
-                # we'll convert container[key] to [] in the list branch above.
-                stack.append((indent, container, None))
-                # Walk back: when we read a dict child (key: val) at deeper
-                # indent, we need a frame pointing into container[key].
-                # Achieve this by also pushing a child-dict frame.
-                stack.append((indent, container[key], None))
-            else:
-                container[key] = _coerce(val)
-                pending_key = key
-    return root
-
-
-def _coerce(s: str):
-    s = s.strip()
-    if s.startswith('"') and s.endswith('"'):
-        return s[1:-1]
-    if s.startswith("'") and s.endswith("'"):
-        return s[1:-1]
-    if s.lower() in ('true', 'false'):
-        return s.lower() == 'true'
-    if re.match(r'^-?\d+$', s):
-        return int(s)
-    if re.match(r'^-?\d+\.\d+$', s):
-        return float(s)
-    return s
+        result = subprocess.run(
+            ['git', '-C', str(target), 'status', '--porcelain'],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None  # not a git repo, or other error
+    out = result.stdout.strip()
+    if not out:
+        return None  # clean
+    lines = out.splitlines()
+    return f'{len(lines)} uncommitted change(s)'
 
 
 # ----------------------------------------------------- templating ---

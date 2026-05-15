@@ -1,0 +1,20 @@
+[run]
+source =
+    setup.py
+    lib
+branch = True
+omit =
+    tests/*
+    lib/plugins.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+show_missing = True
+skip_covered = False
+
+[html]
+directory = .coverage_html

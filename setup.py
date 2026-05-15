@@ -35,6 +35,16 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Windows console default cp1252 cannot encode UTF-8 status glyphs (✓).
+# Reconfigure stdout/stderr to UTF-8 so `ok(✓ ...)` does not crash mid-apply.
+# Python 3.7+ has `reconfigure`; older versions silently skip.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, 'reconfigure') and getattr(_stream, 'encoding', '').lower() != 'utf-8':
+        try:
+            _stream.reconfigure(encoding='utf-8', errors='replace')
+        except Exception:
+            pass
+
 TOOLKIT_ROOT = Path(__file__).resolve().parent
 TEMPLATES = TOOLKIT_ROOT / 'templates'
 PRESETS_DIR = TOOLKIT_ROOT / 'presets'
@@ -42,9 +52,11 @@ LIB_DIR = TOOLKIT_ROOT / 'lib'
 sys.path.insert(0, str(LIB_DIR))
 
 from installer import (  # noqa: E402
+    __version__,
     load_preset, render_text, render_into,
     detect_python, detect_psql, encode_claude_project_path,
     confirm, info, warn, ok,
+    validate_preset, resolve_preset, git_dirty_status,
 )
 
 
@@ -158,16 +170,17 @@ def cmd_init(args):
         except Exception:
             sys.exit('aborted')
 
-    preset_path = PRESETS_DIR / f'{args.preset}.json'
-    if not preset_path.exists():
-        preset_path = PRESETS_DIR / f'{args.preset}.yaml'
-    if not preset_path.exists():
-        sys.exit(f'preset not found: {preset_path}')
-
-    preset = load_preset(preset_path)
+    # Use resolve_preset so `extends:` inheritance and *_append additive
+    # overrides work transparently. Validation runs as part of resolution.
+    try:
+        preset = resolve_preset(args.preset, PRESETS_DIR)
+    except (FileNotFoundError, ValueError) as exc:
+        sys.exit(str(exc))
     info(f'Using preset: {args.preset}')
     info(f'  description: {preset.get("description", "")}')
     info(f'  stack: {preset.get("stack", {})}')
+    if preset.get('_inherited_from'):
+        info(f'  extends: {preset["_inherited_from"]}')
     if project_cfg:
         info(f'  honoring overrides from {PROJECT_CONFIG_NAME}')
 
@@ -257,28 +270,78 @@ def cmd_init(args):
         info(f'  {k}: {v}')
 
     if args.dry_run:
-        info('\n[dry-run] would write into: ' + str(target))
+        info('\n[dry-run] target: ' + str(target))
         plan = build_plan(preset, ctx, target)
+        new_n, changed_n, unchanged_n, skipped_n = 0, 0, 0, 0
+        diff_enabled = getattr(args, 'diff', False)
         for src, dst, mode in plan:
-            print(f'  [{mode}] {dst.relative_to(target)}')
-        info('\n[dry-run] would also seed memory into:')
+            rel = dst.relative_to(target)
+            if mode == 'SKIP_EXISTS':
+                skipped_n += 1
+                if dst.exists():
+                    continue
+            if not dst.exists():
+                print(f'  NEW       {rel}')
+                new_n += 1
+            elif _content_will_change(src, dst, mode, ctx):
+                print(f'  MODIFY    {rel}')
+                if diff_enabled:
+                    _print_diff(src, dst, mode, ctx)
+                changed_n += 1
+            else:
+                unchanged_n += 1
+        info(f'\n[dry-run] {new_n} new, {changed_n} modified, '
+             f'{unchanged_n} unchanged, {skipped_n} skip-exists')
+        info('[dry-run] would also seed memory into:')
         info(f'  {encode_claude_project_path(target)}')
+        info('[dry-run] Run with --apply to write changes')
         return
 
     if not args.yes and not confirm(f'Install into {target}? [y/N]: '):
         sys.exit('aborted')
 
+    backup_enabled = getattr(args, 'backup', False)
+    ts = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
     plan = build_plan(preset, ctx, target)
+
+    # Tier 2: two-pass atomic apply.
+    # Pass 1 (pre-render): materialize all template outputs in memory so
+    # a render failure aborts BEFORE any disk write. Catches missing
+    # placeholders, encoding errors, unreadable sources up-front.
+    materialized = []
     for src, dst, mode in plan:
-        if mode == 'COPY':
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dst)
-        elif mode == 'TEMPLATE':
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            render_into(src, dst, ctx)
-        elif mode == 'SKIP_EXISTS':
+        if mode == 'SKIP_EXISTS':
             continue
-        ok(f'  {mode:<10} {dst.relative_to(target)}')
+        new_content: Optional[str] = None
+        if mode == 'TEMPLATE':
+            new_content = render_text(
+                src.read_text(encoding='utf-8'), ctx
+            )
+        materialized.append((src, dst, mode, new_content))
+
+    # Pass 2 (write): per-file atomic via temp + os.replace, so an
+    # interrupted write never leaves a half-written destination.
+    backed_up = 0
+    total = len(materialized)
+    for i, (src, dst, mode, new_content) in enumerate(materialized, 1):
+        # H4 backup: only when content actually differs from disk.
+        will_change = _content_will_change(src, dst, mode, ctx)
+        if backup_enabled and dst.exists() and will_change:
+            backup_path = dst.with_suffix(dst.suffix + f'.bak.{ts}')
+            shutil.copy2(dst, backup_path)
+            backed_up += 1
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dst.with_suffix(dst.suffix + '.tmp')
+        if mode == 'COPY':
+            shutil.copy2(src, tmp)
+        else:  # TEMPLATE
+            tmp.write_text(new_content or '', encoding='utf-8')
+        os.replace(tmp, dst)
+        # Progress prefix for large file sets.
+        prefix = f'[{i}/{total}]' if total > 30 else ''
+        ok(f'{prefix:<8} {mode:<10} {dst.relative_to(target)}')
+    if backed_up:
+        info(f'  backed up {backed_up} pre-existing file(s) as *.bak.{ts}')
 
     seed_memory(preset, ctx, target, force=args.force)
     write_mcp_configs(ctx, target, force=args.force)
@@ -301,6 +364,11 @@ def cmd_update(args):
     Reads `agent-toolkit.config.json` (or legacy `.agent-toolkit-install.json`)
     from the target. Project config takes precedence over preset defaults, so
     edits to addon_roots/mcp_servers/db propagate on update.
+
+    Safe-by-default (B1 fix): with no flags, runs as dry-run + diff so the
+    user can review changes before applying. Pass `--apply` to write.
+    Backups of pre-existing files are created automatically when applying;
+    opt out with `--no-backup`.
     """
     target = Path(args.target).resolve()
     cfg = load_project_config(target)
@@ -317,9 +385,32 @@ def cmd_update(args):
     args.python = args.python or machine.get('python_bin') or cfg.get('python_bin')
     args.psql = args.psql or machine.get('psql_bin') or cfg.get('psql_bin')
     args.yes = True
-    args.dry_run = False
-    args.force = True
+    # Safe default: dry-run with diff unless --apply is given.
+    args.dry_run = not getattr(args, 'apply', False)
+    # Backup ON by default when applying; --no-backup to opt out.
+    args.backup = (
+        getattr(args, 'apply', False)
+        and not getattr(args, 'no_backup', False)
+    )
+    # `--force` only forces overwriting SKIP_EXISTS files
+    # (canonical_decisions.json, .agent-toolkit/invariants.json...).
+    # Default OFF so curated state survives.
+    args.force = bool(getattr(args, 'force', False))
+    mode_label = 'APPLY' if not args.dry_run else 'DRY-RUN'
     info(f'Updating using saved preset: {args.preset}')
+    info(f'  mode={mode_label}  backup={args.backup}  force={args.force}')
+
+    # Tier 3: git-aware safety. Refuse to apply over a dirty working tree
+    # unless user passes --force-dirty or the project isn't a git repo.
+    if not args.dry_run and not getattr(args, 'force_dirty', False):
+        dirty = git_dirty_status(target)
+        if dirty:
+            sys.exit(
+                f'\nrefusing to --apply: {target} has {dirty}.\n'
+                f'  Commit or stash first, or pass --force-dirty to override.\n'
+                f'  (Backups will still be written to *.bak.{datetime.datetime.now():%Y%m%d-%H%M%S})'
+            )
+
     cmd_init(args)
 
 
@@ -463,11 +554,138 @@ def build_plan(preset, ctx, target):
 
 
 def _looks_templated(path: Path) -> bool:
-    """Cheap heuristic — file contains {{...}} placeholders."""
+    """Heuristic — file contains {{...}} placeholders.
+
+    H2 fix: scan the FULL file, not just first 8KB — a placeholder past
+    the 8KB mark was silently treated as COPY and shipped unrendered.
+    Markdown templates routinely run >8KB.
+    """
     try:
-        return '{{' in path.read_text(encoding='utf-8', errors='ignore')[:8192]
+        return '{{' in path.read_text(encoding='utf-8', errors='ignore')
     except Exception:
         return False
+
+
+def _content_will_change(src: Path, dst: Path, mode: str, ctx: Dict[str, Any]) -> bool:
+    """Compare what would-be-written content to what already exists.
+
+    Skips unchanged files in dry-run reports and skips backup of files
+    whose content is identical to the template-rendered output.
+    """
+    if not dst.exists() or mode == 'SKIP_EXISTS':
+        return mode != 'SKIP_EXISTS'
+    try:
+        if mode == 'COPY':
+            new_bytes = src.read_bytes()
+            return dst.read_bytes() != new_bytes
+        # TEMPLATE
+        new_text = render_text(src.read_text(encoding='utf-8'), ctx)
+        old_text = dst.read_text(encoding='utf-8', errors='replace')
+        return old_text != new_text
+    except Exception:
+        # Treat unreadable destination as "would change" so we don't
+        # silently skip it.
+        return True
+
+
+def _print_diff(src: Path, dst: Path, mode: str, ctx: Dict[str, Any],
+                max_lines: int = 40):
+    """Emit a unified diff between dst (old) and rendered src (new).
+
+    Truncates at max_lines so a single large file doesn't drown the output.
+    Used by `update --diff` to preview changes before --apply.
+    """
+    import difflib
+    try:
+        if mode == 'COPY':
+            new_text = src.read_text(encoding='utf-8', errors='replace')
+        else:
+            new_text = render_text(src.read_text(encoding='utf-8'), ctx)
+        old_text = dst.read_text(encoding='utf-8', errors='replace')
+    except Exception as exc:
+        info(f'    (diff unavailable: {exc})')
+        return
+    diff = list(difflib.unified_diff(
+        old_text.splitlines(keepends=True),
+        new_text.splitlines(keepends=True),
+        fromfile='current/' + dst.name,
+        tofile='new/' + dst.name,
+        n=2,
+    ))
+    if not diff:
+        return
+    for line in diff[:max_lines]:
+        sys.stdout.write('    ' + line if not line.endswith('\n')
+                         else '    ' + line)
+    if len(diff) > max_lines:
+        info(f'    ... ({len(diff) - max_lines} more diff lines truncated)')
+
+
+def _parse_frontmatter(text: str) -> Dict[str, str]:
+    """Extract top-level scalar key/values from `--- ... ---` YAML frontmatter.
+
+    Ignores nested blocks (`metadata:` etc.) and lines starting with whitespace
+    or `#`. Returns empty dict if no frontmatter present.
+    """
+    if not text.startswith('---'):
+        return {}
+    end_idx = text.find('\n---', 4)
+    if end_idx == -1:
+        return {}
+    block = text[4:end_idx]
+    out: Dict[str, str] = {}
+    for line in block.splitlines():
+        if not line or line[0] in (' ', '\t', '#'):
+            continue
+        if ':' in line:
+            k, _, v = line.partition(':')
+            k = k.strip()
+            v = v.strip()
+            if v.startswith('"') and v.endswith('"'):
+                v = v[1:-1]
+            elif v.startswith("'") and v.endswith("'"):
+                v = v[1:-1]
+            if k and v:
+                out[k] = v
+    return out
+
+
+def regenerate_memory_index(target_mem: Path):
+    """Append entries for memory files missing from MEMORY.md.
+
+    Scans target_mem for *.md files, parses frontmatter, and adds one
+    `- [Title](file.md) — description` line per file not yet indexed.
+    Preserves human-curated entries (titles) already in the file.
+    """
+    index_path = target_mem / 'MEMORY.md'
+    existing = index_path.read_text(encoding='utf-8') if index_path.exists() else ''
+
+    indexed = set()
+    for line in existing.splitlines():
+        m = re.search(r'\(([^)]+\.md)\)', line)
+        if m:
+            indexed.add(m.group(1))
+
+    added = []
+    for md in sorted(target_mem.glob('*.md')):
+        if md.name == 'MEMORY.md' or md.name in indexed:
+            continue
+        try:
+            fm = _parse_frontmatter(md.read_text(encoding='utf-8'))
+        except Exception:
+            continue
+        desc = fm.get('description', '').strip()
+        if not desc:
+            continue
+        title_base = md.stem.replace('_', ' ').replace('-', ' ')
+        title = title_base[:1].upper() + title_base[1:]
+        added.append(f'- [{title}]({md.name}) — {desc}')
+
+    if added:
+        sep = '\n' if existing.endswith('\n') or not existing else '\n'
+        new_text = (existing.rstrip() + '\n' if existing else '') + '\n'.join(added) + '\n'
+        index_path.write_text(new_text, encoding='utf-8')
+        info(f'  added {len(added)} entries to MEMORY.md')
 
 
 def seed_memory(preset, ctx, target, force):
@@ -488,6 +706,9 @@ def seed_memory(preset, ctx, target, force):
             dst.write_text(text, encoding='utf-8')
             n += 1
     info(f'  seeded {n} memory files into {target_mem}')
+    # H1 fix: regenerate MEMORY.md so the index lists every *.md actually
+    # present in the dir, not just whatever the template ships.
+    regenerate_memory_index(target_mem)
 
 
 def _build_mcp_servers_payload(ctx, target):
@@ -560,6 +781,8 @@ def write_gitignore(target):
 # -----------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
+    ap.add_argument('--version', action='version',
+                    version=f'agent-toolkit {__version__}')
     sub = ap.add_subparsers(dest='cmd', required=True)
 
     sp = sub.add_parser('init', help='install agent infra into a project')
@@ -579,6 +802,23 @@ def main():
     sp.add_argument('--python', help='override Python venv binary')
     sp.add_argument('--psql', help='override psql binary path')
     sp.add_argument('--project-name', help='override project name')
+    sp.add_argument('--apply', action='store_true',
+                    help='Actually write changes. Without this flag, update '
+                         'runs as a dry-run preview (default for safety).')
+    sp.add_argument('--no-backup', action='store_true',
+                    help='Skip creating *.bak.<ts> copies before overwriting '
+                         '(only meaningful with --apply).')
+    sp.add_argument('--diff', action='store_true', default=True,
+                    help='Show unified diff for modified files in dry-run '
+                         '(default: on).')
+    sp.add_argument('--no-diff', dest='diff', action='store_false',
+                    help='Suppress diff output in dry-run.')
+    sp.add_argument('--force', action='store_true',
+                    help='Overwrite SKIP_EXISTS files (canonical_decisions, '
+                         '.agent-toolkit/invariants.json). Default OFF.')
+    sp.add_argument('--force-dirty', action='store_true',
+                    help='Apply even when git working tree is dirty. '
+                         'Default OFF — refuse to overwrite uncommitted changes.')
     sp.set_defaults(func=cmd_update)
 
     sp = sub.add_parser('list-presets', help='list available presets')

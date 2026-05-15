@@ -1,0 +1,33 @@
+# Projects that consume agent-toolkit can wire this into their own
+# .pre-commit-config.yaml to keep generated agent infra in sync with
+# the toolkit upstream.
+#
+# Example .pre-commit-config.yaml entry in a consumer project:
+#
+#   repos:
+#     - repo: https://github.com/<you>/agent-toolkit
+#       rev: v0.2.0
+#       hooks:
+#         - id: agent-toolkit-update-check
+#
+# The hook fails (and emits a diff) if running `update` would change
+# any generated file — i.e. the toolkit upstream has moved forward
+# since the last update. Run `python <toolkit>/setup.py update <proj>
+# --apply` to sync, then re-commit.
+
+- id: agent-toolkit-update-check
+  name: agent-toolkit update check
+  description: Fail if generated agent infra is out of sync with toolkit templates.
+  entry: python setup.py update . --no-diff
+  language: system
+  pass_filenames: false
+  always_run: true
+  stages: [commit]
+
+- id: agent-toolkit-run-tests
+  name: agent-toolkit pytest
+  description: Run the installer test suite before each commit to the toolkit itself.
+  entry: python -m pytest tests/ -q
+  language: system
+  pass_filenames: false
+  files: ^(setup\.py|lib/.*\.py|tests/.*\.py|presets/.*\.json)$

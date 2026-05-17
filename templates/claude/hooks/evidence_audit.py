@@ -29,7 +29,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 if hasattr(sys.stdin, "buffer"):
@@ -139,6 +139,78 @@ def _extract_text_and_tools(turn: List[Dict[str, Any]]) -> Tuple[str, List[Dict[
     return ("\n".join(text_parts), tool_calls)
 
 
+# BUG-FIX B1 (2026-05-17): Verify Report header matcher must be case-insensitive
+# + tolerant of single/double hash + the inline header form `Verify Report —`
+# (no leading hash) which the verify-feature SKILL template also uses.
+_VERIFY_REPORT_HEADER_RE = re.compile(
+    r"(?:#+\s*|^\s*)verify\s*report\b",
+    re.IGNORECASE | re.UNICODE | re.MULTILINE,
+)
+_SEQUENTIAL_OVERRIDE_RE = re.compile(
+    r"sequential\s*[-—]\s*depends\s*on", re.IGNORECASE | re.UNICODE
+)
+
+
+def _verify_report_probe_spread(turn: List[Dict[str, Any]], text: str) -> Optional[str]:
+    """ADR-007 Bước 3 enforcement: Verify Report probes phải PARALLEL (1 message).
+
+    Returns reason string if violated, else None.
+
+    Conditions to flag:
+      - Response text matches /#+\\s*verify\\s*report/i.
+      - tool_use blocks split across > 1 assistant message.
+      - No assistant text mentions "sequential — depends on" (legit override).
+
+    Bash filter: only treat Bash tool_use as a probe when the command contains
+    an EVIDENCE_BASH_SUBSTRING token (`select`, `psql`, `curl`, etc.). Plain
+    Bash for restart/mkdir/kill is NOT a probe — counting them caused
+    false-positive blocks (BUG-FIX B2, 2026-05-17).
+    """
+    if not _VERIFY_REPORT_HEADER_RE.search(text):
+        return None
+    if _SEQUENTIAL_OVERRIDE_RE.search(text):
+        return None
+    # Count assistant messages containing >=1 probe-like tool_use.
+    msg_with_probes = 0
+    total_probes = 0
+    for msg in turn:
+        role = msg.get("role") or msg.get("type")
+        if role != "assistant":
+            continue
+        content = (msg.get("message") or {}).get("content") or msg.get("content")
+        if not isinstance(content, list):
+            continue
+        had_probe_here = False
+        for block in content:
+            if block.get("type") != "tool_use":
+                continue
+            name = block.get("name") or ""
+            is_probe = False
+            if name.startswith("mcp__"):
+                is_probe = True
+            elif name == "Bash":
+                # B2 fix: only count Bash as probe if command contains evidence tokens.
+                cmd = ((block.get("input") or {}).get("command") or "").lower()
+                if any(sub in cmd for sub in EVIDENCE_BASH_SUBSTRINGS):
+                    is_probe = True
+            if is_probe:
+                total_probes += 1
+                had_probe_here = True
+        if had_probe_here:
+            msg_with_probes += 1
+    if msg_with_probes <= 1 or total_probes <= 1:
+        return None
+    return (
+        "[evidence-audit] ADR-007 Bước 3 violation — Verify Report's probes spread "
+        f"across {msg_with_probes} assistant messages ({total_probes} probes total). "
+        "Verify phải capture 1 snapshot point-in-time → tất cả probe đi trong 1 "
+        "message duy nhất (multiple tool_use blocks song song).\n\n"
+        "Hợp lệ override: nếu probe N phụ thuộc output của probe N-1, ghi "
+        "`(sequential — depends on #<N-1>)` trong Verify Report → audit pass.\n\n"
+        "Sửa: re-emit Verify Report với tất cả probe trong 1 message duy nhất."
+    )
+
+
 def _has_disclaimer(text: str) -> bool:
     low = text.lower()
     return any(marker in low for marker in DISCLAIMER_MARKERS)
@@ -219,6 +291,14 @@ def main() -> int:
         _exit_allow()
     if "evidence-audit: skip" in text.lower():
         _exit_allow()
+
+    # ADR-007 Bước 3 enforcement — check BEFORE disclaimer/claim audit
+    # because Verify Report skipping parallel probes is a structural violation,
+    # not a claim-evidence one.
+    probe_spread_reason = _verify_report_probe_spread(turn, text)
+    if probe_spread_reason:
+        _emit_block(probe_spread_reason)
+
     if _has_disclaimer(text):
         _exit_allow()
 

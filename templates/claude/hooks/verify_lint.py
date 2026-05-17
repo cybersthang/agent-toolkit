@@ -1,0 +1,214 @@
+#!/usr/bin/env python
+"""Stop hook — auto-invoke `.codex/lint_verify_report.py` on Verify Reports.
+
+Closes the enforcement gap identified in code review 2026-05-17: previously
+`verify-feature/SKILL.md` Bước 8 said "BẮT BUỘC chạy lint" but no hook
+enforced it. Now: when the agent emits a response containing a Verify Report
+header, this hook extracts the spec slug + report text and runs the lint
+script. If lint exits non-zero (missing acceptance_evals coverage), the Stop
+is BLOCKED with the missing eval ids so the agent must re-emit.
+
+Detection
+---------
+Looks in the final assistant message text for:
+  - Verify Report header (regex `(?:#+\s*|^\s*)verify\s*report\b`, case-insensitive)
+  - Spec slug — pattern `Verify Report\s*[-—]\s*<slug>` OR `Spec: .agent-toolkit/specs/<slug>.md`
+
+If slug cannot be inferred, hook silent (fail-open).
+
+Lint invocation
+---------------
+Runs `<PYTHON_BIN> <WORKSPACE>/.codex/lint_verify_report.py <slug>` with the
+response text piped to stdin. Exit code:
+  0 → allow Stop
+  1 → BLOCK with "missing N evals: <ids>" reason
+  3 → allow (spec has no acceptance_evals — lint not applicable)
+  any other → allow (script error; don't punish agent for infra)
+
+Loops are bounded: if `stop_hook_active` is set in envelope, exit allow.
+"""
+from __future__ import annotations
+
+import io
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+
+if hasattr(sys.stdin, "buffer"):
+    sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace")
+if hasattr(sys.stdout, "buffer"):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
+
+_VERIFY_REPORT_HEADER_RE = re.compile(
+    r"(?:#+\s*|^\s*)verify\s*report\b",
+    re.IGNORECASE | re.UNICODE | re.MULTILINE,
+)
+
+# Patterns to extract spec slug from Verify Report text. Tried in order.
+_SLUG_PATTERNS = [
+    re.compile(r"verify\s*report\s*[-—]\s*`?([a-z0-9][a-z0-9_-]+)`?",
+               re.IGNORECASE | re.UNICODE),
+    re.compile(r"\.agent-toolkit/specs/([a-z0-9][a-z0-9_-]+)\.md",
+               re.IGNORECASE | re.UNICODE),
+    re.compile(r"\bspec\s*[:=]\s*`?([a-z0-9][a-z0-9_-]+)`?",
+               re.IGNORECASE | re.UNICODE),
+]
+
+
+def _exit_allow() -> None:
+    sys.exit(0)
+
+
+def _emit_block(reason: str) -> None:
+    print(json.dumps({"decision": "block", "reason": reason}, ensure_ascii=False))
+    sys.exit(0)
+
+
+def _read_transcript(path: Path) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    try:
+        with path.open(encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    out.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        return []
+    return out
+
+
+def _last_assistant_text(messages: List[Dict[str, Any]]) -> str:
+    """Return the text from the final assistant message in transcript."""
+    for msg in reversed(messages):
+        role = msg.get("role") or msg.get("type")
+        if role != "assistant":
+            continue
+        content = (msg.get("message") or {}).get("content") or msg.get("content")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return "\n".join(
+                block.get("text", "") for block in content
+                if block.get("type") == "text"
+            )
+    return ""
+
+
+def _extract_spec_slug(text: str, workspace: Optional[Path] = None) -> Optional[str]:
+    """Extract spec slug from report text.
+
+    FIX-4 (2026-05-17): collect ALL candidate slugs across patterns, then
+    return the first one that has an actual spec file at
+    `<workspace>/.agent-toolkit/specs/<slug>.md`. Avoids false-positive
+    captures like 'failed' or 'NEEDS' that appear in Verify Report fail
+    summaries. Falls back to first non-empty candidate if workspace unknown
+    (caller handles spec-not-found gracefully).
+    """
+    candidates: List[str] = []
+    for pat in _SLUG_PATTERNS:
+        for m in pat.finditer(text):
+            slug = m.group(1).strip()
+            if slug and len(slug) <= 100 and not slug.isdigit():
+                if slug not in candidates:
+                    candidates.append(slug)
+    if not candidates:
+        return None
+    if workspace is not None:
+        specs_dir = workspace / ".agent-toolkit" / "specs"
+        for slug in candidates:
+            if (specs_dir / f"{slug}.md").exists():
+                return slug
+    return candidates[0]
+
+
+def _find_workspace_root(start: Path) -> Optional[Path]:
+    cursor = start.resolve()
+    while True:
+        if (cursor / ".agent-toolkit" / "specs").is_dir():
+            return cursor
+        if cursor.parent == cursor:
+            return None
+        cursor = cursor.parent
+
+
+def main() -> int:
+    raw = sys.stdin.read()
+    if not raw.strip():
+        _exit_allow()
+    try:
+        envelope = json.loads(raw)
+    except json.JSONDecodeError:
+        _exit_allow()
+
+    # Avoid re-entrance loop.
+    if envelope.get("stop_hook_active"):
+        _exit_allow()
+
+    transcript_path = envelope.get("transcript_path")
+    if not transcript_path:
+        _exit_allow()
+    tpath = Path(transcript_path)
+    if not tpath.exists():
+        _exit_allow()
+    messages = _read_transcript(tpath)
+    if not messages:
+        _exit_allow()
+
+    text = _last_assistant_text(messages)
+    if not text or not _VERIFY_REPORT_HEADER_RE.search(text):
+        _exit_allow()
+
+    workspace_str = envelope.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    workspace = _find_workspace_root(Path(workspace_str)) or Path(workspace_str).resolve()
+
+    slug = _extract_spec_slug(text, workspace=workspace)
+    if not slug:
+        # Can't determine which spec — fail-open with diagnostic.
+        _exit_allow()
+
+    spec_path = workspace / ".agent-toolkit" / "specs" / f"{slug}.md"
+    if not spec_path.exists():
+        # Slug parsed but spec file missing — agent typo'd; fail-open.
+        _exit_allow()
+
+    lint_script = workspace / ".codex" / "lint_verify_report.py"
+    if not lint_script.exists():
+        # No lint script installed — toolkit incomplete; fail-open.
+        _exit_allow()
+
+    python_bin = sys.executable
+    try:
+        result = subprocess.run(
+            [python_bin, str(lint_script), slug, "--workspace", str(workspace)],
+            input=text,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        _exit_allow()
+
+    if result.returncode == 1:
+        _emit_block(
+            f"[verify-lint] Verify Report cho `{slug}` thiếu coverage:\n\n"
+            + (result.stderr or "<no detail>")
+            + "\n\nFix: re-emit Verify Report cite các eval id thiếu (mỗi id trong "
+            "1 row của bảng `| <eid> | <result> | ...`). Hoặc nếu eval không "
+            "còn applicable, sửa spec frontmatter để remove entry đó trước."
+        )
+    # exit_code 0, 2, 3, or other → allow
+    _exit_allow()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

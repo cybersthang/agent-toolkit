@@ -30,7 +30,9 @@ if hasattr(sys.stdout, "buffer"):
 
 MAX_INVARIANTS = 6
 MAX_ADRS = 3
-MAX_OUTPUT_CHARS = 1500
+MAX_OUTPUT_CHARS = 1800  # +300 chars headroom for autonomy banner
+
+AUTONOMY_REL = ".agent-toolkit/.autonomy_active.json"
 
 
 def _load_json(path: Path) -> Dict[str, Any]:
@@ -88,6 +90,71 @@ def _format_recent_adrs(decision_log: str) -> str:
     return "\n".join(lines)
 
 
+def _format_autonomy(workspace: Path) -> str:
+    """Render the AUTONOMY banner if `.autonomy_active.json` exists + not expired.
+
+    Output is the load-bearing signal that tells the classifier the DEV has
+    explicitly approved dangerous-but-routine ops (kill process, restart
+    Odoo, drop test table, etc.) for the current spec. Without this banner,
+    the classifier reads each prompt in isolation and refuses kill/restart.
+    See ADR-002 in `.agent-toolkit/decision-log.md`.
+
+    Returns "" when:
+      - File missing.
+      - File expired (now > expires_at).
+      - File malformed.
+    """
+    path = workspace / AUTONOMY_REL
+    if not path.exists():
+        return ""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(data, dict):
+        return ""
+
+    from datetime import datetime, timezone
+    expires_str = data.get("expires_at") or ""
+    spec = data.get("spec") or "<unknown>"
+    scopes = data.get("scopes") or []
+    blocked = data.get("still_blocked") or []
+
+    now = datetime.now()
+    expires_dt = None
+    if expires_str:
+        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M",
+                    "%Y-%m-%dT%H:%M"):
+            try:
+                expires_dt = datetime.strptime(expires_str.split(".")[0].split("+")[0], fmt)
+                break
+            except ValueError:
+                continue
+
+    if expires_dt and now > expires_dt:
+        # Expired — silently drop, do not banner
+        return ""
+
+    remaining = ""
+    if expires_dt:
+        delta = expires_dt - now
+        hours = int(delta.total_seconds() // 3600)
+        mins = int((delta.total_seconds() % 3600) // 60)
+        remaining = f" · còn {hours}h{mins:02d}m" if hours else f" · còn {mins}m"
+
+    scopes_str = ", ".join(scopes[:3]) + ("…" if len(scopes) > 3 else "")
+    blocked_str = ", ".join(blocked[:3])
+
+    return (
+        f"🚀 **AUTONOMY ON** · spec=`{spec}`{remaining}\n"
+        f"  · Approved scopes: {scopes_str}\n"
+        f"  · Always blocked: {blocked_str}\n"
+        f"  · Agent được tự do trong scopes — DEV đã approve qua `/go`. "
+        f"Cắt sớm: `/stop-autonomy`. (Vẫn dưới `invariant-guard` + "
+        f"`evidence-audit` + `debug-sentry`.)"
+    )
+
+
 def _format_stack(cfg: Dict[str, Any]) -> str:
     if not cfg:
         return ""
@@ -120,6 +187,13 @@ def _build_brief(workspace: Path) -> str:
     stack = _format_stack(cfg)
     if stack:
         sections.append(stack)
+
+    # Autonomy banner — placed BEFORE invariants so it's the most prominent
+    # signal in every turn the flag is active. The classifier reads from
+    # the top of the SessionStart additional context.
+    autonomy = _format_autonomy(workspace)
+    if autonomy:
+        sections.append(autonomy)
 
     inv = _format_invariants(invariants)
     if inv:

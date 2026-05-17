@@ -26,6 +26,18 @@
     "jira_production",
     "jira_preproduction"
   ],
+  "external_mcp_servers": {
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest",
+        "--browser=chromium",
+        "--headless",
+        "--isolated"
+      ]
+    }
+  },
   "db": {
     "default_db": "Nakivo01",
     "default_port": 5432,

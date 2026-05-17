@@ -115,18 +115,27 @@ Pair with `spec-driven-feature` (provides acceptance criteria),
 - A pre-existing test was deleted or weakened to avoid a failure — stop
   and ask the user; tests are not noise.
 
-## Output contract (per cycle)
+## Output contract (per cycle) — bắt buộc theo ADR-003
 
-When this skill is active, each cycle reports four lines:
+When this skill is active, each cycle reports six lines (4 cũ + 2 dòng mới
+bắt buộc theo ADR-003 "test phải real-data + regression sweep"):
 
 ```
-RED:    tests/<file>.py::<method> — failed at <line> (<error class>)
-GREEN:  <files changed, LOC>; test passed in <Ns>
-REFACTOR: <one-line summary of cleanup, or "no refactor needed">
-REGRESSION: <N sibling tests run, all passed>  (or list failures)
+RED:        tests/<file>.py::<method> — failed at <line> (<error class>)
+data_probe: <ORM expression đã chạy qua realdata_test MCP — vd:
+            self.env['res.partner'].search([('nakivo_flag','=',True)]).ids = [12,34]>
+GREEN:      <files changed, LOC>; test passed in <Ns>
+REFACTOR:   <one-line summary of cleanup, or "no refactor needed">
+REGRESSION (all sibling tests trong cùng dir module):
+            <N sibling tests run, all passed>  (hoặc list failures)
+cross_module_smoke: <nếu có @api.depends chéo module — liệt kê module + status;
+                   hoặc "n/a — feature isolated">
 ```
 
-A cycle without these four lines isn't proven complete — finish it.
+**A cycle without these six lines isn't proven complete — finish it.**
+
+Nếu thiếu `data_probe` → test có thể là mock-only (vi phạm ADR-003).
+Nếu thiếu `REGRESSION (all)` → có thể có hidden regression trong cùng module.
 
 ## Sibling skills
 

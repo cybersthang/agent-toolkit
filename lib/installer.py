@@ -40,10 +40,15 @@ _PRESET_KNOWN = {
     'description', 'stack', 'stack_label', 'response_language',
     'addon_roots', 'mcp_servers', 'db', 'rules', 'skills', 'memory_packs',
     'env_prefix',
+    # External (non-Python) MCP servers — npm packages, binaries, etc.
+    # Stored as dict {server_name: {command, args, env?}}. Merged with the
+    # Python `mcp_servers` list in `_build_mcp_servers_payload`. Used for
+    # off-the-shelf MCP servers (e.g. `@playwright/mcp` via npx).
+    'external_mcp_servers',
     # Inheritance + additive overrides (Tier 3 extensibility)
     'extends', 'addon_roots_append', 'mcp_servers_append',
     'mcp_servers_remove', 'rules_append', 'skills_append',
-    'memory_packs_append',
+    'memory_packs_append', 'external_mcp_servers_append',
 }
 
 
@@ -121,10 +126,16 @@ def resolve_preset(name: str, presets_dir: Path,
             continue
         if k.endswith('_append'):
             # `addon_roots_append: [...]` extends parent's `addon_roots`.
+            # For dict fields (e.g. `external_mcp_servers`), `_append` is a
+            # shallow merge (child entries overlay parent entries).
             base_key = k[:-len('_append')]
-            base = list(merged.get(base_key, []) or [])
-            base.extend(v)
-            merged[base_key] = base
+            base_val = merged.get(base_key)
+            if isinstance(base_val, dict) and isinstance(v, dict):
+                merged[base_key] = {**base_val, **v}
+            else:
+                base = list(base_val or [])
+                base.extend(v)
+                merged[base_key] = base
         elif k == 'mcp_servers_remove':
             base = [m for m in (merged.get('mcp_servers') or []) if m not in v]
             merged['mcp_servers'] = base

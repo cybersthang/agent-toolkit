@@ -107,6 +107,7 @@ def write_project_config(target: Path, ctx: Dict[str, Any], preset_name: str):
         },
         'addon_roots': list(ctx.get('ADDON_ROOTS', []) or []),
         'mcp_servers': list(ctx.get('MCP_SERVERS', []) or []),
+        'external_mcp_servers': dict(ctx.get('EXTERNAL_MCP_SERVERS', {}) or {}),
         'env_prefix': ctx.get('ENV_PREFIX', ''),
         'db': {
             'default_db': ctx.get('DEFAULT_DB', ''),
@@ -218,6 +219,20 @@ def cmd_init(args):
         or preset.get('mcp_servers', [])
         or []
     )
+    # External (non-Python) MCP servers shipped verbatim from preset config.
+    # Used for npm-based MCPs like `@playwright/mcp`. Project-level
+    # `external_mcp_servers` overrides preset; otherwise preset wins.
+    # Stays an empty dict when neither defines any.
+    external_mcp_servers = (
+        project_cfg.get('external_mcp_servers')
+        if isinstance(project_cfg.get('external_mcp_servers'), dict)
+        else None
+    )
+    if external_mcp_servers is None:
+        external_mcp_servers = preset.get('external_mcp_servers') or {}
+    if not isinstance(external_mcp_servers, dict):
+        external_mcp_servers = {}
+
     db_cfg = project_cfg.get('db') or preset.get('db', {}) or {}
     response_language = (
         project_cfg.get('response_language')
@@ -257,6 +272,7 @@ def cmd_init(args):
         'DEFAULT_PG_PORT': str(db_cfg.get('default_port', 5432)),
         'MCP_SERVERS': mcp_servers,
         'MCP_SERVERS_CSV': ', '.join(mcp_servers),
+        'EXTERNAL_MCP_SERVERS': external_mcp_servers,
         'PRESET_NAME': args.preset,
         'RESPONSE_LANGUAGE': response_language,
         'ENV_PREFIX': env_prefix,
@@ -712,14 +728,38 @@ def seed_memory(preset, ctx, target, force):
 
 
 def _build_mcp_servers_payload(ctx, target):
-    """Build the shared `{servers, count}` payload reused by every agent harness."""
+    """Build the shared mcpServers payload reused by every agent harness.
+
+    Two sources merged:
+      1. `ctx['MCP_SERVERS']` — list of Python MCP names with sibling
+         `start_<name>_mcp.py` scripts (codebase, postgres, ...).
+      2. `ctx['EXTERNAL_MCP_SERVERS']` — dict of external servers shipped
+         verbatim (command + args + optional env). Used for npm packages
+         like `@playwright/mcp` or any non-Python MCP. Stored generic; the
+         installer does NOT hardcode any specific server name.
+    """
     py = ctx['PYTHON_BIN'] or 'python'
     codex = (target / '.codex').as_posix()
     servers = {}
-    for s in ctx['MCP_SERVERS']:
+    # Python MCP servers (have sibling start scripts)
+    for s in ctx.get('MCP_SERVERS') or []:
         starter = f'{codex}/start_{s}_mcp.py'
         if (target / '.codex' / f'start_{s}_mcp.py').exists():
             servers[s] = {'command': py, 'args': [starter]}
+    # External MCP servers (npm / binary — config shipped verbatim from preset)
+    external = ctx.get('EXTERNAL_MCP_SERVERS') or {}
+    for name, spec in external.items():
+        if not isinstance(spec, dict):
+            continue
+        entry = {}
+        if 'command' in spec:
+            entry['command'] = spec['command']
+        if 'args' in spec:
+            entry['args'] = list(spec.get('args') or [])
+        if 'env' in spec:
+            entry['env'] = dict(spec.get('env') or {})
+        if entry:
+            servers[name] = entry
     return servers
 
 

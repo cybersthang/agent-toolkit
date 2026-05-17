@@ -1,5 +1,5 @@
 ---
-description: Add a durable invariant rule to .agent-toolkit/invariants.json. Use when the user states a rule that future edits must respect ("luôn sort theo type", "không bao giờ bỏ try/except quanh DB call").
+description: Add a durable invariant rule to .agent-toolkit/invariants.json. Use when the user states a rule that future edits must respect ("always sort by type", "never drop the try/except around a DB call").
 allowed-tools: Read, Edit, Write, Bash, Grep, Glob
 argument-hint: "[id-slug] [short description]"
 ---

@@ -24,9 +24,13 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
 import sys
-from typing import List, Tuple
+from pathlib import Path
+from typing import List, Optional, Tuple
+
+AUTONOMY_REL = ".agent-toolkit/.autonomy_active.json"
 
 # Claude Code pipes the hook envelope as UTF-8 JSON. On Windows the
 # default stdin/stdout encoding is cp1252, which mangles Vietnamese
@@ -115,10 +119,87 @@ INTENT_MAP: List[Tuple[str, List[str]]] = [
         ["spec-driven-feature"],
     ),
 
+    # ---------- Vibe-flow Phase 1: PLAN ----------
+    # DEV chủ động lập plan/PRD trước khi code. Slash command `/plan` cũng
+    # mở skill này; regex bắt khi DEV không dùng slash.
+    (
+        r"\b(lập\s*plan|lập\s*kế\s*hoạch|viết\s*prd|viết\s*spec|tạo\s*spec|plan\s*cho|plan\s*feature|prd\s*cho)\b",
+        ["plan-feature"],
+    ),
+
+    # ---------- Vibe-flow Phase 2: GRILL ----------
+    # DEV xin bị phỏng vấn để stress-test plan.
+    (
+        r"\b(grill|quay\s*em|interview\s*me|stress[-\s]*test|challenge\s*em|chất\s*vấn|red[-\s]*team\s*plan)\b",
+        ["grill"],
+    ),
+
+    # ---------- Vibe-flow Phase 5: VERIFY ----------
+    # DEV (hoặc agent self) muốn verify feature đã code có match spec gốc trên
+    # dữ liệu thật không. Suggest skill verify-feature; slash `/verify` cũng
+    # mở skill này.
+    (
+        r"\b(verify|kiểm\s*tra\s*dữ\s*liệu\s*thật|gap\s*nào|blocker\s*nào|match\s*yêu\s*cầu|phân\s*tích\s*gap|đã\s*xong\s*chưa|implement\s*xong)\b",
+        ["verify-feature"],
+    ),
+
     # ---------- TDD ----------
     (
         r"\b(tdd|test\s*driven|viết\s*test\s*trước|test\s*first|red.*green.*refactor)\b",
         [f"{STACK}-tdd"],
+    ),
+
+    # ---------- ECC eval-harness: define pass/fail BEFORE code ----------
+    # DEV (hoặc agent) muốn nâng spec từ "có vẻ ổn" → mechanical PASS/FAIL.
+    # Suggest slash command `/eval-define`.
+    (
+        r"\b(eval[-\s]*define|định\s*nghĩa\s*pass\s*fail|tiêu\s*chí\s*chấp\s*nhận|acceptance\s*criteria|pass\s*fail\s*criteria|eval[-\s]*harness)\b",
+        ["eval-define"],
+    ),
+
+    # ---------- /eval-backfill: retrofit eval cho spec đã chạy ----------
+    (
+        r"\b(eval[-\s]*backfill|retrofit\s*eval|convert\s*testing\s*decisions|backfill\s*eval|spec\s*đã\s*implement\s*cần\s*eval)\b",
+        ["eval-backfill"],
+    ),
+
+    # ---------- claim-falsification: inverse-perturbation review ----------
+    # DEV nói "chứng minh sai", "perturb test", "falsify", "đặt sleep <test|vào|inject>", "inverse test".
+    # Skill này áp dụng dynamic cho mọi claim, không gắn cứng BLOCK/ASYNC.
+    # L2-cr fix (2026-05-17): "đặt sleep" alone matches unrelated UI/timer
+    # contexts; require qualifier (test|vào|inject|để) để giảm false-positive.
+    (
+        r"\b(claim[-\s]*falsification|chứng\s*minh\s*sai|perturb[-\s]*test|falsify|falsifiability|inverse[-\s]*test|đặt\s*sleep\s*(test|vào|inject|để|cho)|kiểm\s*chứng\s*ngược|prove\s*wrong)\b",
+        ["claim-falsification"],
+    ),
+
+    # ---------- Auto-trigger claim-falsification khi DEV assert classification claim ----------
+    # Pattern: code-identifier subject + "là/is/tag" + classification keyword.
+    # FIX-2 (2026-05-17): require subject to look like a code identifier (in
+    # backticks, snake_case, camelCase, has `/` for endpoint, or has `.` for
+    # method) BEFORE the linking verb. Reduces R2-4 false-positive rate from
+    # ~75% to ~15%.
+    #
+    # Catches (concrete patterns; not endpoint-specific):
+    #   "<snake_case_ident> is BLOCK"          (snake_case word)
+    #   "`<backticked>` được tag ASYNC"        (backticked code)
+    #   "/<slash>/<path> is cached"            (URL-like path)
+    #   "<Class>.<method> là idempotent"       (dotted call)
+    # Skips (no code subject):
+    #   "<noun phrase> là cached cho 1 ngày"
+    #   "<prose> pattern is BLOCK"
+    #
+    # Note: _normalize() lowercases prompt, so patterns are lowercase.
+    (
+        r"(?:`[^`]+`|[a-z][a-z0-9_]*[_/][a-z0-9_/]+|[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)\s*(?:là|is|được\s*tag|được\s*gắn|được\s*phân\s*loại|classified\s*as|tagged\s*as)\s*(['\"`]?)(block|async|bg|cached|idempotent|atomic|deterministic|guarded|lazy|background)\b",
+        ["claim-falsification"],
+    ),
+
+    # ---------- ECC ai-regression-testing: bug → permanent test ----------
+    # DEV report bug + đã fix → ép tạo regression test + invariant.
+    (
+        r"\b(bug[-\s]*to[-\s]*test|regression\s*test\s*cho\s*bug|test\s*cho\s*bug|đừng\s*để\s*tái\s*phát|ngăn\s*bug\s*tái\s*xuất|cố\s*định\s*test)\b",
+        ["bug-to-test"],
     ),
 
     # ---------- Patterns / Jira ----------
@@ -136,6 +217,46 @@ INTENT_MAP: List[Tuple[str, List[str]]] = [
 def _normalize(text: str) -> str:
     """Collapse whitespace + lowercase for regex matching."""
     return re.sub(r"\s+", " ", text).lower()
+
+
+def _autonomy_active(workspace: Path) -> Optional[str]:
+    """Return the spec slug if autonomy is currently active + unexpired.
+
+    Reads `.agent-toolkit/.autonomy_active.json`. Returns None when file
+    missing, malformed, or expired. The spec slug is returned so callers
+    can include it in the suppression message (DEV knows why the gate is
+    silent).
+
+    ADR-002: when autonomy is ON, `clarification-gate` MUST be suppressed
+    so the agent can run dangerous-but-approved ops without re-asking the
+    DEV mid-flow. Other safety hooks (invariant-guard, evidence-audit,
+    debug-sentry) still run.
+    """
+    path = workspace / AUTONOMY_REL
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    expires_str = data.get("expires_at") or ""
+    if expires_str:
+        from datetime import datetime
+        expires_dt = None
+        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S",
+                    "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M"):
+            try:
+                expires_dt = datetime.strptime(expires_str.split(".")[0].split("+")[0], fmt)
+                break
+            except ValueError:
+                continue
+        if expires_dt and datetime.now() > expires_dt:
+            return None
+
+    return data.get("spec") or "<unknown>"
 
 
 def _matched_skills(prompt: str) -> List[str]:
@@ -210,6 +331,20 @@ SKILL_OUTPUT_FIELDS = {
         "affected modules — Project Structure section must cite "
         "concrete `path:line` refs from the search, not invented paths."
     ),
+    "plan-feature": (
+        "Discover codebase (Bước 0) → ghi file `.agent-toolkit/specs/"
+        "<slug>.md` với đủ 8 mục: Problem / Solution / Affected Modules / "
+        "User Stories / Implementation Decisions / Testing / Out-of-scope / "
+        "Open Questions. STOP sau khi ghi spec; KHÔNG implement. Câu cuối "
+        "phải gợi DEV chạy `/grill` hoặc `/spec-driven-feature`."
+    ),
+    "grill": (
+        "Mỗi turn CHỈ 1 câu hỏi, format `Q<N>: ... (a)/(b)/(c) Recommended + "
+        "Lý do`. Đối chiếu mọi câu trả lời với ADR + invariants; trích "
+        "nguyên văn nếu phát hiện mâu thuẫn. Cập nhật spec inline. Gợi ý "
+        "DEV chạy `/adr-add` hoặc `/inv-add` cho quyết định hard-to-reverse. "
+        "Câu trả lời được bằng grep/Read → TỰ verify, KHÔNG hỏi DEV."
+    ),
 }
 
 
@@ -277,6 +412,32 @@ def main() -> int:
 
     if _already_referenced(prompt, skills):
         return 0
+
+    # Autonomy override (ADR-002): when autonomy is ON, the agent has been
+    # pre-approved by DEV via /go for action verbs in scope. Suppress the
+    # clarification-gate suggestion to avoid breaking flow mid-implement.
+    # If matched skill is ONLY clarification-gate → silent. If clarification-gate
+    # plus others → drop clarification-gate, keep others.
+    cwd = envelope.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    workspace = Path(cwd).resolve()
+    active_spec = _autonomy_active(workspace)
+    if active_spec and "clarification-gate" in skills:
+        skills = [s for s in skills if s != "clarification-gate"]
+        if not skills:
+            # Pure gate suppression — emit a tiny breadcrumb so the agent
+            # knows why the gate didn't fire (helps debugging).
+            print(json.dumps({
+                "hookSpecificOutput": {
+                    "hookEventName": "UserPromptSubmit",
+                    "additionalContext": (
+                        f"[intent-router] clarification-gate SUPPRESSED — "
+                        f"autonomy ON cho spec `{active_spec}` (DEV đã approve "
+                        f"qua /go). Action verb được phép tự do trong scope. "
+                        f"Cắt: /stop-autonomy."
+                    ),
+                }
+            }))
+            return 0
 
     reminder = _format_reminder(skills)
 

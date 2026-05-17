@@ -11,6 +11,18 @@
   },
   "addon_roots": ["addons", "custom_addons", "enterprise"],
   "mcp_servers": ["codebase", "postgres", "realdata_test"],
+  "external_mcp_servers": {
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest",
+        "--browser=chromium",
+        "--headless",
+        "--isolated"
+      ]
+    }
+  },
   "db": {
     "default_db": "odoo17_dev",
     "default_port": 5432,

@@ -154,6 +154,7 @@ Output : 1 perturb-test design, machine-runnable
 | Hardcode "BLOCK / ASYNC" into the skill | Generic "P holds" / "NOT P" — the recipe table has 15 examples + derivation rule for custom cases |
 | Hardcode endpoint / model name in the recipe body | Recipe body uses `<endpoint>` / `<model>` placeholders, instantiated from claim_text at parse time |
 | Measure Y by querying the field the classifier writes (e.g. `rpc_role`) | DO NOT — that is circular. Y must be INDEPENDENT of the classifier (e.g. measure time-to-UI-mount via Playwright DOM, not via the dashboard read endpoint) |
+| Pick Y as a proxy that *usually* tracks the property (visual paint event, log line count, surrogate metric) | DO NOT — same trap as the correlational-signal trap (see `grill/SKILL.md` § Direct vs Correlational). Y must DIRECTLY observe the property. If only a proxy is available the claim is non-falsifiable until a direct observable is engineered. |
 | Inject D into a file outside `addons_path` (or equivalent for non-Odoo) | Before injecting, verify the file path is loaded by the running process (`grep` config / `ps` cmdline) |
 | Run baseline + perturbation only once each | Minimum 3 runs per side, take the median — single-run jitter dominates |
 | Forget to revert D | The pattern REQUIRES revert after Δ_measure; the agent self-verifies `grep PERTURB-TEST` is empty before STOP |

@@ -82,12 +82,33 @@ Output a markdown table:
 | C    | <fallback>     | (none)       | tag = L_default              |
 ```
 
-### Step 2 — Detect path/signal asymmetry
+### Step 2 — Detect path/signal asymmetry AND correlational signals
 
-Read the matrix. **Flag a path whose signal set is a strict subset of
-another path's signal set** (asymmetry). Example: A reads {s1, s2}, B
-reads {s1, s2, s3} — A is missing s3. If both paths handle inputs of the
-same kind, A will misclassify whenever s3 is the deciding factor.
+Read the matrix. Two static checks before sampling:
+
+**Check 2a — Path asymmetry.** Flag a path whose signal set is a strict
+subset of another path's signal set. Example: A reads {s1, s2}, B reads
+{s1, s2, s3} — A is missing s3. If both paths handle inputs of the same
+kind, A will misclassify whenever s3 is the deciding factor.
+
+**Check 2b — Correlational signals (the deterministic-trap).** For each
+signal in `S_signals`, ask: does this signal DIRECTLY observe the target
+property, or does it correlate with it? A rule like "decide tag T by
+comparing X to a threshold derived from observation Y" is **heuristic** if
+Y is a PROXY rather than a direct measurement of the property T is
+about. The implementation may be deterministic (same input → same tag)
+but the model is correlational. Flag any signal where:
+
+- The signal name and the property name describe different concepts
+  (e.g. signal = "paint event timestamp", property = "view ready to use").
+- The rule reads a wall-clock boundary derived from one observation as a
+  proxy for a logical predicate that has direct evidence elsewhere
+  (membership in an inflight set, promise-resolve order, await-chain
+  dependency).
+
+Correlational signals are heuristic and must be replaced by direct
+signals when any direct alternative exists. See `grill/SKILL.md` §
+"Direct vs Correlational signal" for the fix recipe.
 
 Heuristic phrasing for the agent:
 

@@ -264,6 +264,39 @@ Distinctions:
 | **Rule-based pattern match**: exact regex → match/no-match | **Fuzzy match**: similarity score, threshold without justification |
 | **State machine**: input transition → determined next state | **Probabilistic**: top-k candidates, pick the one that looks right |
 | **Deterministic lookup**: hashmap with clear domain | **Best-effort guess**: "probably X based on experience" |
+| **Direct signal**: comparison reads the property in question (membership, equality on observed value) | **Correlational signal**: comparison reads a PROXY that *usually* tracks the property but can diverge under specific input shapes |
+
+### 🛑 Direct vs Correlational signal (the deterministic-trap)
+
+A rule can be *implementation-deterministic* (same input → same output, 10/10
+runs) AND STILL BE HEURISTIC — when the input itself is a PROXY rather than a
+direct observation of the target property. This trap escapes the
+deterministic self-check above because the function IS deterministic; only
+the SEMANTIC MAPPING is correlational. Symptoms to catch in grill:
+
+- The signal name describes one thing, the rule claims a different thing.
+  Example pattern: "X happens after `largest_paint_event` → user already saw
+  view" — paint event is a VISUAL signal, "user saw" is a PERCEPTUAL claim,
+  "view usable" is an INTERACTIVITY claim. The three may diverge (skeleton
+  paint with no data, painted-but-not-interactive, etc).
+- The rule uses a wall-clock boundary derived from one observation as a
+  proxy for a logical predicate that has direct observable evidence
+  elsewhere (e.g. promise resolve set, await-chain membership, dependency
+  graph).
+- Pull-quote test: rewrite the rule as "X iff Y". If Y is a different
+  variable from the property the rule is supposed to decide → correlational.
+
+**Fix recipe** when this is caught:
+
+1. State the target property in plain language ("did this RPC's promise
+   gate the awaited chain?").
+2. Enumerate signals that DIRECTLY observe that property (membership in a
+   set of inflight URLs, comparison to a promise-resolve timestamp,
+   await-chain dependency).
+3. If at least one direct signal exists → use it; the correlational signal
+   is dropped.
+4. If no direct signal exists in the runtime → escalate Layer 1→3 of the
+   Anti-hardcode ladder; the answer is not yet ready.
 
 If the agent must offer a "guess" as an option (e.g. ML classify, fuzzy
 search), it is the **last-resort fallback** and must:

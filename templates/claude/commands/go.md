@@ -29,6 +29,17 @@ không cần DEV approve từng phát. Authorization được persist trong
    - Nếu `status: draft` → cảnh báo "spec chưa qua grill, autonomy với spec yếu nguy hiểm — confirm bằng cách gõ lại lệnh kèm `--force`".
    - Nếu `status: grilled` hoặc cao hơn → OK.
 
+2.5. **Pre-flight check — `acceptance_evals` exists** (added 2026-05-17, Vibe-flow 3-command):
+   - Read frontmatter `acceptance_evals:` key.
+   - Nếu block tồn tại → OK, proceed.
+   - Nếu MISSING + `eval_status` ≠ `skipped-by-user`:
+     - In warning: "Spec không có acceptance_evals. /grill thông thường auto-emit ở Step A end-of-grill — nếu skip → /verify về sau sẽ ad-hoc, có thể MISS bug."
+     - Đề xuất 2 path:
+       - `/eval-define <slug>` trước rồi gõ lại `/go` (Recommended)
+       - `/go <slug> --no-evals` để xác nhận DEV cố ý skip (rare case: spike, no testable claims)
+     - REFUSE start autonomy đến khi DEV quyết.
+   - Nếu `eval_status: skipped-by-user` → proceed với warning banner trong autonomy state.
+
 3. **Compute `expires_at`** từ `--until`. Format ISO local timezone.
 
 4. **Check autonomy đang ON**:

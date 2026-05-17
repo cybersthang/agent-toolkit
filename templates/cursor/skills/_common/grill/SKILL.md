@@ -140,6 +140,42 @@ The recipe catalog covers: BLOCK/ASYNC (#1-#2), caching (#3, #9), idempotency
 uniqueness (#11), retry (#12), independence (#13), latency (#14),
 module-agnostic (#15) — full details in `[[claim-falsification]]`.
 
+### 🛑 Q9 — Classifier scope gate (system-wide audit)
+
+Q8 falsifies ONE claim. If the decision under settlement will be
+implemented as a **classifier emitting one of N labels across many
+inputs** (writes a tag/role/severity/bucket field on per-row records),
+Q8's single perturb-test is insufficient — it proves nothing about the
+N-1 inputs the spec didn't mention.
+
+Trigger Q9 whenever Q8's `subject_X` is **a function that emits a label
+per input** (not a single predicate). Signs:
+
+- The spec says "classify X as A/B/C" rather than "X has property P".
+- The implementation will write a column / log field / dashboard cell
+  per processed record.
+- The user describes input as plural ("each request", "every row",
+  "all events").
+
+Q9 format:
+
+```
+Q<N+1>: After Q8 proves the rule on one example, how do you check the
+        rule holds across the long tail of inputs?
+  (a) **Recommended — Output audit** (`[[classifier-output-audit]]`):
+      sample K rows from the output store, re-derive expected tag from
+      raw signals (NOT from classifier output), compute mismatch rate,
+      perturb-test the largest mismatch group.
+  (b) Diff-test against ground-truth dataset (when one exists).
+  (c) "Skip — feature is single-shot, no per-row tag" → only valid if
+      the classifier truly emits one prediction per call; otherwise
+      this is a deferral, not an answer.
+```
+
+Persist the audit design into spec frontmatter (`feature_kind:
+classification` + `audit_eval:` block). `[[verify-feature]]` Step 2 will
+read that frontmatter and invoke the audit before User-Story probes.
+
 ### Evidence bar (ECC code-reviewer pattern) for HIGH-stakes questions
 
 A grill question is *HIGH-stakes* when the outcome will:
@@ -253,7 +289,22 @@ wrong; refactor.
 
 ### End of grill
 
-The user types "done" / "exit grill" → print the report:
+The user types "done" / "exit grill" → the agent runs THREE steps in order:
+
+**Step A — Auto-fold `/eval-define` (REQUIRED)**
+
+Before printing the final report, the agent runs the `/eval-define` workflow
+inline (without requiring the user to type the command):
+
+1. For each decision settled in this grill session, derive 1+ acceptance_eval entry
+   per `claim-falsification` recipe catalog (subject_X, property_P → recipe match).
+2. Smoke-test at least one representative probe.
+3. Append the `acceptance_evals:` YAML block to spec frontmatter.
+
+The user does NOT need to run `/eval-define` separately. The minimum
+Vibe-flow input is now **3 commands**: `/plan` → `/grill` → `/go`.
+
+**Step B — Print the grill report**
 
 ```
 Grill DONE. Spec updated: .agent-toolkit/specs/<slug>.md
@@ -261,18 +312,23 @@ Grill DONE. Spec updated: .agent-toolkit/specs/<slug>.md
   · Promoted to ADR: <list ADR-NNN if any>
   · Promoted to invariant: <list inv-id if any>
   · Still TBD: <count of unresolved questions>
+  · Auto-emitted acceptance_evals: <M> probes (<K> smoke-OK, <P> pending)
 
-→ Next (Vibe-flow 5-phase, ADR-002):
-   /go <slug>              Enable autonomy 4h → agent has free hand to IMPLEMENT.
-                           Custom time: /go <slug> --until +8h | eod | tomorrow
-   /spec-driven-feature    Full Tasks/Implement phase (safer, has gates).
-   /tdd                    Toggle TDD auto-loop before coding.
+→ Next:
+   /go <slug>              Enable autonomy 4h → agent implements (default).
+                           Custom: /go <slug> --until +8h | eod | tomorrow
+   /eval-define <slug>     Optional override — only if you want to edit
+                           the auto-generated acceptance_evals before /go.
 ```
 
-Set spec frontmatter `status: grilled`.
+**Step C — Set spec frontmatter `status: grilled` and STOP**
 
-→ STOP. Do NOT open the implement phase in the same turn. The user must type
-`/go` (autonomy) or `/spec-driven-feature` (manual gate) in a follow-up turn.
+Do NOT open the implement phase in the same turn. The user must type `/go`
+in a follow-up turn.
+
+If the user wants to skip the auto-eval-define (rare — e.g. exploratory
+spike, no testable claims), they say "skip evals" before "done" → Step A is
+skipped, spec gets `eval_status: skipped-by-user`.
 
 ## Auto-discover during grill
 

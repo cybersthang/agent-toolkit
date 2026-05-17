@@ -77,6 +77,26 @@ Code-side symptom: search for a classifier method whose docstring says
 HTTP call to the endpoint (with auth cookie / `Playwright authed`), read
 `X` from the JSON response.
 
+### Step 1.8 — Classifier-shape detection (REQUIRED for classification features)
+
+Before designing User-Story probes, check the spec frontmatter:
+
+- If `feature_kind: classification` is set OR the implementation contains
+  per-row tag/label assignments (grep for `role = '`, `tag = '`,
+  `severity = '`, etc.) → the feature is a CLASSIFIER, not a single-shot
+  predicate.
+- One acceptance_eval per User Story is NOT enough coverage. The spec
+  authors enumerated the cases they thought of; the long tail is
+  unverified.
+- Invoke `[[classifier-output-audit]]` BEFORE Step 2. Its findings
+  become an extra section in the Verify Report (between User Stories
+  and Gaps).
+
+The audit may surface mismatches the User Stories don't cover; treat
+each mismatch group like a GAP/BLOCKER with the proposed fix already
+written (typically "add signal s_k to path A" or "re-route inputs of
+kind K to path B").
+
 ### Step 2 — Design a probe per User Story
 
 3 probe types (pick the right one for the story):

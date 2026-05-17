@@ -210,13 +210,33 @@ FastAPI / Spring / Rails).
 This skill is referenced FROM:
 
 - `grill/SKILL.md` Q8 — the Falsifiability gate calls this skill to pick a recipe.
+- `grill/SKILL.md` Q9 — after Q8, if the subject is a CLASSIFIER (emits one of N tags), defer to `[[classifier-output-audit]]` which wraps this skill across many sampled outputs.
 - `/eval-define` + `/eval-backfill` — pull perturb-test templates from the recipe catalog.
 - `code-review` — when a code review flags a property claim (decorator, type hint), apply the matching recipe.
 - `doubt-driven-review` — overlay after implementation; if a claim is doubted, run a perturb test to confirm.
+- `classifier-output-audit` — Step 5 of that skill delegates each mismatch group back to a recipe here.
+
+## When NOT enough — escalate to `classifier-output-audit`
+
+This skill verifies ONE claim. When the subject is a classifier emitting
+tags at scale (per-row labels in a DB column / dashboard cell / log
+field), one passing perturb-test does NOT prove the classifier is right
+on the other N-1 inputs the spec didn't mention. Signs the subject is a
+classifier rather than a single predicate:
+
+- The output is written into a column on a per-record table.
+- The implementation has multiple code paths emitting the same tag
+  field (likely signal drift between paths).
+- The user describes input as plural ("each", "every", "all").
+
+In that case → stop after this skill emits its single perturb-test +
+hand off to `[[classifier-output-audit]]` which samples K rows and
+applies this catalog per-sample.
 
 ## Sibling skills
 
 - `grill` — phase 2; question Q8 (Falsifiability gate) triggers this skill.
+- `classifier-output-audit` — phase-2 Q9 + phase-5 wrapper that calls this skill across many sampled outputs.
 - `doubt-driven-review` — verbal review; this skill is the machine-runnable counterpart.
 - `verify-feature` — phase 5; runs the `acceptance_evals` that this skill emits.
 - `<stack>-data-verification` — provides MCP probes for use as Y in recipes 3, 9, 11, 14.

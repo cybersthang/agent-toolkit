@@ -1,1 +1,0 @@
-DEPRECATED → see README.md

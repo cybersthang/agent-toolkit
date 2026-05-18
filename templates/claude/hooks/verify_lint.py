@@ -29,36 +29,23 @@ Loops are bounded: if `stop_hook_active` is set in envelope, exit allow.
 """
 from __future__ import annotations
 
-import io
 import json
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-
-if hasattr(sys.stdin, "buffer"):
-    sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace")
-if hasattr(sys.stdout, "buffer"):
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-
-
-_VERIFY_REPORT_HEADER_RE = re.compile(
-    r"(?:#+\s*|^\s*)verify\s*report\b",
-    re.IGNORECASE | re.UNICODE | re.MULTILINE,
+sys.path.insert(0, str(Path(__file__).parent))
+from _common import (  # noqa: E402
+    wrap_utf8_stdio, read_jsonl_transcript, find_workspace_root,
+)
+from _patterns import (  # noqa: E402
+    VERIFY_REPORT_HEADER_RE as _VERIFY_REPORT_HEADER_RE,
+    SLUG_PATTERNS as _SLUG_PATTERNS,
 )
 
-# Patterns to extract spec slug from Verify Report text. Tried in order.
-_SLUG_PATTERNS = [
-    re.compile(r"verify\s*report\s*[-—]\s*`?([a-z0-9][a-z0-9_-]+)`?",
-               re.IGNORECASE | re.UNICODE),
-    re.compile(r"\.agent-toolkit/specs/([a-z0-9][a-z0-9_-]+)\.md",
-               re.IGNORECASE | re.UNICODE),
-    re.compile(r"\bspec\s*[:=]\s*`?([a-z0-9][a-z0-9_-]+)`?",
-               re.IGNORECASE | re.UNICODE),
-]
+wrap_utf8_stdio()
 
 
 def _exit_allow() -> None:
@@ -70,21 +57,7 @@ def _emit_block(reason: str) -> None:
     sys.exit(0)
 
 
-def _read_transcript(path: Path) -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
-    try:
-        with path.open(encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    out.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-    except OSError:
-        return []
-    return out
+_read_transcript = read_jsonl_transcript
 
 
 def _last_assistant_text(messages: List[Dict[str, Any]]) -> str:
@@ -131,14 +104,7 @@ def _extract_spec_slug(text: str, workspace: Optional[Path] = None) -> Optional[
     return candidates[0]
 
 
-def _find_workspace_root(start: Path) -> Optional[Path]:
-    cursor = start.resolve()
-    while True:
-        if (cursor / ".agent-toolkit" / "specs").is_dir():
-            return cursor
-        if cursor.parent == cursor:
-            return None
-        cursor = cursor.parent
+_find_workspace_root = find_workspace_root
 
 
 def main() -> int:

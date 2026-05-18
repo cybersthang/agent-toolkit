@@ -22,7 +22,42 @@ description: Vibe-flow Phase 5 — reconcile the coded feature against the origi
 - Spec has no User Stories (the spec is poorly written) → refuse, suggest `/plan`.
 - The MCP server is not reachable → fall back to manual smoke test.
 
-## 8-step procedure
+## 9-step procedure
+
+### Step 0 — Re-read the ORIGINAL DEV REQUIREMENT (REQUIRED before spec parse)
+
+> Principle: "Tests verify spec. Verify verifies REQUIREMENT. The spec may
+> have drifted from what DEV asked for."
+
+Before loading the spec, the agent must reconstruct the original DEV
+requirement (the prompt that triggered `/plan`):
+
+1. **Find the requirement source** — in priority order:
+   - `## 1. Problem Statement` section of the spec (verbatim DEV quote).
+   - Linked Jira / GitHub issue if `related_jira:` is set in frontmatter.
+   - Memory `[[project_*]]` notes referencing this spec slug.
+   - If none found → flag as 🟡 GAP "no traceable requirement" and ask the
+     user to paste the original ask before continuing.
+2. **Extract the bullet points** the DEV explicitly listed. Example
+   shape (paraphrased, do not literal-copy):
+   - "Track X for every Y in the system."
+   - "Identify which X have property P, using mechanical test Z."
+   - "Output must be usable as <output>."
+3. **Build a DEV-requirement-coverage matrix**:
+   | DEV bullet | Addressed by spec section | Covered by acceptance_eval | Mechanically tested |
+   |---|---|---|---|
+   | "...verbatim..." | §4 Story 1, §5 ID1 | `acceptance_evals[0]` | ✅ probe Z |
+   | "...verbatim..." | §4 Story 3 | — | 🟡 no eval |
+   | "...verbatim..." | (not in spec) | — | 🔴 SPEC DRIFT |
+4. A row at "SPEC DRIFT" → the spec failed to capture the requirement;
+   this is a 🔴 BLOCKER at the planning layer, not at the code layer. The
+   fix is `/plan` rework, not `/go` rework.
+
+This step closes the gap "agent verifies what spec says, not what DEV
+asked" — a recurring failure mode where unit tests pass + verify passes
+but DEV says "this isn't what I wanted".
+
+## 8-step procedure (after Step 0)
 
 ### Step 1 — Load + parse the spec
 
@@ -62,7 +97,7 @@ Before writing SQL/Bash, the agent must answer: **where does Y for this Story li
 | **Raw DB column / persisted JSON** | Spec says "X is stored in field Y" | `postgres_read_query` |
 | **In-memory mutation at read time** | Spec / code comment says "in-place attach", "computed at read", "memoize at endpoint" | HTTP probe to the endpoint (curl with session cookie / Playwright authed) — do NOT query the DB |
 | **JS browser state** | Field is sent/rendered by JS, not persisted server-side | Playwright `browser_evaluate` reading DOM / `performance.getEntries()` |
-| **Empirical behaviour** | Runtime claim (BLOCK/ASYNC/cached/idempotent/...) | Apply `[[claim-falsification]]` skill — perturb test |
+| **Empirical behaviour** | Runtime claim (BLOCK/ASYNC/cached/idempotent/...) | Apply `[[claim-falsification]]` skill — perturb test on REAL user action via Playwright MCP. Inject sleep OR heavy-query OR Playwright network delay; measure UI-ready signal. NEVER probe the classifier's own output column (circular). |
 | **Log file** | Side-effect log, not persisted in DB | `Bash grep <log>` |
 | **External system** | Jira, Slack, etc. | Corresponding MCP |
 
@@ -235,7 +270,7 @@ After printing the Verify Report, the agent MUST run the lint script to
 confirm every entry in `acceptance_evals:` was consumed:
 
 ```bash
-cat <verify-report-text>.md | {{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.codex/lint_verify_report.py <spec-slug>
+cat <verify-report-text>.md | /home/voducthang/NAKIVO/venv/bin/python /home/voducthang/NAKIVO/.codex/lint_verify_report.py <spec-slug>
 ```
 
 `.codex/` is the agent-toolkit installer convention; if the project has
@@ -316,8 +351,10 @@ refused).
 ## Reference
 
 - ADR-002 (.agent-toolkit/decision-log.md) — decision to add phase 5.
-- ADR-006 — perturb-test evidence required for classification claims.
 - ADR-007 (2026-05-17) — verify-feature boost: auto-consume acceptance_evals
   + locate-observable-first + parallel-required + re-run policy.
-- Original — Phase 5 was not copied from mattpocock; it is a Nakivo-flow
-  addition.
+- Per-project perturb-test evidence requirements live in the project's
+  canonical decision registry (toolkit-default: `.codex/canonical_decisions.json`)
+  — e.g. `<feature>-perturb-test` entries with `enforcement` metadata.
+- Original — Phase 5 was not derived from upstream mattpocock skills; it
+  is a Vibe-flow addition.

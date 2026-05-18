@@ -31,23 +31,21 @@ Fail open: lỗi gì cũng exit 0 (không bao giờ block edit đã rồi).
 """
 from __future__ import annotations
 
-import fnmatch
-import io
 import json
 import os
 import re
 import shlex
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
+sys.path.insert(0, str(Path(__file__).parent))
+from _common import (  # noqa: E402
+    wrap_utf8_stdio, atomic_write_json, match_glob,
+)
 
-if hasattr(sys.stdin, "buffer"):
-    sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace")
-if hasattr(sys.stdout, "buffer"):
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+wrap_utf8_stdio()
 
 
 CONFIG_REL = ".agent-toolkit/tdd.json"
@@ -85,33 +83,13 @@ def _load_config(workspace: Path) -> Optional[Dict[str, Any]]:
     return cfg
 
 
-def _matches(file_path: str, globs: List[str], workspace: Path) -> bool:
-    if not globs:
-        return False
-    try:
-        rel = str(Path(file_path).resolve().relative_to(workspace)).replace("\\", "/")
-    except (ValueError, OSError):
-        rel = file_path.replace("\\", "/")
-    abs_path = file_path.replace("\\", "/")
-    for pattern in globs:
-        pat = pattern.replace("\\", "/")
-        if fnmatch.fnmatch(rel, pat) or fnmatch.fnmatch(abs_path, pat):
-            return True
-        if "**" in pat:
-            head = pat.split("**", 1)[0].rstrip("/")
-            tail = pat.split("**", 1)[1].lstrip("/")
-            if (not head or rel.startswith(head)) and (not tail or rel.endswith(tail.lstrip("*").lstrip("/"))):
-                return True
-    return False
-
-
 def _classify(file_path: str, cfg: Dict[str, Any], workspace: Path) -> Optional[str]:
     """Return 'test' if file matches test_glob, 'source' if source_glob, else None."""
     test_glob = cfg.get("test_glob") or []
     source_glob = cfg.get("source_glob") or []
-    if _matches(file_path, test_glob, workspace):
+    if match_glob(file_path, test_glob, workspace, empty_returns=False):
         return "test"
-    if _matches(file_path, source_glob, workspace):
+    if match_glob(file_path, source_glob, workspace, empty_returns=False):
         return "source"
     return None
 
@@ -127,12 +105,7 @@ def _read_state(workspace: Path) -> Dict[str, Any]:
 
 
 def _write_state(workspace: Path, state: Dict[str, Any]) -> None:
-    path = workspace / NUDGE_STATE_REL
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
-    except OSError:
-        pass
+    atomic_write_json(workspace / NUDGE_STATE_REL, state)
 
 
 def _is_duplicate_nudge(workspace: Path, file_path: str) -> bool:

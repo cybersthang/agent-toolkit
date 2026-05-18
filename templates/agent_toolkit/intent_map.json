@@ -69,6 +69,36 @@
       "skills": ["{stack}-code-patterns"]
     },
     {
+      "note": "Toolkit-meta: /adr-add",
+      "pattern": "\\b(ghi\\s*adr|thêm\\s*quyết\\s*định|append\\s*adr|architecture\\s*decision|ghi\\s*nhận\\s*decision|chốt\\s*decision)\\b",
+      "skills": ["adr-add"]
+    },
+    {
+      "note": "Toolkit-meta: /inv-add",
+      "pattern": "\\b(thêm\\s*invariant|add.*invariant|register\\s*rule|đăng\\s*ký\\s*rule|chốt\\s*rule|must[-\\s]*keep)\\b",
+      "skills": ["inv-add"]
+    },
+    {
+      "note": "Toolkit-meta: /inv-list",
+      "pattern": "\\b(xem\\s*invariant|list.*invariant|danh\\s*sách\\s*invariant|liệt\\s*kê.*rule|active\\s*rules)\\b",
+      "skills": ["inv-list"]
+    },
+    {
+      "note": "Toolkit-meta: /recall",
+      "pattern": "\\b(recall|nhớ\\s*lại|tìm\\s*quyết\\s*định|trước\\s*đây\\s*chốt|chuyện\\s*gì.*adr|đã\\s*chốt\\s*gì)\\b",
+      "skills": ["recall"]
+    },
+    {
+      "note": "Toolkit-meta: /stop-autonomy",
+      "pattern": "\\b(tắt\\s*autonomy|dừng\\s*autonomy|stop[-\\s]*autonomy|cắt\\s*autonomy|kết\\s*thúc\\s*autonomy)\\b",
+      "skills": ["stop-autonomy"]
+    },
+    {
+      "note": "Toolkit-meta: /tdd toggle",
+      "pattern": "\\b(toggle\\s*tdd|/tdd\\s+(on|off|status)|tdd\\s*loop|tdd\\s*config|nudge\\s*pytest)\\b",
+      "skills": ["tdd"]
+    },
+    {
       "note": "Jira / ticket",
       "pattern": "\\b(jira|nkv[-\\s]?\\d+|ticket|sprint)\\b",
       "skills": ["{stack}-jira-workflow"]

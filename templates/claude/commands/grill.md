@@ -45,7 +45,7 @@ Argument: `$ARGUMENTS` = slug spec cần grill (optional — nếu chỉ có 1 s
 6. **Kết thúc** khi DEV gõ "đủ" / "xong" / "done":
    - In báo cáo tổng kết (xem `grill` SKILL.md).
    - Set spec `status: grilled` trong frontmatter.
-   - In dòng cuối: `→ /spec-driven-feature để bắt đầu Tasks/Implement.`
+   - In dòng cuối: `→ /eval-define để chốt acceptance evals trước implement, rồi /go để bật autonomy. (ADR-002 Vibe-flow Phase 2 → Phase 3).`
 
 ## Refuse / clarify khi
 

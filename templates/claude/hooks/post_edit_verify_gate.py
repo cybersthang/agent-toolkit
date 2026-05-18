@@ -27,19 +27,27 @@ Loops bounded: `stop_hook_active` short-circuits.
 """
 from __future__ import annotations
 
-import io
 import json
 import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
+sys.path.insert(0, str(Path(__file__).parent))
+from _common import (  # noqa: E402
+    wrap_utf8_stdio, read_jsonl_transcript, split_current_turn,
+    find_workspace_root,
+)
+from _patterns import (  # noqa: E402
+    COMPLETION_RE as _COMPLETION_RE,
+    VERIFY_INVOCATION_RE as _VERIFY_INVOCATION_RE,
+    SPEC_STATUS_RE as _STATUS_RE,
+    SPEC_SLUG_RE as _SPEC_SLUG_RE,
+    IMPLEMENTING_STATUSES,
+)
 
-if hasattr(sys.stdin, "buffer"):
-    sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace")
-if hasattr(sys.stdout, "buffer"):
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+wrap_utf8_stdio()
 
 
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit"}
@@ -47,27 +55,6 @@ VERIFY_TOOL_PATTERNS = (
     "mcp__",   # any postgres/test/playwright probe counts
 )
 SKIP_MARKER = "verify-gate: skip"
-
-# Vietnamese + English completion phrases.
-_COMPLETION_RE = re.compile(
-    r"\b(done|ready|verified|complete|completed|finished|fixed|"
-    r"ready\s*to\s*merge|xong|ho(à|a)n\s*th(à|a)nh|đã\s*fix|đã\s*xong|"
-    r"feature\s*ready|deploy\s*ready)\b",
-    re.IGNORECASE | re.UNICODE,
-)
-
-_VERIFY_INVOCATION_RE = re.compile(
-    r"(?:^|\s|`)/verify\b|run_python_tests|perturb[-_]?test|"
-    r"acceptance[_-]?eval",
-    re.IGNORECASE | re.UNICODE,
-)
-
-# Same status check as verify_nudge.
-IMPLEMENTING_STATUSES = ("implementing", "gaps-found")
-_STATUS_RE = re.compile(r"^status\s*:\s*([a-z_-]+)\s*$",
-                        re.IGNORECASE | re.MULTILINE)
-_SPEC_SLUG_RE = re.compile(r"^spec\s*:\s*([a-z0-9][a-z0-9_-]+)\s*$",
-                           re.IGNORECASE | re.MULTILINE)
 
 
 def _exit_allow() -> None:
@@ -79,29 +66,8 @@ def _emit_block(reason: str) -> None:
     sys.exit(0)
 
 
-def _read_transcript(path: Path) -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
-    try:
-        with path.open(encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if line:
-                    try:
-                        out.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        continue
-    except OSError:
-        return []
-    return out
-
-
-def _split_current_turn(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    last_user = -1
-    for idx in range(len(messages) - 1, -1, -1):
-        if messages[idx].get("type") == "user" or messages[idx].get("role") == "user":
-            last_user = idx
-            break
-    return messages[last_user:] if last_user >= 0 else messages
+_read_transcript = read_jsonl_transcript
+_split_current_turn = split_current_turn
 
 
 def _edited_paths_in_turn(turn: List[Dict[str, Any]]) -> List[str]:
@@ -165,14 +131,7 @@ def _extract_text(turn: List[Dict[str, Any]]) -> str:
     return "\n".join(parts)
 
 
-def _find_workspace_root(start: Path) -> Optional[Path]:
-    cursor = start.resolve()
-    while True:
-        if (cursor / ".agent-toolkit" / "specs").is_dir():
-            return cursor
-        if cursor.parent == cursor:
-            return None
-        cursor = cursor.parent
+_find_workspace_root = find_workspace_root
 
 
 def _file_in_implementing_spec(workspace: Path, file_path: str) -> Optional[str]:

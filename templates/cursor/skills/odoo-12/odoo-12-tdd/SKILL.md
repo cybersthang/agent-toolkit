@@ -29,6 +29,66 @@ Pair with `spec-driven-feature` (provides acceptance criteria),
   `odoo-12-data-verification` instead.
 - View/template changes with no behavior — manual smoke is faster.
 - Discovery work (reading + understanding existing code).
+- **Empirical / behavioural claims** (RPC X blocks UI, endpoint Y is cached,
+  cron Z is idempotent, ...) — these are NOT unit tests; the assertion
+  layer is wrong. **Escalate to `[[claim-falsification]]`** which runs the
+  perturb-test recipe on real user action (Playwright MCP). See "Test layer
+  decision tree" below.
+
+## Test layer decision tree (REQUIRED — run this BEFORE writing the test)
+
+| Question about behaviour | Right test layer | Skill |
+|---|---|---|
+| Does method `Model.foo()` compute the right value? | `TransactionCase` / `SavepointCase` | this skill |
+| Does workflow transition X→Y fire on event Z? | `SavepointCase` | this skill |
+| Does controller `/route/path` return correct JSON shape? | `HttpCase` + `self.url_open` | this skill |
+| Does ORM constraint reject bad data? | `TransactionCase` + `assertRaises` | this skill |
+| **Does RPC X actually BLOCK the UI on a real user action?** | Perturb-test on real Playwright session | `[[claim-falsification]]` Recipe 1/2 |
+| **Is endpoint Y cached for key K?** | Perturb-test (2 calls, same K) | `[[claim-falsification]]` Recipe 3 |
+| **Is mutation Z idempotent?** | Perturb-test (call N times, observe side-effect count) | `[[claim-falsification]]` Recipe 4 |
+| **Is request R fire-and-forget vs awaited?** | Perturb-test (inject delay, observe time-to-UI-ready) | `[[claim-falsification]]` Recipe 1/2 |
+| **Does classifier C emit correct label on each input?** | Sample-and-audit | `[[classifier-output-audit]]` |
+
+If question matches a row in the **bold** half — STOP, do NOT write a
+`TransactionCase`. Open `claim-falsification` and follow its recipe. Reason:
+unit tests assert what the test author wrote; perturb-tests refute claims
+the test author cannot bias.
+
+## Behavioural test — Playwright + real Odoo action (REQUIRED for E2E claims)
+
+When the claim is "X has runtime property P observable through the UI"
+(BLOCK, ASYNC, cached, debounced, retried, ...) the test layer MUST be:
+
+1. **Real Odoo action via Playwright MCP** — open the browser, log in,
+   navigate to a real action (any: Kanban contact, list orders, form view,
+   pivot, dashboard). Do NOT mock the user; the bug you are testing
+   typically depends on the real DOM + the real `ActionManager.doAction`
+   call chain.
+2. **Enumerate ALL candidate requests** — instrument `performance.getEntries()`
+   or `window.fetch` to capture EVERY RPC the action fires. The test
+   iterates per-request, not per-suspected-request. Reason: long-tail
+   requests are where mis-classification hides.
+3. **Per-request perturb-test** — for each candidate, open the matching
+   `claim-falsification` recipe (Recipe 1 for BLOCK/await, Recipe 2 for
+   ASYNC/fire-and-forget). Inject the perturbation, measure the
+   observable, classify.
+4. **Stack the cohort** — at the end, you have a table `[(url, role,
+   evidence)]` for every request in the action. THAT is the test output,
+   not a single assertion.
+
+Perturbation menu — **pick one based on what is safe to modify**:
+
+| Perturbation | When safe | Effect |
+|---|---|---|
+| `time.sleep(N)` inside the handler | Dev/test DB, code path is reachable, easy to revert | Direct latency injection, N seconds added |
+| Heavy query (e.g. `search(limit=very_high)` on a large model) | Cannot modify handler; want natural slowness | Forces real-world slow path with no code edit |
+| Playwright `route().continue_({delay: N*1000})` | Cannot touch server; want to slow network only | Network-level injection, server unchanged |
+| `freezegun` / clock monkeypatch | Testing TTL / scheduling / time-window logic | No latency, time-axis perturbation |
+
+Whichever is chosen, the **observable** (Y) is the SAME: time-to-`ui_ready`
+(or whatever the user-perceived completion signal is). Y must be measured
+on the real user action, not on the dashboard that reads the classifier
+output (circular).
 
 ## The loop — one acceptance criterion at a time
 

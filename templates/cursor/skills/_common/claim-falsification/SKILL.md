@@ -53,8 +53,8 @@ custom recipe in the spec acceptance_evals under `recipe: custom · derivation: 
 
 | # | Claim shape | Perturbation D | Observable Y | Predicted Δ if P holds | Anti-Δ if NOT P |
 |---|---|---|---|---|---|
-| 1 | "X gates Y" (BLOCK / synchronous / awaits) | Inject `sleep(N)` / artificial delay into X | Time-to-Y-ready | +N ± tolerance | ≈ 0 |
-| 2 | "X is async / fire-and-forget" | Inject `sleep(N)` into X | Time-to-Y-ready | ≈ 0 | +N |
+| 1 | "X gates Y" (BLOCK / synchronous / awaits) | One of: `sleep(N)` in handler · heavy-query (`search(limit=very_high)` on a large model) · Playwright `route().continue_({delay: N*1000})`. See "Perturbation menu" below. | Time-to-Y-ready measured on REAL user action via Playwright (`ui_ready` beacon / DOM idle / `domcontentloaded`) — NOT a dashboard read that depends on the classifier output (circular) | +N ± tolerance | ≈ 0 |
+| 2 | "X is async / fire-and-forget" | Same menu as Recipe 1 | Time-to-Y-ready on real user action | ≈ 0 | +N |
 | 3 | "X is cached for key K" | Call X(K) twice with the same K | Latency of 2nd call | `< max(1/10 × 1st, stack_envelope_floor + 20%)` ⓘ | ≈ 1st (within 30%) |
 | 4 | "X is idempotent" | Call X(input) twice | Side-effect count (rows, files, msgs) | unchanged (= 1×) | doubled (2×) |
 | 5 | "X is deterministic" | Run X(input) N times | sha256(output) | identical N/N | ≥ 2 distinct |
@@ -72,6 +72,25 @@ custom recipe in the spec acceptance_evals under `recipe: custom · derivation: 
 When a new claim does not match these 15 → apply the core pattern and design a
 custom (D, Y, Δ). Document the custom recipe in the spec acceptance_evals
 under `recipe: custom · derivation: ...`.
+
+## Perturbation menu — for behavioural claims (Recipes 1, 2, 13)
+
+Some claims are about runtime behaviour observable through the UI/network,
+not pure logic. Pick the perturbation that is **safe + minimally invasive**:
+
+| Perturbation | When SAFE to apply | Effect on observable | When NOT safe |
+|---|---|---|---|
+| **`time.sleep(N)` in handler** | Dev/test DB · code path reachable · easy `git checkout` revert | Direct latency injection, exactly N s added | Prod DB · multi-tenant test env · handler reused by other tests |
+| **Heavy query** (e.g. `search(limit=very_high)` on a large model — `mail.message`, `ir.attachment`, audit logs) | Cannot modify handler · want natural slowness · DB has enough rows to be slow | Forces real-world slow path with NO code edit. Better when DEV cannot patch the handler. | Empty DB (no slowness produced) · query is itself indexed away |
+| **Playwright `route().continue_({delay: N})`** | Cannot touch server · want network-only delay · running E2E | Network-level injection, server unchanged | Server-side blocking under test (delay must be in the server, not on the wire) |
+| **Clock monkeypatch** (`freezegun`, `time.time` stub) | Testing TTL / scheduling / time-window logic | No latency change, time-axis perturbation | Real-time deadlines (cron firing) — clock stub doesn't bend cron |
+| **Memory pressure** (allocate-and-hold) | Testing LRU eviction / spill-to-disk / OOM-kill | Indirect — drives capacity dimension | Other tenants on the machine affected |
+
+**Rule**: whichever perturbation is chosen, the **observable Y** stays the
+same — Y measures the user-perceived completion signal (UI mount, DOM
+idle, JSON response received) on a **real user action**, NEVER on the
+classifier's own output column (that is circular: the thing under test
+cannot grade itself).
 
 **⚠ Feasibility caveats** for recipes with real-world constraints:
 
@@ -200,11 +219,17 @@ Each spec `acceptance_eval` entry that applies a recipe must have this shape:
     verdict: "<CONSISTENT | REFUTED | PARTIAL: <reason>>"
 ```
 
-**Project-specific case studies** (real runs on real data) live in
-`.agent-toolkit/decision-log.md` (per-project ADRs) or in `[[reference_*]]`
-memory — NEVER copy concrete numbers or endpoint names into the skill body.
-The skill body must remain usable across any stack (Odoo / Django / Flask /
-FastAPI / Spring / Rails).
+**Project-specific case studies** (real runs on real data) live in:
+- Per-project ADRs (`.agent-toolkit/decision-log.md`) when the decision is
+  about WHEN to apply this skill / which recipe to default to.
+- The project-local canonical registry (e.g. `.codex/canonical_decisions.json`
+  in toolkit-default layout) when the artefact is the **outcome** of a
+  perturb-test on a specific module / endpoint / row.
+- Memory `[[reference_*]]` for cross-session recall.
+
+NEVER copy concrete numbers or endpoint names into the skill body. The skill
+body must remain usable across any stack (Odoo / Django / Flask / FastAPI /
+Spring / Rails) and any feature within those stacks.
 
 ## Integration
 
@@ -247,4 +272,7 @@ applies this catalog per-sample.
 - Karl Popper falsificationism (1959) — "a claim that cannot be shown false also cannot be shown true".
 - Property-based testing (Hypothesis, QuickCheck): perturb input → invariant must hold.
 - ECC `eval-harness` + `agent-eval` — eval-driven development pattern.
-- Per-project case studies live in ADRs (e.g. `ADR-006` for the current project). The skill body deliberately does NOT embed concrete numbers, to preserve generality.
+- Per-project case studies live in the project's canonical decision registry
+  (under `enforcement` metadata if mechanical, under `answer` text if
+  documentation-only). The skill body deliberately does NOT embed concrete
+  numbers, to preserve generality across stacks and features.

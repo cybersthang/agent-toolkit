@@ -43,13 +43,13 @@ rules, hooks, or tests. Reach for one of these dynamic sources instead:
 
 | Hardcoded thing | Dynamic replacement |
 |---|---|
-| Module name (`nakivo_profiler`, `sale_order`) | Discover at runtime via `codebase.discover_modules` / `search_xml_ids`. In templates use `<module>` / `{{MODULE_NAME}}` placeholder. |
-| Model name (`queue.job`, `res.partner`) | Discover via `codebase.search_model_definitions`. In docs use `<model>` placeholder. |
-| Stack / framework / version (`odoo`, `12`, `python-3.8`) | Use toolkit placeholders `{{STACK_FRAMEWORK}}` / `{{STACK_FRAMEWORK_VERSION}}` / `{{STACK_LANGUAGE_VERSION}}` — rendered per preset. |
-| Path constants (`C:/Users/.../venv/python.exe`) | Use `{{PYTHON_BIN}}` / `{{WORKSPACE_ROOT}}` placeholders; per-machine values come from `agent-toolkit.config.json`. |
+| Project module name (e.g. `<your_custom_module>`) | Discover at runtime via `codebase.discover_modules` / `search_xml_ids`. In templates use `<module>` placeholder. |
+| Odoo model name (e.g. `<account.model>` / `<res.model>`) | Discover via `codebase.search_model_definitions`. In docs use `<model>` placeholder. |
+| Stack / framework / version (e.g. `<framework>` / `<major>` / `<python_version>`) | Use toolkit placeholders `<STACK>` / `<STACK_MAJOR>` / `<PYTHON_VERSION>` — rendered per preset at install time. |
+| Path constants (e.g. `<C:/Users/...>` / `<workspace_root>`) | Use `<PYTHON_BIN>` / `<WORKSPACE_ROOT>` placeholders; per-machine values come from `agent-toolkit.config.json`. |
 | Database / credentials | Always read from `.codex/mcp.local.env` (gitignored); never embed in committed code. |
-| Magic thresholds (30 minutes, 6 workers, port 5432) | Make configurable via `ir.config_parameter` / settings file / preset JSON. State the default explicitly + cite where it can be overridden. |
-| Field names (`stuck_at`, `is_active`) tied to one project's schema | Quote them as examples only; in reusable logic use parameters or `_fields` introspection. |
+| Magic thresholds (e.g. `<N> minutes`, `<M> workers`, port `<NNNN>`) | Make configurable via `ir.config_parameter` / settings file / preset JSON. State the default explicitly + cite where it can be overridden. |
+| Field names (e.g. `<schema_specific_field>`) tied to one project's schema | Quote them as examples only; in reusable logic use parameters or `_fields` introspection. |
 
 **Self-check before committing code:** scan the diff for any string
 literal that names a specific module, model, version, path, or

@@ -58,8 +58,6 @@ Behaviour:
 """
 from __future__ import annotations
 
-import fnmatch
-import io
 import json
 import os
 import sys
@@ -67,11 +65,12 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+sys.path.insert(0, str(Path(__file__).parent))
+from _common import (  # noqa: E402
+    wrap_utf8_stdio, atomic_write_json, match_glob, discover_mcp_prefix,
+)
 
-if hasattr(sys.stdin, "buffer"):
-    sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace")
-if hasattr(sys.stdout, "buffer"):
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+wrap_utf8_stdio()
 
 
 CONFIG_REL = ".agent-toolkit/verification.json"
@@ -104,26 +103,6 @@ def _load_config(workspace: Path) -> Optional[Dict[str, Any]]:
     except (json.JSONDecodeError, OSError):
         return None
     return cfg if isinstance(cfg, dict) else None
-
-
-def _matches(file_path: str, globs: List[str], workspace: Path) -> bool:
-    if not globs:
-        return False
-    try:
-        rel = str(Path(file_path).resolve().relative_to(workspace)).replace("\\", "/")
-    except (ValueError, OSError):
-        rel = file_path.replace("\\", "/")
-    abs_path = file_path.replace("\\", "/")
-    for pattern in globs:
-        pat = pattern.replace("\\", "/")
-        if fnmatch.fnmatch(rel, pat) or fnmatch.fnmatch(abs_path, pat):
-            return True
-        if "**" in pat:
-            head = pat.split("**", 1)[0].rstrip("/")
-            tail = pat.split("**", 1)[1].lstrip("/")
-            if (not head or rel.startswith(head)) and (not tail or rel.endswith(tail.lstrip("*").lstrip("/"))):
-                return True
-    return False
 
 
 def _classify(file_path: str) -> List[str]:
@@ -204,11 +183,7 @@ def _is_duplicate(workspace: Path, file_path: str) -> bool:
     now = int(time.time())
     if state.get("file_path") == file_path and (now - int(state.get("at", 0))) < NUDGE_TTL_SECONDS:
         return True
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"file_path": file_path, "at": now}, ensure_ascii=False), encoding="utf-8")
-    except OSError:
-        pass
+    atomic_write_json(path, {"file_path": file_path, "at": now})
     return False
 
 
@@ -286,7 +261,7 @@ def main() -> int:
         _exit_silent()
 
     addon_globs = cfg.get("addon_globs") or []
-    if not _matches(file_path, addon_globs, workspace):
+    if not match_glob(file_path, addon_globs, workspace, empty_returns=False):
         _exit_silent()
 
     kinds = _classify(file_path)
@@ -296,7 +271,8 @@ def main() -> int:
     if _is_duplicate(workspace, file_path):
         _exit_silent()
 
-    mcp_prefix = cfg.get("mcp_prefix") or "mcp__"
+    # Dynamic discovery: trust cfg if concrete, else read .mcp.json.
+    mcp_prefix = discover_mcp_prefix(workspace, cfg.get("mcp_prefix"))
     try:
         rel_path = str(Path(file_path).resolve().relative_to(workspace)).replace("\\", "/")
     except (ValueError, OSError):

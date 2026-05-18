@@ -22,7 +22,6 @@ and the install-time templating only touches the two stack placeholders.
 """
 from __future__ import annotations
 
-import io
 import json
 import os
 import re
@@ -34,10 +33,10 @@ from typing import List, Tuple
 # default stdin/stdout encoding is cp1252, which mangles Vietnamese
 # (and any non-Latin) characters in the user's prompt. Re-wrap both
 # streams as UTF-8 before any read/print.
-if hasattr(sys.stdin, "buffer"):
-    sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace")
-if hasattr(sys.stdout, "buffer"):
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.path.insert(0, str(Path(__file__).parent))
+from _common import wrap_utf8_stdio  # noqa: E402
+
+wrap_utf8_stdio()
 
 INTENT_MAP_REL = ".agent-toolkit/intent_map.json"
 

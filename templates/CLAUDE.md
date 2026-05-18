@@ -52,10 +52,14 @@ Installed by **agent-toolkit** preset `{{PRESET_NAME}}` ({{STACK_LABEL}}).
 |---|---|---|
 | `session_brief` | SessionStart | Brief injected — agent knows active rules from turn 1. |
 | `intent_router` | UserPromptSubmit | Skill suggestions + hard-rule reminders. |
-| `invariant_guard` | PreToolUse(Edit/Write/MultiEdit) | **DENY** if edit removes a must-keep pattern (severity `blocker`). |
+| `invariant_guard` | PreToolUse(Edit/Write/MultiEdit/NotebookEdit) | **DENY** if edit removes a must-keep pattern (severity `blocker`). Reads both `.agent-toolkit/invariants.json` and any `external_sources` declared there (e.g. project canonical registry with `enforcement` metadata). |
 | `tdd_runner` | PostToolUse(Edit/Write/MultiEdit) | Nudge pytest after test/source edit (Vibe-flow Phase 3). |
-| `verification_loop` | PostToolUse(Edit/Write/MultiEdit) | Nudge `python_syntax_check` + `python_import_check` + `xml_validate` MCP after edits inside addon globs (ECC `verification-loop` pattern). |
-| `evidence_audit` | Stop | **BLOCK** stop if claims lack Read/Grep/MCP backup → agent re-runs with verification or `[assumption]` tag. |
+| `verification_loop` | PostToolUse(Edit/Write/MultiEdit) | Nudge `python_syntax_check` + `python_import_check` + `xml_validate` MCP after edits inside addon globs. MCP prefix auto-discovered from `.mcp.json` if config is a placeholder. |
+| `verify_nudge` | PostToolUse(Edit/Write/MultiEdit) | Nudge `/verify <slug>` when edit touches a file tracked by a spec with status `implementing`/`gaps-found`. 30s per-file TTL. |
+| `evidence_audit` | Stop | **BLOCK** stop if claims lack Read/Grep/MCP backup → agent re-runs with verification or `[assumption]` tag. Also enforces Verify-Report probe-spread rule (ADR-007). |
+| `verify_lint` | Stop | **BLOCK** stop on a Verify Report missing required sections / acceptance_eval coverage. Delegates to `.codex/lint_verify_report.py`. |
+| `post_edit_verify_gate` | Stop | **BLOCK** "done" claims after Edit on a spec-tracked file without a `/verify` run this session. |
+| `debug_sentry` | Stop | **BLOCK** stop when traceback/exception text appears in tool output without a fix attempt (Vibe-flow Phase 4 — toggle via `.agent-toolkit/debug.json`). |
 
 Adding a new rule: `/adr-add` (capture WHY) → `/inv-add` (translate to
 enforced pattern). See `.agent-toolkit/README.md`.

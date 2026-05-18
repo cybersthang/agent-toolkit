@@ -24,22 +24,18 @@ edit invariants there, not here.
 """
 from __future__ import annotations
 
-import fnmatch
-import io
 import json
 import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, List, Tuple
 
+sys.path.insert(0, str(Path(__file__).parent))
+from _common import wrap_utf8_stdio, match_glob  # noqa: E402
+from _patterns import BYPASS_INVARIANT_RE  # noqa: E402
 
-# Claude Code pipes UTF-8 JSON. Wrap stdin/stdout to handle non-Latin
-# (Vietnamese) prompts and identifiers safely.
-if hasattr(sys.stdin, "buffer"):
-    sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace")
-if hasattr(sys.stdout, "buffer"):
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+wrap_utf8_stdio()
 
 
 INVARIANTS_REL = ".agent-toolkit/invariants.json"
@@ -65,39 +61,84 @@ def _allow() -> None:
 
 
 def _load_invariants(workspace: Path) -> List[Dict[str, Any]]:
+    """Load invariants from `.agent-toolkit/invariants.json` + any
+    `external_sources` declared there (e.g. `.codex/canonical_decisions.json`).
+
+    External sources are normal JSON files. The hook walks top-level array
+    keys (`decisions`, `invariants`) and picks up entries that carry an
+    `enforcement` object (applies_to + rules + severity). This lets project-
+    feature regressions live in a project-local registry while still being
+    mechanically enforced, without coupling the toolkit framework to any
+    specific project path.
+    """
+    invariants: List[Dict[str, Any]] = []
+    external_sources: List[str] = []
     path = workspace / INVARIANTS_REL
-    if not path.exists():
-        return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (json.JSONDecodeError, OSError):
-        return []
-    invariants = data.get("invariants") or []
-    return [inv for inv in invariants if isinstance(inv, dict)]
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                raw_invs = data.get("invariants") or []
+                invariants = [inv for inv in raw_invs if isinstance(inv, dict)]
+                ext = data.get("external_sources") or []
+                if isinstance(ext, list):
+                    external_sources = [s for s in ext if isinstance(s, str) and s.strip()]
+        except (json.JSONDecodeError, OSError):
+            pass
+    invariants.extend(_load_external_enforcements(workspace, external_sources))
+    return invariants
 
 
-def _matches_path(file_path: str, globs: Iterable[str], workspace: Path) -> bool:
-    """True if file_path matches any glob. Handles both absolute and
-    workspace-relative patterns. Empty/missing globs means "applies to all"."""
-    globs = list(globs or [])
-    if not globs:
-        return True
-    try:
-        rel = str(Path(file_path).resolve().relative_to(workspace)).replace("\\", "/")
-    except (ValueError, OSError):
-        rel = file_path.replace("\\", "/")
-    abs_path = file_path.replace("\\", "/")
-    for pattern in globs:
-        pat = pattern.replace("\\", "/")
-        if fnmatch.fnmatch(rel, pat) or fnmatch.fnmatch(abs_path, pat):
-            return True
-        # Match recursive ** patterns more leniently — fnmatch only does shell-style.
-        if "**" in pat:
-            head = pat.split("**", 1)[0].rstrip("/")
-            tail = pat.split("**", 1)[1].lstrip("/")
-            if (not head or rel.startswith(head)) and (not tail or rel.endswith(tail.lstrip("*").lstrip("/"))):
-                return True
-    return False
+def _load_external_enforcements(workspace: Path, sources: List[str]) -> List[Dict[str, Any]]:
+    """For each external source path, load entries whose `enforcement` field
+    declares an invariant. Each loaded entry is normalized to the same shape
+    as `.agent-toolkit/invariants.json` entries, with `_source_path` tagged
+    so violation messages cite the right file.
+    """
+    out: List[Dict[str, Any]] = []
+    for source_rel in sources:
+        path = workspace / source_rel
+        if not path.exists():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        for array_key in ("decisions", "invariants"):
+            entries = data.get(array_key) or []
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                enforcement = entry.get("enforcement")
+                if not isinstance(enforcement, dict):
+                    continue
+                description = (
+                    entry.get("question")
+                    or entry.get("description")
+                    or entry.get("topic")
+                    or ""
+                )
+                rationale = (
+                    enforcement.get("rationale")
+                    or (entry.get("answer") or "")[:300]
+                )
+                out.append({
+                    "id": entry.get("id") or "<no-id>",
+                    "description": description,
+                    "applies_to": enforcement.get("applies_to") or [],
+                    "rules": enforcement.get("rules") or {},
+                    "severity": enforcement.get("severity") or "warn",
+                    "rationale": rationale,
+                    "_source_path": source_rel,
+                })
+    return out
+
+
+_matches_path = match_glob  # backwards-compat alias; empty_returns defaults to True.
 
 
 def _compile_patterns(rules: Dict[str, Any]) -> List[Tuple[str, re.Pattern]]:
@@ -181,12 +222,13 @@ def _collect_violations(
 
         if not removed:
             continue
+        source_path = inv.get("_source_path") or INVARIANTS_REL
         entry = {
             "invariant_id": inv.get("id") or "<no-id>",
             "description": inv.get("description") or "",
             "rationale": inv.get("rationale") or "",
             "removed_patterns": removed,
-            "source": f"{INVARIANTS_REL}#{inv.get('id', '?')}",
+            "source": f"{source_path}#{inv.get('id', '?')}",
         }
         if (inv.get("severity") or "warn").lower() == "blocker":
             blockers.append(entry)
@@ -232,7 +274,7 @@ def _bypass_requested(envelope: Dict[str, Any], blocker_ids: List[str]) -> bool:
             break
     if not prompt:
         return False
-    matches = re.findall(r"bypass-invariant\s*:\s*([A-Za-z0-9_\-,\s]+)", prompt, re.IGNORECASE)
+    matches = BYPASS_INVARIANT_RE.findall(prompt)
     if not matches:
         return False
     requested: List[str] = []
@@ -242,10 +284,6 @@ def _bypass_requested(envelope: Dict[str, Any], blocker_ids: List[str]) -> bool:
 
 
 def main() -> int:
-    # Kill-switch: env var disables all enforcement (emergency).
-    if os.environ.get("AGENT_TOOLKIT_DISABLE") == "1":
-        _allow()
-
     raw = sys.stdin.read()
     if not raw.strip():
         _allow()

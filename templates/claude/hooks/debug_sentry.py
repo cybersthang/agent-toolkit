@@ -37,7 +37,6 @@ Fails open: lỗi parse / IO → exit 0.
 """
 from __future__ import annotations
 
-import io
 import json
 import os
 import re
@@ -45,11 +44,12 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+sys.path.insert(0, str(Path(__file__).parent))
+from _common import (  # noqa: E402
+    wrap_utf8_stdio, read_jsonl_transcript, split_current_turn,
+)
 
-if hasattr(sys.stdin, "buffer"):
-    sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace")
-if hasattr(sys.stdout, "buffer"):
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+wrap_utf8_stdio()
 
 
 CONFIG_REL = ".agent-toolkit/debug.json"
@@ -120,32 +120,8 @@ def _load_config(workspace: Path) -> Dict[str, Any]:
     return cfg
 
 
-def _read_transcript(path: Path) -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
-    try:
-        with path.open(encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    out.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-    except OSError:
-        return []
-    return out
-
-
-def _split_current_turn(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    last_user = -1
-    for idx in range(len(messages) - 1, -1, -1):
-        if messages[idx].get("type") == "user" or messages[idx].get("role") == "user":
-            last_user = idx
-            break
-    if last_user < 0:
-        return messages
-    return messages[last_user:]
+_read_transcript = read_jsonl_transcript
+_split_current_turn = split_current_turn
 
 
 def _extract_text_and_results(turn: List[Dict[str, Any]]) -> Tuple[str, str]:

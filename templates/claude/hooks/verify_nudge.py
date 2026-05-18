@@ -24,35 +24,29 @@ invalidation. For now: pre-filter via mtime stat reduces parse to O(active).
 """
 from __future__ import annotations
 
-import io
 import json
 import os
 import re
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
+sys.path.insert(0, str(Path(__file__).parent))
+from _common import wrap_utf8_stdio, atomic_write_json  # noqa: E402
+from _patterns import (  # noqa: E402
+    SPEC_STATUS_RE as _STATUS_RE,
+    SPEC_SLUG_RE as _SPEC_SLUG_RE,
+    IMPLEMENTING_STATUSES,
+)
 
-if hasattr(sys.stdin, "buffer"):
-    sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace")
-if hasattr(sys.stdout, "buffer"):
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+wrap_utf8_stdio()
 
 
 SUPPORTED_TOOLS = {"Edit", "Write", "MultiEdit"}
 STATE_REL = ".agent-toolkit/.verify_nudge_last.json"
 CACHE_REL = ".agent-toolkit/.verify_nudge_cache.json"
 TTL_SECONDS = 60
-
-# Status values we care about (case-insensitive).
-IMPLEMENTING_STATUSES = ("implementing", "gaps-found")
-
-# Pattern to extract spec slug + status from frontmatter without YAML parser.
-_STATUS_RE = re.compile(r"^status\s*:\s*([a-z_-]+)\s*$",
-                        re.IGNORECASE | re.MULTILINE)
-_SPEC_SLUG_RE = re.compile(r"^spec\s*:\s*([a-z0-9][a-z0-9_-]+)\s*$",
-                           re.IGNORECASE | re.MULTILINE)
 
 
 def _exit_silent() -> None:
@@ -81,12 +75,7 @@ def _load_cache(workspace: Path) -> Dict[str, Any]:
 
 
 def _save_cache(workspace: Path, cache: Dict[str, Any]) -> None:
-    path = workspace / CACHE_REL
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
-    except OSError:
-        pass
+    atomic_write_json(workspace / CACHE_REL, cache)
 
 
 def _scan_specs(workspace: Path) -> List[Tuple[str, Path, str]]:
@@ -166,15 +155,11 @@ def _is_duplicate(workspace: Path, key: str) -> bool:
     if (now - int(last)) < TTL_SECONDS:
         return True
     state[key] = now
-    # Trim state to last 50 entries.
+    # Trim state to last 50 entries (oldest first by timestamp).
     if len(state) > 50:
         kept = sorted(state.items(), key=lambda kv: kv[1])[-50:]
         state = dict(kept)
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
-    except OSError:
-        pass
+    atomic_write_json(path, state)
     return False
 
 

@@ -241,8 +241,9 @@ Q<N>: How is the request classified as ASYNC vs SYNC?
       no endpoint-name dependency.
   (b) Layer 2 (context signal): inspect HTTP method + presence of
       Last-Modified header. When this fits: (a) misses queue.job patterns.
-  (c) Layer 4 (hardcode) — list of URL substrings. Cost-of-update: every
-      new endpoint requires editing `_FIRE_AND_FORGET_HINTS`. Why if chosen:
+  (c) Layer 4 (hardcode) — list of literal URL/name substrings stored in
+      a module-level constant (e.g. `<ALLOWLIST_NAME>`). Cost-of-update:
+      every new endpoint requires editing the constant. Why if chosen:
       Layer 1+2+3 all fail because <evidence>.
 ```
 

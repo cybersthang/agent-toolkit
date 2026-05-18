@@ -44,10 +44,16 @@ TOOL_EXIT_NONZERO_RE = re.compile(r"\bexit\s*code\s*[:\s]*([1-9]\d*)\b", re.IGNO
 # FIRST matching alternative, not the longest, so `js` would shadow `json` /
 # `jsx`, `ts` would shadow `tsx`, `c` would shadow `cpp`, `h` would shadow
 # `hpp`. Real-world false-positive caught 2026-05-18: `invariants.json` was
-# mis-matched as `invariants.js`, causing phantom_citation false-block.
+# mis-matched as `invariants.js`.
+#
+# Word-boundary `\b` AFTER extension group prevents URL false-match: without
+# it, `gitlab.com` mis-matched `gitlab.c` (consuming `c`, leaving `om`).
+# `\b` requires non-word-char (or end-of-string) after the extension —
+# `c` followed by `o` fails `\b`, backtrack, full match fails → correct.
+# Caught 2026-05-18 in spec verify hook trace.
 CITATION_RE = re.compile(
     r"(?<![A-Za-z0-9_])([A-Za-z0-9_./\\-]+\.(json|jsx|js|tsx|ts|yaml|yml|"
-    r"hpp|cpp|html|scss|toml|ps1|java|sql|css|xml|md|py|sh|go|rs|rb|c|h))"
+    r"hpp|cpp|html|scss|toml|ps1|java|sql|css|xml|md|py|sh|go|rs|rb|c|h)\b)"
     r"(?::(\d+)(?:-(\d+))?)?",
     re.IGNORECASE,
 )
@@ -185,6 +191,21 @@ def check_phantom_citation(
                 return True
         except OSError:
             pass
+        # Subdir search by basename — handles bare filename citations
+        # (e.g. `perturb_test_block_classification.py` lives at
+        # `nakivo/nakivo_profiler/tests/perturb_test_block_classification.py`
+        # but cited without dir prefix). Short-circuit on first hit; skip
+        # short basenames (< 8 chars) to avoid noisy match like `a.py`.
+        # Real-world false-positive caught 2026-05-18: spec verify cited
+        # bare filename → workspace check missed → reported as missing.
+        if cite_base and len(cite_base) >= 8:
+            try:
+                matches = workspace.glob(f"**/{cite_base}")
+                first = next(matches, None)
+                if first is not None and first.is_file():
+                    return True
+            except (OSError, ValueError):
+                pass
         return False
 
     bad: List[str] = []

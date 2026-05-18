@@ -52,22 +52,53 @@ def _format_autonomy(workspace: Path) -> str:
     if not isinstance(data, dict):
         return ""
 
-    from datetime import datetime
+    from datetime import datetime, timezone, timedelta
     expires_str = data.get("expires_at") or ""
     spec = data.get("spec") or "<unknown>"
     scopes = data.get("scopes") or []
     blocked = data.get("still_blocked") or []
 
-    now = datetime.now()
+    # Parse expires_at as timezone-aware when possible.
+    #
+    # Real-world bug caught 2026-05-18: `/go` command wrote `expires_at` using
+    # `date -u +...+0700` which produced UTC time stamped with `+0700` tz
+    # suffix — these are inconsistent (the time IS UTC but suffix claims
+    # +0700). Previous parser stripped the tz suffix and treated as naive
+    # local → false-expired banner. Fix: parse tz-aware when suffix present,
+    # convert to local for comparison.
     expires_dt = None
     if expires_str:
-        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S",
-                    "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M"):
-            try:
-                expires_dt = datetime.strptime(expires_str.split(".")[0].split("+")[0], fmt)
-                break
-            except ValueError:
-                continue
+        # Try fromisoformat first (Python 3.7+ handles `+HH:MM` aware,
+        # but not `+HHMM` without colon — normalize first).
+        normalized = expires_str.strip()
+        # Insert colon into bare offset like `+0700` -> `+07:00` for fromisoformat.
+        import re as _re
+        normalized = _re.sub(r"([+-])(\d{2})(\d{2})$", r"\1\2:\3", normalized)
+        try:
+            expires_dt = datetime.fromisoformat(normalized)
+        except (ValueError, TypeError):
+            # Fallback: strip tz suffix + strptime as naive (legacy behavior).
+            for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S",
+                        "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M"):
+                try:
+                    expires_dt = datetime.strptime(
+                        expires_str.split(".")[0].split("+")[0].split("Z")[0],
+                        fmt,
+                    )
+                    break
+                except ValueError:
+                    continue
+
+    now = datetime.now()
+    if expires_dt is not None and expires_dt.tzinfo is not None:
+        # Aware comparison — use local-aware now.
+        now = datetime.now().astimezone()
+        if now.tzinfo is None:
+            # Fallback: convert expires to naive UTC then subtract from naive
+            # local — best-effort if astimezone fails (no system tz info).
+            expires_dt = expires_dt.replace(tzinfo=None)
+            now = datetime.now()
+
     if expires_dt and now > expires_dt:
         return ""
 

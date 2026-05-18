@@ -21,6 +21,39 @@ DEFAULT_PASS_CLAIM_REGEX = (
 
 DEFAULT_REQUIRED_TOOL_PREFIXES = ("mcp__realdata_test__", "mcp__postgres__")
 
+
+def discover_required_prefixes(workspace: Path) -> Tuple[str, ...]:
+    """Discover MCP tool prefixes available in `.mcp.json` for this project.
+
+    Used as fallback when `_defaults.required_tool_prefixes` is missing or
+    when the configured prefixes don't match any real MCP server. Without
+    this, the PASS-claim hook would hard-require `mcp__realdata_test__` /
+    `mcp__postgres__` prefixes that may not exist on projects with
+    differently-named MCP servers (e.g. `mcp__nakivo-odoo12__`).
+
+    Returns tuple of `mcp__<server>__` prefixes from `.mcp.json`, excluding
+    generic cross-project servers like `playwright` that ship from the
+    toolkit baseline. Returns DEFAULT_REQUIRED_TOOL_PREFIXES when `.mcp.json`
+    missing/malformed.
+    """
+    mcp_path = workspace / ".mcp.json"
+    if not mcp_path.exists():
+        return DEFAULT_REQUIRED_TOOL_PREFIXES
+    try:
+        data = json.loads(mcp_path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return DEFAULT_REQUIRED_TOOL_PREFIXES
+    servers = data.get("mcpServers") if isinstance(data, dict) else None
+    if not isinstance(servers, dict):
+        return DEFAULT_REQUIRED_TOOL_PREFIXES
+    exclude = {"playwright"}
+    prefixes = tuple(
+        f"mcp__{name}__"
+        for name in servers
+        if isinstance(name, str) and name.strip() and name not in exclude
+    )
+    return prefixes or DEFAULT_REQUIRED_TOOL_PREFIXES
+
 DEFAULT_PASS_EXEMPT_MARKERS = ("[meta-review]", "[meta]")
 
 PROBE_SKIP_RE = re.compile(

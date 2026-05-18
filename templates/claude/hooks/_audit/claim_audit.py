@@ -12,10 +12,15 @@ CLAIM_PATTERNS = [
     r"\broot\s*cause\b",
     r"\bnguy(ê|e)n\s*nhân\s*(g(ố|o)c|chính)\b",
     r"\bch(ậ|a)m\b|\bslow\b|\bbottleneck\b",
-    r"\bthi(ế|e)u\b|\bmissing\b|\bdoesn'?t\s*exist\b",
-    r"\bbug\b|\bb(ị|i)\s*l(ỗ|o)i\b|\bbroken\b",
+    # Exclude hyphenated/slashed identifiers like `bug-to-test`, `bug_to_test`,
+    # `/missing-feature` from triggering. `(?<![\w/_-])` and `(?![\w/_-])` ensure
+    # the word is standalone English, not a token component of a command/file
+    # name. Real-world false-positive caught 2026-05-18: `/bug-to-test` command
+    # name was treated as a bug-claim.
+    r"(?<![\w/_-])(thi(ế|e)u|missing)(?![\w/_-])|\bdoesn'?t\s*exist\b",
+    r"(?<![\w/_-])(bug|broken)(?![\w/_-])|\bb(ị|i)\s*l(ỗ|o)i\b",
     r"\bkhông\s*ho(ạ|a)t\s*đ(ộ|o)ng\b|\bnot\s*working\b",
-    r"\bsai\b|\bwrong\b|\bincorrect\b",
+    r"(?<![\w/_-])(sai|wrong|incorrect)(?![\w/_-])",
     r"\bthay\s*đ(ổ|o)i\s*này\s*s(ẽ|e)\b|\bthis\s*change\s*will\b",
     r"\bnên\s*(s(ử|u)a|d(ù|u)ng|b(ỏ|o))\b|\bshould\s*(fix|use|remove)\b",
     r"\bsafe\s*to\b|\ban\s*toàn\s*đ(ể|e)\b",

@@ -28,9 +28,9 @@ from _audit.claim_audit import (
 )
 from _audit.pass_contract import (
     DEFAULT_PASS_CLAIM_REGEX, DEFAULT_PASS_EXEMPT_MARKERS, DEFAULT_REQUIRED_TOOL_PREFIXES,
-    default_pass_evidence_satisfied, edited_paths_in_turn, load_probes_registry,
-    matching_probes, meta_review_mode, pass_claim_present, probe_evidence_satisfied,
-    probe_skip_requested,
+    default_pass_evidence_satisfied, discover_required_prefixes, edited_paths_in_turn,
+    load_probes_registry, matching_probes, meta_review_mode, pass_claim_present,
+    probe_evidence_satisfied, probe_skip_requested,
 )
 from _audit.progress_checks import (
     ALL_PROGRESS_CHECKS, progress_skip_requested, run_progress_checks,
@@ -112,8 +112,13 @@ def main() -> int:
     probes = [p for p in (registry.get("probes") or []) if isinstance(p, dict)]
     defaults = registry.get("_defaults") or {}
     pass_re = defaults.get("pass_claim_regex") or DEFAULT_PASS_CLAIM_REGEX
+    # Per-project override > auto-discovered from .mcp.json > toolkit default.
+    # discover_required_prefixes reads `.mcp.json` and returns project's actual
+    # MCP server prefixes (e.g. `mcp__nakivo-odoo12__`) so PASS-claim contract
+    # doesn't false-block projects with non-default MCP naming.
     required_prefixes = tuple(
-        defaults.get("required_tool_prefixes") or DEFAULT_REQUIRED_TOOL_PREFIXES
+        defaults.get("required_tool_prefixes")
+        or discover_required_prefixes(workspace)
     )
     pass_exempt_markers = tuple(
         defaults.get("pass_exempt_markers") or DEFAULT_PASS_EXEMPT_MARKERS

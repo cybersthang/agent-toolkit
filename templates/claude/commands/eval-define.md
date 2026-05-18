@@ -48,6 +48,37 @@ status `grilled` and ask the user to pick.
      custom one if the claim shape is not present.
    - Output `recipe: <id>` in the probe YAML (see `[[claim-falsification]]`).
 
+3.5. **Locate the observable BEFORE writing the probe (REQUIRED per ADR-007 Bước 1.7)**:
+
+   > Principle: "measure Y where Y actually lives, not where it is convenient to query".
+
+   Real-world false-positive caught 2026-05-18: a probe queried raw DB column
+   for a field computed at endpoint-read time (in-memory mutation, no UPDATE
+   ever runs) → field was NULL on 100% of rows → /verify treated NULL as bug
+   → false BLOCKER.
+
+   Before picking `grader` + `probe.tool`, answer: **where does Y for this Story live?**
+
+   | Layer | Indicator | Right probe tool |
+   |---|---|---|
+   | Raw DB column / persisted JSON | Spec says "X is stored in field Y" + grep `cr.execute('UPDATE … SET X')` in write path | `mcp__<stack>__postgres_read_query` |
+   | In-memory mutation at read time | Code docstring says "in-place attach", "computed at read", "memoize at endpoint"; absence of UPDATE in write path | HTTP probe to the endpoint (`Bash curl` with session cookie / Playwright authed) — do NOT query the DB |
+   | JS browser state | Field sent/rendered by JS only, not persisted server-side | Playwright `browser_evaluate` reading DOM / `performance.getEntries()` |
+   | Empirical behaviour | Runtime claim (BLOCK/ASYNC/cached/idempotent/lazy/...) | `[[claim-falsification]]` perturb-test recipe (Recipe 1-15) |
+   | Log file | Side-effect log, not persisted in DB | `Bash grep <log>` |
+
+   **Hard rule**: agent MUST emit 1 line per probe stating the located layer
+   BEFORE writing the YAML. Example:
+   ```
+   us1: layer = raw DB column (verified `UPDATE` in models/foo.py:42) → postgres_read_query
+   us2: layer = in-memory at /api/dashboard endpoint (no UPDATE found) → HTTP probe + jq
+   us3: layer = empirical BLOCK/ASYNC → claim-falsification Recipe 1 perturb-test
+   ```
+
+   If layer cannot be located in 30 seconds of grep → tag `[layer: assumption]`
+   and proceed with best-guess; /verify will catch wrong-layer probe at
+   Step 1.7 (verify-feature skill).
+
 4. **For each User Story, design 1+ probe** per ECC categorization:
 
    | Grader kind | When to use | Suggested MCP tool |

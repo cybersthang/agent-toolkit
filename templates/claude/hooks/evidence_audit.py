@@ -1,283 +1,200 @@
 #!/usr/bin/env python
-"""Stop hook — flag claims that lack tool-call evidence in this turn.
+"""Stop hook entry — wires 3 enforcement layers in priority order:
 
-Runs after the agent finishes a response. Reads the transcript for the
-turn that just ended (from the most recent user message to the final
-assistant text). If the assistant made non-trivial claims ("root cause
-is X", "Y is slow", "Z is missing") WITHOUT having called any
-discovery tool (Read, Grep, Glob, codebase MCP, postgres MCP,
-realdata_test MCP), the hook blocks the stop and asks the agent to
-either verify the claims or tag them `[assumption]`.
+1. PASS-claim contract (fail-CLOSED): acceptance probes + generic fallback.
+2. Hallucinated-progress contract (fail-CLOSED): 5 categories A-E cross-check.
+3. Generic claim audit (fail-open via [assumption]).
 
-Loops are bounded: the hook checks `stop_hook_active` in the envelope
-and skips if Claude has already been re-prompted once for this stop.
+Detailed logic lives in `_audit/` package modules. This file is the
+single entry script wired into `.claude/settings.json`.
 
-Stays silent (exit 0) when:
-  - No claims detected.
-  - Response already tags itself with [assumption] / [unverified] /
-    "tôi không chắc" / "I'm not sure" markers.
-  - Tool calls in this turn already include any discovery tool.
-  - Response is short (< 240 chars) — likely a non-load-bearing reply.
-
-Fails open on any parse error.
+Fails open on any unexpected error — better to under-block than to
+permanently jam the workflow.
 """
 from __future__ import annotations
 
+import io
 import json
 import os
-import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
-sys.path.insert(0, str(Path(__file__).parent))
-from _common import (  # noqa: E402
-    wrap_utf8_stdio, read_jsonl_transcript, split_current_turn,
+# Make `_audit` package importable when invoked as a standalone script.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _audit.claim_audit import (
+    find_claims, has_disclaimer, has_evidence,
 )
-from _patterns import (  # noqa: E402
-    VERIFY_REPORT_HEADER_RE as _VERIFY_REPORT_HEADER_RE,
-    SEQUENTIAL_OVERRIDE_RE as _SEQUENTIAL_OVERRIDE_RE,
+from _audit.pass_contract import (
+    DEFAULT_PASS_CLAIM_REGEX, DEFAULT_PASS_EXEMPT_MARKERS, DEFAULT_REQUIRED_TOOL_PREFIXES,
+    default_pass_evidence_satisfied, edited_paths_in_turn, load_probes_registry,
+    matching_probes, meta_review_mode, pass_claim_present, probe_evidence_satisfied,
+    probe_skip_requested,
 )
-
-wrap_utf8_stdio()
-
-
-CLAIM_PATTERNS = [
-    r"\broot\s*cause\b",
-    r"\bnguy(ê|e)n\s*nhân\s*(g(ố|o)c|chính)\b",
-    r"\bch(ậ|a)m\b|\bslow\b|\bbottleneck\b",
-    r"\bthi(ế|e)u\b|\bmissing\b|\bdoesn'?t\s*exist\b",
-    r"\bbug\b|\bb(ị|i)\s*l(ỗ|o)i\b|\bbroken\b",
-    r"\bkhông\s*ho(ạ|a)t\s*đ(ộ|o)ng\b|\bnot\s*working\b",
-    r"\bsai\b|\bwrong\b|\bincorrect\b",
-    r"\bthay\s*đ(ổ|o)i\s*này\s*s(ẽ|e)\b|\bthis\s*change\s*will\b",
-    r"\bnên\s*(s(ử|u)a|d(ù|u)ng|b(ỏ|o))\b|\bshould\s*(fix|use|remove)\b",
-    r"\bsafe\s*to\b|\ban\s*toàn\s*đ(ể|e)\b",
-]
-
-# If any of these strings appear in the response, the agent has already
-# disclaimed — skip the audit. Substring match (lowercase).
-DISCLAIMER_MARKERS = (
-    "[assumption]",
-    "[unverified]",
-    "[chưa verify]",
-    "[không chắc]",
-    "tôi không chắc",
-    "i'm not sure",
-    "i am not sure",
-    "needs verification",
-    "cần xác minh",
-    "chưa kiểm chứng",
+from _audit.progress_checks import (
+    ALL_PROGRESS_CHECKS, progress_skip_requested, run_progress_checks,
 )
-
-# Tool names that count as "evidence-gathering" in a turn. MCP tools are
-# matched by prefix (`mcp__`) AND not by name suffix — covers any
-# server (codebase / postgres / realdata_test / jira / custom plugin).
-EVIDENCE_TOOLS = {"Read", "Grep", "Glob", "NotebookRead", "BashOutput", "WebFetch"}
-EVIDENCE_TOOL_PREFIXES = ("mcp__",)
-# Bash counts only when it looks like inspection (not raw mutation).
-EVIDENCE_BASH_SUBSTRINGS = (
-    "grep", "rg ", "find ", "cat ", "head ", "tail ", "ls ", "wc ",
-    "git log", "git diff", "git blame", "git show", "psql", "select ", "explain",
+from _audit.reasons import (
+    format_generic_claim_reason, format_pass_block_reason, format_progress_block_reason,
 )
+from _audit.telemetry import log_event
+from _audit.transcript import (
+    extract_text_and_tools, extract_tool_results, read_transcript, split_current_turn,
+)
+from _audit.verify_report import verify_report_probe_spread
 
 
-def _exit_allow() -> None:
+# UTF-8 stdin/stdout for Vietnamese identifiers.
+if hasattr(sys.stdin, "buffer"):
+    sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace")
+if hasattr(sys.stdout, "buffer"):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
+
+def _exit_allow(workspace: Path, reason_categories: List[str] = None, bypass: List[str] = None) -> None:
+    log_event(workspace, hook="evidence_audit", decision="allow",
+              categories=reason_categories or [], bypass=bypass or [])
     sys.exit(0)
 
 
-def _emit_block(reason: str) -> None:
+def _emit_block(workspace: Path, reason: str, categories: List[str]) -> None:
+    log_event(workspace, hook="evidence_audit", decision="block",
+              categories=categories)
     print(json.dumps({"decision": "block", "reason": reason}, ensure_ascii=False))
     sys.exit(0)
 
 
-# Transcript reader + turn split are imported from _common (read_jsonl_transcript
-# + split_current_turn). Kept aliases below for local readability.
-_read_transcript = read_jsonl_transcript
-_split_current_turn = split_current_turn
-
-
-def _extract_text_and_tools(turn: List[Dict[str, Any]]) -> Tuple[str, List[Dict[str, Any]]]:
-    """Concatenate assistant text and collect tool_use entries from the turn."""
-    text_parts: List[str] = []
-    tool_calls: List[Dict[str, Any]] = []
-    for msg in turn:
-        # Claude Code stores either `message.content` (Anthropic block list)
-        # or a flat text field. Handle both.
-        role = msg.get("role") or msg.get("type")
-        if role == "assistant":
-            content = (msg.get("message") or {}).get("content") or msg.get("content")
-            if isinstance(content, str):
-                text_parts.append(content)
-            elif isinstance(content, list):
-                for block in content:
-                    btype = block.get("type")
-                    if btype == "text":
-                        text_parts.append(block.get("text") or "")
-                    elif btype == "tool_use":
-                        tool_calls.append(block)
-    return ("\n".join(text_parts), tool_calls)
-
-
-def _verify_report_probe_spread(turn: List[Dict[str, Any]], text: str) -> Optional[str]:
-    """ADR-007 Bước 3 enforcement: Verify Report probes phải PARALLEL (1 message).
-
-    Returns reason string if violated, else None.
-
-    Conditions to flag:
-      - Response text matches /#+\\s*verify\\s*report/i.
-      - tool_use blocks split across > 1 assistant message.
-      - No assistant text mentions "sequential — depends on" (legit override).
-
-    Bash filter: only treat Bash tool_use as a probe when the command contains
-    an EVIDENCE_BASH_SUBSTRING token (`select`, `psql`, `curl`, etc.). Plain
-    Bash for restart/mkdir/kill is NOT a probe — counting them caused
-    false-positive blocks (BUG-FIX B2, 2026-05-17).
-    """
-    if not _VERIFY_REPORT_HEADER_RE.search(text):
-        return None
-    if _SEQUENTIAL_OVERRIDE_RE.search(text):
-        return None
-    # Count assistant messages containing >=1 probe-like tool_use.
-    msg_with_probes = 0
-    total_probes = 0
-    for msg in turn:
-        role = msg.get("role") or msg.get("type")
-        if role != "assistant":
-            continue
-        content = (msg.get("message") or {}).get("content") or msg.get("content")
-        if not isinstance(content, list):
-            continue
-        had_probe_here = False
-        for block in content:
-            if block.get("type") != "tool_use":
-                continue
-            name = block.get("name") or ""
-            is_probe = False
-            if name.startswith("mcp__"):
-                is_probe = True
-            elif name == "Bash":
-                # B2 fix: only count Bash as probe if command contains evidence tokens.
-                cmd = ((block.get("input") or {}).get("command") or "").lower()
-                if any(sub in cmd for sub in EVIDENCE_BASH_SUBSTRINGS):
-                    is_probe = True
-            if is_probe:
-                total_probes += 1
-                had_probe_here = True
-        if had_probe_here:
-            msg_with_probes += 1
-    if msg_with_probes <= 1 or total_probes <= 1:
-        return None
-    return (
-        "[evidence-audit] ADR-007 Bước 3 violation — Verify Report's probes spread "
-        f"across {msg_with_probes} assistant messages ({total_probes} probes total). "
-        "Verify phải capture 1 snapshot point-in-time → tất cả probe đi trong 1 "
-        "message duy nhất (multiple tool_use blocks song song).\n\n"
-        "Hợp lệ override: nếu probe N phụ thuộc output của probe N-1, ghi "
-        "`(sequential — depends on #<N-1>)` trong Verify Report → audit pass.\n\n"
-        "Sửa: re-emit Verify Report với tất cả probe trong 1 message duy nhất."
-    )
-
-
-def _has_disclaimer(text: str) -> bool:
-    low = text.lower()
-    return any(marker in low for marker in DISCLAIMER_MARKERS)
-
-
-def _find_claims(text: str) -> List[str]:
-    """Return list of distinct matched claim labels (deduped)."""
-    seen = []
-    low = text.lower()
-    for pat in CLAIM_PATTERNS:
-        if re.search(pat, low, re.UNICODE):
-            seen.append(pat)
-    return seen
-
-
-def _has_evidence(tool_calls: List[Dict[str, Any]]) -> bool:
-    for call in tool_calls:
-        name = call.get("name") or ""
-        if name in EVIDENCE_TOOLS:
-            return True
-        if any(name.startswith(prefix) for prefix in EVIDENCE_TOOL_PREFIXES):
-            return True
-        if name == "Bash":
-            cmd = ((call.get("input") or {}).get("command") or "").lower()
-            if any(sub in cmd for sub in EVIDENCE_BASH_SUBSTRINGS):
-                return True
-    return False
-
-
-def _format_reason(text: str, claims: List[str]) -> str:
-    sample = (text[:280].rstrip() + "…") if len(text) > 280 else text.strip()
-    return (
-        "[evidence-audit] Response vừa rồi có claim nhưng KHÔNG đi kèm bất kỳ "
-        "tool call inspect nào trong turn này (không Read/Grep/Glob/MCP search/"
-        "psql). Trước khi chốt, hoặc:\n\n"
-        f"1. Chạy MCP / Read / Grep để verify các claim ({len(claims)} pattern "
-        "khớp: " + ", ".join(c for c in claims[:5]) + ").\n"
-        "2. Hoặc nếu không thể verify, sửa response gắn nhãn `[assumption]` "
-        "hoặc `[chưa verify]` cho từng claim chưa có chứng cứ — rõ ràng với "
-        "user là phỏng đoán, không phải fact.\n\n"
-        "Trích response cần kiểm tra:\n"
-        f"---\n{sample}\n---\n\n"
-        "Bỏ qua audit cho turn này: thêm dòng `evidence-audit: skip` vào "
-        "response (chỉ dùng khi claim hiển nhiên vô hại như format/style)."
-    )
-
-
 def main() -> int:
+    # Kill-switch: env var disables all enforcement (emergency).
+    if os.environ.get("AGENT_TOOLKIT_DISABLE") == "1":
+        sys.exit(0)
+
     raw = sys.stdin.read()
     if not raw.strip():
-        _exit_allow()
+        sys.exit(0)
 
     try:
         envelope = json.loads(raw)
     except json.JSONDecodeError:
-        _exit_allow()
+        sys.exit(0)
 
     # Don't recurse — Claude Code re-runs the agent if we block; bail out
     # the second time so we never loop forever.
     if envelope.get("stop_hook_active"):
-        _exit_allow()
+        sys.exit(0)
 
     transcript_path = envelope.get("transcript_path")
     if not transcript_path:
-        _exit_allow()
+        sys.exit(0)
     tpath = Path(transcript_path)
     if not tpath.exists():
-        _exit_allow()
+        sys.exit(0)
 
-    messages = _read_transcript(tpath)
+    messages = read_transcript(tpath)
     if not messages:
-        _exit_allow()
+        sys.exit(0)
 
-    turn = _split_current_turn(messages)
-    text, tool_calls = _extract_text_and_tools(turn)
+    cwd = envelope.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    workspace = Path(cwd).resolve()
+
+    turn = split_current_turn(messages)
+    text, tool_calls = extract_text_and_tools(turn)
+    results_by_id = extract_tool_results(turn)
 
     if not text or len(text) < 240:
-        _exit_allow()
+        _exit_allow(workspace)
     if "evidence-audit: skip" in text.lower():
-        _exit_allow()
+        _exit_allow(workspace, bypass=["evidence-audit:skip"])
 
-    # ADR-007 Bước 3 enforcement — check BEFORE disclaimer/claim audit
-    # because Verify Report skipping parallel probes is a structural violation,
-    # not a claim-evidence one.
-    probe_spread_reason = _verify_report_probe_spread(turn, text)
+    # ----- PASS-claim contract -----
+    registry = load_probes_registry(workspace)
+    probes = [p for p in (registry.get("probes") or []) if isinstance(p, dict)]
+    defaults = registry.get("_defaults") or {}
+    pass_re = defaults.get("pass_claim_regex") or DEFAULT_PASS_CLAIM_REGEX
+    required_prefixes = tuple(
+        defaults.get("required_tool_prefixes") or DEFAULT_REQUIRED_TOOL_PREFIXES
+    )
+    pass_exempt_markers = tuple(
+        defaults.get("pass_exempt_markers") or DEFAULT_PASS_EXEMPT_MARKERS
+    )
+
+    meta_mode = meta_review_mode(text, pass_exempt_markers)
+    edited_paths = edited_paths_in_turn(tool_calls)
+    matched = [] if meta_mode else matching_probes(probes, text, edited_paths)
+    pass_hit = False if meta_mode else pass_claim_present(text, pass_re)
+
+    if matched or pass_hit:
+        probe_ids = [p.get("id", "") for p in matched] + ["default"]
+        skip_reason = probe_skip_requested(text, probe_ids)
+        if skip_reason is not None:
+            _exit_allow(workspace, bypass=["probe-skip"])
+
+        all_probes_ok = True
+        for p in matched:
+            if not probe_evidence_satisfied(p, tool_calls, results_by_id):
+                if (p.get("severity") or "blocker").lower() == "blocker":
+                    all_probes_ok = False
+                    break
+
+        fallback_blocks = False
+        if not matched and pass_hit:
+            if not default_pass_evidence_satisfied(tool_calls, required_prefixes):
+                fallback_blocks = True
+
+        if not all_probes_ok or fallback_blocks:
+            _emit_block(workspace,
+                        format_pass_block_reason(text, matched, fallback_blocks, required_prefixes),
+                        categories=["pass_contract"])
+
+    # ----- Hallucinated-progress contract -----
+    disabled_cats = set(defaults.get("disabled_progress_checks") or [])
+    skip_directive = progress_skip_requested(text)
+    bypass_marks: List[str] = []
+    if skip_directive is not None:
+        cats, _reason = skip_directive
+        if "all" in cats:
+            disabled_cats |= set(ALL_PROGRESS_CHECKS)
+            bypass_marks.extend(ALL_PROGRESS_CHECKS)
+        else:
+            disabled_cats |= set(cats)
+            bypass_marks.extend(cats)
+
+    progress_violations = run_progress_checks(
+        text=text,
+        tool_calls=tool_calls,
+        results_by_id=results_by_id,
+        all_messages=messages,
+        workspace=workspace,
+        disabled=disabled_cats,
+    )
+    if progress_violations:
+        _emit_block(workspace,
+                    format_progress_block_reason(progress_violations, bypass_marks),
+                    categories=[v.split(":", 1)[0] for v in progress_violations])
+
+    # ----- Verify Report probe-spread (ADR-007 Bước 3) -----
+    # Runs BEFORE generic claim audit because structural Verify-Report
+    # violation is independent of claim/evidence count.
+    probe_spread_reason = verify_report_probe_spread(turn, text)
     if probe_spread_reason:
-        _emit_block(probe_spread_reason)
+        _emit_block(workspace, probe_spread_reason, categories=["verify_report_spread"])
 
-    if _has_disclaimer(text):
-        _exit_allow()
+    # ----- Generic claim audit (fail-open via disclaimer) -----
+    if meta_mode:
+        _exit_allow(workspace, bypass=["meta-review"])
+    if has_disclaimer(text):
+        _exit_allow(workspace, bypass=["disclaimer"])
 
-    claims = _find_claims(text)
+    claims = find_claims(text)
     if not claims:
-        _exit_allow()
+        _exit_allow(workspace)
 
-    if _has_evidence(tool_calls):
-        _exit_allow()
+    if has_evidence(tool_calls):
+        _exit_allow(workspace, reason_categories=["claim_with_evidence"])
 
-    _emit_block(_format_reason(text, claims))
+    _emit_block(workspace, format_generic_claim_reason(text, claims),
+                categories=["generic_claim"])
     return 0
 
 

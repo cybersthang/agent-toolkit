@@ -284,6 +284,10 @@ def _bypass_requested(envelope: Dict[str, Any], blocker_ids: List[str]) -> bool:
 
 
 def main() -> int:
+    # Kill-switch: env var disables all enforcement (emergency).
+    if os.environ.get("AGENT_TOOLKIT_DISABLE") == "1":
+        _allow()
+
     raw = sys.stdin.read()
     if not raw.strip():
         _allow()

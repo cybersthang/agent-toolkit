@@ -26,7 +26,6 @@ Fails open: silent on any error. Honors AGENT_TOOLKIT_DISABLE.
 from __future__ import annotations
 
 import fnmatch
-import io
 import json
 import os
 import re
@@ -34,12 +33,10 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+sys.path.insert(0, str(Path(__file__).parent))
+from _common import wrap_utf8_stdio  # noqa: E402
 
-# UTF-8 stdin/stdout for Vietnamese identifiers.
-if hasattr(sys.stdin, "buffer"):
-    sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace")
-if hasattr(sys.stdout, "buffer"):
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+wrap_utf8_stdio()
 
 
 PROBES_REL = ".agent-toolkit/acceptance-probes.json"

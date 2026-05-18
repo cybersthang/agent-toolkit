@@ -121,13 +121,38 @@ def _is_duplicate_nudge(workspace: Path, file_path: str) -> bool:
     return False
 
 
+def _is_odoo_addon_test(file_path: str) -> bool:
+    """Return True iff the test file lives inside an Odoo addon
+    (an ancestor directory contains `__manifest__.py`). Toolkit-own tests
+    in `templates/` or `tests/` of the agent-toolkit repo are NOT Odoo
+    addon tests — they test the framework itself and don't import
+    `odoo.tests.common`. Skipping ADR-003 quality warnings for them
+    avoids noisy false-positives on the toolkit's own test suite.
+    """
+    try:
+        cursor = Path(file_path).resolve().parent
+        # Walk up to FS root looking for __manifest__.py.
+        while True:
+            if (cursor / "__manifest__.py").exists():
+                return True
+            if cursor.parent == cursor:
+                return False
+            cursor = cursor.parent
+    except OSError:
+        return False
+
+
 def _check_test_quality(file_path: str) -> List[str]:
     """ADR-003 check: test file phải dùng dữ liệu thật + ORM call.
 
     Trả về danh sách warning (rỗng nếu file OK). Đọc nội dung file trực
     tiếp — chấp nhận false-positive nhẹ vì chỉ là nudge, không block.
+    Bỏ qua hoàn toàn nếu file không nằm trong Odoo addon (toolkit-own
+    tests, generic Python tests) — ADR-003 chỉ áp cho Odoo addon tests.
     """
     warns: List[str] = []
+    if not _is_odoo_addon_test(file_path):
+        return warns
     try:
         content = Path(file_path).read_text(encoding="utf-8", errors="replace")
     except OSError:

@@ -12,14 +12,14 @@ Produce an exhaustive review with **stable count** across runs on the same
 code base. Avoid the failure mode where a fresh review counts X
 findings, the next run counts Y, and dev loses trust in the audit.
 
-Argument: `$ARGUMENTS` — scope (one of: module name like `nakivo_profiler`,
-PR `NKV-1234`, file path, or empty for "current branch diff").
+Argument: `$ARGUMENTS` — scope (one of: module name like `<your_module>`,
+PR `<TICKET-NNNN>`, file path, or empty for "current branch diff").
 
 ## Step-by-step
 
 1. **Lock-file precedence (ALWAYS first)**
    - `Glob .codex/audit_findings*_locked.md` to find existing audit files.
-   - If a lock file matches the scope (e.g. `audit_findings_nakivo_profiler_locked.md`):
+   - If a lock file matches the scope (e.g. `audit_findings_<module>_locked.md`):
      - `Read` the file. Cite the recorded count VERBATIM:
        `<N> BLOCKER + <M> MEDIUM + <K> LOW = <total> (REV-<n>)`.
      - Only propose a different count when:

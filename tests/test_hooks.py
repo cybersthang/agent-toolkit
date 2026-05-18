@@ -27,6 +27,11 @@ PYTHON = sys.executable
 def _render_hook(hook_name: str, tmp_path: Path) -> Path:
     """Copy a hook into tmp_path, substituting `{{STACK_FRAMEWORK}}` and
     `{{STACK_FRAMEWORK_VERSION}}` so the hook code is syntactically valid.
+
+    Also copies sibling shared modules (`_common.py`, `_patterns.py`) when
+    present so hooks doing `from _common import ...` resolve their imports
+    in the isolated tmp dir. Shared modules ship without placeholders so
+    they are copied verbatim.
     """
     src = HOOKS_DIR / hook_name
     text = src.read_text(encoding='utf-8')
@@ -34,6 +39,20 @@ def _render_hook(hook_name: str, tmp_path: Path) -> Path:
     text = text.replace('{{STACK_FRAMEWORK_VERSION}}', '12')
     dst = tmp_path / hook_name
     dst.write_text(text, encoding='utf-8')
+    for companion in ('_common.py', '_patterns.py'):
+        comp_src = HOOKS_DIR / companion
+        if comp_src.exists():
+            (tmp_path / companion).write_text(
+                comp_src.read_text(encoding='utf-8'), encoding='utf-8'
+            )
+    # Sibling sub-package — `_audit/` for evidence_audit.py wrapper.
+    audit_src = HOOKS_DIR / '_audit'
+    if audit_src.is_dir():
+        import shutil
+        audit_dst = tmp_path / '_audit'
+        if audit_dst.exists():
+            shutil.rmtree(audit_dst)
+        shutil.copytree(audit_src, audit_dst)
     return dst
 
 

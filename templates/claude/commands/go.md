@@ -30,15 +30,19 @@ không cần DEV approve từng phát. Authorization được persist trong
    - Nếu `status: grilled` hoặc cao hơn → OK.
 
 2.5. **Pre-flight check — `acceptance_evals` exists** (added 2026-05-17, Vibe-flow 3-command):
-   - Read frontmatter `acceptance_evals:` key.
-   - Nếu block tồn tại → OK, proceed.
-   - Nếu MISSING + `eval_status` ≠ `skipped-by-user`:
-     - In warning: "Spec không có acceptance_evals. /grill thông thường auto-emit ở Step A end-of-grill — nếu skip → /verify về sau sẽ ad-hoc, có thể MISS bug."
-     - Đề xuất 2 path:
-       - `/eval-define <slug>` trước rồi gõ lại `/go` (Recommended)
-       - `/go <slug> --no-evals` để xác nhận DEV cố ý skip (rare case: spike, no testable claims)
-     - REFUSE start autonomy đến khi DEV quyết.
-   - Nếu `eval_status: skipped-by-user` → proceed với warning banner trong autonomy state.
+   - Read frontmatter `acceptance_evals:` + `eval_status` key.
+   - Acceptable states để proceed:
+     - `eval_status: defined` (refined bởi /grill auto-chain hoặc /eval-define manual) → OK.
+     - `eval_status: skipped-by-user` → proceed với warning banner.
+     - `acceptance_evals` block tồn tại + có ít nhất 1 entry với `grader` ≠ `TBD` → OK (legacy specs).
+   - REFUSE states (in warning + đề xuất path, KHÔNG start autonomy):
+     - `eval_status: draft` (skeleton từ /plan, chưa refine) → bảo DEV chạy `/grill <slug>` để refine, hoặc `/eval-define <slug>` manual.
+     - `eval_status: needs-grill-first` → bảo DEV chạy `/grill <slug>`.
+     - `acceptance_evals` MISSING hoàn toàn → bảo DEV chạy `/plan <slug>` lại (Change 2: /plan luôn emit skeleton).
+   - **Inline-call mode (Change 2)** — nếu /go được call inline từ /grill
+     auto-chain (Step 6b), skip block warning vì /eval-define vừa run trong
+     cùng turn. Detection: `eval_status: defined` + `last_updated` = hôm nay.
+   - Override 1 lần: `/go <slug> --no-evals` để cố tình skip eval requirement.
 
 3. **Compute `expires_at`** từ `--until`. Format ISO local timezone.
 
@@ -82,12 +86,17 @@ không cần DEV approve từng phát. Authorization được persist trong
   · expires: <HH:MM> (sau <Xh Ym>)
   · scopes: process_control, test_db_destructive, migration_dev, pytest_arbitrary, shell_within_workspace
   · still_blocked: prod_db_write, git_push_force, credentials_write
+  · test_env: <URL từ .agent-toolkit/test_env.json, hoặc "(none — verify sẽ ad-hoc)">
 
 → Agent giờ được tự do trong scopes. Tắt sớm: /stop-autonomy.
-→ Sau khi tasks PASS, auto /verify sẽ chạy.
+→ Sau khi tasks PASS + claim done, `post_edit_verify_gate` ép auto /verify.
 ```
 
 8. **STOP** — không tự bắt đầu IMPLEMENT trong cùng turn. DEV gõ prompt kế tiếp để khởi động.
+
+   **Lưu ý Change 2 (compress phases)**: nếu /go được call inline từ /grill
+   Step 6b, thì /grill skill cũng STOP cùng turn — DEV chỉ cần gõ prompt
+   "implement" / "bắt đầu" để agent đi. Không tự chain qua phase Implement.
 
 ## Refuse / clarify khi
 

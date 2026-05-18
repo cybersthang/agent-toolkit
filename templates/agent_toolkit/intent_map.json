@@ -99,6 +99,11 @@
       "skills": ["tdd"]
     },
     {
+      "note": "Toolkit-meta: /test-env (Change 2 — auto-chain trigger). DEV provides test environment URL → /grill auto-captures + auto-chains to /go. Bare URL alone không match; phải có context 'test'/'môi trường'/'sandbox' để tránh false-positive với URL trong git push / GitHub link.",
+      "pattern": "\\b(test\\s*env|môi\\s*trường\\s*test|test\\s*url|test\\s*server|server\\s*test|sandbox\\s*url|đăng\\s*nhập\\s*test|môi\\s*trường\\s*staging|staging\\s*server)\\b",
+      "skills": ["test-env"]
+    },
+    {
       "note": "Jira / ticket",
       "pattern": "\\b(jira|nkv[-\\s]?\\d+|ticket|sprint)\\b",
       "skills": ["{stack}-jira-workflow"]

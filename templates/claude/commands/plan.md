@@ -36,11 +36,45 @@ Argument: `$ARGUMENTS` (mô tả feature). Nếu rỗng, hỏi DEV.
    User Stories / Implementation Decisions / Testing / Out-of-scope / Open
    Questions) — xem `plan-feature` SKILL.md cho chi tiết template.
 
+6.5. **Emit draft `acceptance_evals` skeleton (Change 2 — compress phases)**:
+
+   Mục tiêu: DEV không phải gõ `/eval-define` riêng. /plan tự sinh khung
+   acceptance_evals dựa trên User Stories; /grill sẽ refine `grader` +
+   `expected` ở phase sau.
+
+   - Với MỖI User Story (N stories → N entries), append `acceptance_evals:`
+     vào frontmatter:
+
+     ```yaml
+     acceptance_evals:
+       - id: us<N>-<short-claim-slug>
+         story: "Story N — <copy story summary>"
+         grader: TBD              # data | code | shape | regression — chốt ở /grill
+         layer: TBD               # raw DB | endpoint | DOM | log | empirical — chốt ở /grill (ADR-007 Bước 1.7)
+         probe:
+           tool: TBD              # smoke-tested ở /grill, không guess MCP tool ở phase này
+           args: {}
+         expected:
+           assertion: TBD         # concrete value | regex | "PASS" — chốt ở /grill
+         target_pass_rate: 1.0
+         rationale: "Drafted by /plan from Story N — refine ở /grill (ADR-007)."
+     eval_status: draft
+     ```
+
+   - **KHÔNG smoke-test probe ở phase này** — chỉ là skeleton để /grill biết
+     có bao nhiêu eval cần chốt. Smoke-test bắt buộc ở /eval-define (auto-chained sau /grill).
+
+   - **Trường hợp đặc biệt** — nếu User Stories quá mơ hồ (không paraphrase
+     được thành claim_text rõ) → KHÔNG emit skeleton, set
+     `eval_status: needs-grill-first` + log "evals deferred, stories vague"
+     trong summary.
+
 7. **In tóm tắt** 5-10 dòng cho DEV:
    - Đường dẫn spec.
    - Số module phát hiện.
    - Số Open Questions.
-   - 1 dòng cuối: `→ Tiếp: /grill để stress-test plan.`
+   - Số `acceptance_evals` skeleton emitted (hoặc lý do skip).
+   - 1 dòng cuối: `→ Tiếp: /grill <slug> — auto-refine evals + chuẩn bị autonomy.`
 
 8. **STOP** — không gọi Edit/Write trên file nguồn. Đợi DEV bước tiếp.
 

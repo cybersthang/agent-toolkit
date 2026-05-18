@@ -22,7 +22,10 @@ DEFAULT_PASS_CLAIM_REGEX = (
 DEFAULT_REQUIRED_TOOL_PREFIXES = ("mcp__realdata_test__", "mcp__postgres__")
 
 
-def discover_required_prefixes(workspace: Path) -> Tuple[str, ...]:
+def discover_required_prefixes(
+    workspace: Path,
+    exclude_servers: Optional[Tuple[str, ...]] = None,
+) -> Tuple[str, ...]:
     """Discover MCP tool prefixes available in `.mcp.json` for this project.
 
     Used as fallback when `_defaults.required_tool_prefixes` is missing or
@@ -31,9 +34,23 @@ def discover_required_prefixes(workspace: Path) -> Tuple[str, ...]:
     `mcp__postgres__` prefixes that may not exist on projects with
     differently-named MCP servers (e.g. `mcp__nakivo-odoo12__`).
 
-    Returns tuple of `mcp__<server>__` prefixes from `.mcp.json`, excluding
-    generic cross-project servers like `playwright` that ship from the
-    toolkit baseline. Returns DEFAULT_REQUIRED_TOOL_PREFIXES when `.mcp.json`
+    `exclude_servers` parameter:
+      - None (default) → no exclusion: ALL declared MCP servers count as
+        evidence (incl. `playwright`). Behavior-verification specs (BLOCK /
+        ASYNC / DOM observable) rely on Playwright as primary evidence.
+      - Tuple of server names → exclude those (project can pass
+        `("codebase",)` if e.g. `mcp__codebase__` is read-only discovery,
+        not real-data verification).
+
+    Real-world fix 2026-05-18: prior version hardcoded exclude `{playwright}`
+    → behavior-verification spec couldn't satisfy PASS-claim because hook
+    refused to count `mcp__playwright__browser_navigate` as evidence even
+    though the entire spec was about UI behavior observable through DOM.
+    Per-probe `evidence.required_tools` whitelist is the right place to
+    constrain to data-only MCPs when needed, not a global exclude.
+
+    Returns tuple of `mcp__<server>__` prefixes from `.mcp.json`.
+    Falls back to DEFAULT_REQUIRED_TOOL_PREFIXES when `.mcp.json`
     missing/malformed.
     """
     mcp_path = workspace / ".mcp.json"
@@ -46,11 +63,11 @@ def discover_required_prefixes(workspace: Path) -> Tuple[str, ...]:
     servers = data.get("mcpServers") if isinstance(data, dict) else None
     if not isinstance(servers, dict):
         return DEFAULT_REQUIRED_TOOL_PREFIXES
-    exclude = {"playwright"}
+    excl = set(exclude_servers or ())
     prefixes = tuple(
         f"mcp__{name}__"
         for name in servers
-        if isinstance(name, str) and name.strip() and name not in exclude
+        if isinstance(name, str) and name.strip() and name not in excl
     )
     return prefixes or DEFAULT_REQUIRED_TOOL_PREFIXES
 

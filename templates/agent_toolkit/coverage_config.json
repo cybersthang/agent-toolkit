@@ -1,0 +1,23 @@
+{
+  "_doc": "Project-specific coverage gate config. Read by .codex/precommit_hooks/probe_coverage.py. Adjust feature_globs to match your stack's feature directories; exempt_globs to opt out infra/tests/3rd-party. Starter template is stack-generic — DO NOT hard-code module names here (violates module-agnostic-skill-rules invariant).",
+  "feature_globs": [
+    "**/addons/**/controllers/**.py",
+    "**/addons/**/models/**.py",
+    "**/addons/**/wizard/**.py",
+    "**/addons/**/wizards/**.py",
+    "**/addons/**/jobs/**.py"
+  ],
+  "exempt_globs": [
+    "**/__init__.py",
+    "**/tests/**.py",
+    "**/test_*.py",
+    "**/migrations/**.py",
+    "OCA/**",
+    ".codex/**",
+    ".claude/**",
+    ".agent-toolkit/**",
+    "base_addons/**",
+    "**/odoo/**"
+  ],
+  "_note": "Set to {} (empty) to use built-in defaults from probe_coverage.py."
+}

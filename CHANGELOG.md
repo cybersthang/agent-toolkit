@@ -3,6 +3,124 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
+## [0.3.0] — 2026-05-18
+
+Major: PASS-claim contract + hallucinated-progress detection + acceptance
+probes registry + auto-pipeline + Playwright integration. Closes the
+"agent reports PASS but real-data has bugs" gap by combining mechanical
+enforcement (Stop hook + pre-commit) with empirical falsification CLI.
+
+### Added — PASS-claim & probe contracts
+
+- **`acceptance-probes.json` registry** in `templates/agent_toolkit/`.
+  Per-feature contracts declaring `applies_when` activation rule +
+  `evidence.required_tools` MCP requirements + `falsification.runner`
+  empirical recipe. Schema versioned (v2).
+- **`evidence_audit.py` split into `_audit/` sub-package** (7 modules:
+  `strip`, `transcript`, `claim_audit`, `pass_contract`,
+  `progress_checks`, `reasons`, `telemetry`). Entry script slimmed to
+  ~200 line.
+- **PASS-claim contract** (fail-CLOSED): claims like `tests pass`,
+  `verified`, `done`, `hoàn thành` blocked unless turn includes ≥1 call
+  to `mcp__realdata_test__*` / `mcp__postgres__*` (or matching
+  per-feature probe MCP tool).
+- **Hallucinated-progress checks** (5 categories A-E):
+  `action_ghost`, `tool_result_fabrication`, `phantom_citation`,
+  `todo_inconsistency`, `overcount`. Cross-checks claim text against
+  the turn's actual `tool_use` / `tool_result` record.
+- **`required_result_fingerprint`** (sha256) on probe.evidence:
+  catches dummy MCP calls (e.g. `eval_orm_expression("1+1")`) that
+  satisfy tool-name match but not query-result fingerprint.
+- **`[meta-review]` / `[meta]` marker** exempts PASS contract +
+  generic claim audit (but NOT progress checks) for meta-analysis
+  responses about the toolkit itself.
+- **Telemetry log** at `.codex/logs/hook_events.jsonl` (rotates at
+  1 MB, keeps 3 rotations). Surfaced in `session_brief` SessionStart
+  brief as `Hook health (last N events)`.
+- **Kill-switch** via `AGENT_TOOLKIT_DISABLE=1` env var — all hooks
+  short-circuit to allow.
+
+### Added — auto-pipeline + slash commands
+
+- **`probe_autostub.py`** PostToolUse hook — WARN when Edit/Write
+  lands on feature-scope file but no probe covers it. Forces agent
+  back to grill phase to capture PROBE_READINESS.
+- **`auto_falsify.py`** pre-commit — for each staged file, invoke
+  `falsify.py --probe <id>` for matching probes; block commit on
+  REFUTED.
+- **`probe_coverage.py`** pre-commit — block commit if feature-scope
+  file has no registered probe.
+- **`feature_probe_suggest.py`** pre-commit (info-only) — suggests
+  `/probe-add` for new HTTP routes / controller methods / cron
+  handlers in staged diff.
+- **`falsify.py`** CLI runner (`.codex/tools/`) — empirical
+  falsification for 4 types: `timing_perturb`, `side_effect_inject`,
+  `log_assertion`, **`playwright`** (spawn `npx playwright test`,
+  parse JSON reporter). Sandboxed shell exec (binary whitelist +
+  quote-aware metachar scan).
+- **`agent_toolkit_init.py`** bootstrap CLI — one-command setup for
+  new projects.
+- **New slash commands**: `/probe-add`, `/probe-coverage`, `/review`,
+  `/run-probes`.
+- **`clarification-gate` skill** extended with `PROBE_READINESS` block
+  — for feature-scope tasks, agent must capture probe params during
+  grill before implementation.
+- **`intent_router.py` externalized** to `.agent-toolkit/intent_map.json`
+  (with embedded fallback). Stack-agnostic via `{stack}/{stack_bare}`
+  template placeholders.
+
+### Added — pre-commit + safety
+
+- **`.pre-commit-config.yaml.tmpl`** top-level template (installed as
+  `.pre-commit-config.yaml`) wires 5 pre-commit hooks: invariant_guard,
+  credential_guard (with Shannon entropy check), probe_coverage,
+  probe_suggest, auto_falsify.
+- **Atomic file mutation** in `falsify.py`: `os.replace` for inject
+  + restore. Backup file separate from tmp; crash mid-injection
+  cannot leave partial state.
+- **`coverage_config.json`** at `templates/agent_toolkit/` — defines
+  `feature_globs` for probe-coverage gate + `exempt_globs` for tests/
+  migrations/etc.
+
+### Added — Optional Playwright integration
+
+- **`falsification.type: "playwright"`** runner: spawn `npx playwright
+  test <spec>`, parse JSON reporter, PROVEN if all passed / REFUTED on
+  any fail.
+- **MS Playwright MCP** server referenced in `PORTING.md` (install
+  separately if agent should drive browser interactively during grill).
+
+### Added — Documentation & tests
+
+- **`PORTING.md`** — full porting guide for non-Odoo stacks (Django,
+  Rails, etc.). Comparison matrix vs CI / PR template / human review.
+- **`QUICKSTART.md`** — 5-minute install + first-probe walkthrough
+  (English).
+- **Hook test suite**: 120 unit tests in `templates/codex/tests/hooks/`
+  covering claim audit, PASS contract, progress checks, autostub,
+  falsifier, fingerprint, sandbox, FP-resistance, Playwright dispatch.
+
+### Fixed
+
+- **BOM-tolerant load** (`utf-8-sig`) for `invariants.json`,
+  `acceptance-probes.json`, `decision-log.md` reads — PowerShell
+  `Out-File -Encoding utf8` BOM no longer silently disables hooks.
+- **`_split_current_turn`** in `evidence_audit` skips intermediate
+  tool_result echo messages — earlier turn tool_use blocks now
+  participate in cross-checks.
+- **`phantom_citation`** parses markdown link URLs; resolves citations
+  by basename + on-disk existence + Read/Grep history.
+
+### Compatibility
+
+- Cursor_NAKIVO and any project on toolkit ≥ v0.2 can `setup.py update`
+  to get v0.3 without breaking existing customization
+  (registries preserved via SKIP_EXISTS on `agent_toolkit/`).
+- New PostToolUse hook entry (`probe_autostub`) added to settings.json
+  template — applies on next install/update.
+
+---
+
 ## [0.2.0] — 2026-05-15
 
 Audit-driven Tier 2 + Tier 3 + Tier 4 hardening pass.

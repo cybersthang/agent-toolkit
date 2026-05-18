@@ -104,6 +104,11 @@ def write_project_config(target: Path, ctx: Dict[str, Any], preset_name: str):
             'framework': ctx.get('STACK_FRAMEWORK', ''),
             'framework_version': ctx.get('STACK_FRAMEWORK_VERSION', ''),
             'label': ctx.get('STACK_LABEL', ''),
+            # Stack-specific binary paths — preserved so user overrides
+            # survive `setup.py update`. Empty = inherit from preset.
+            'odoo_bin_rel': ctx.get('ODOO_BIN_REL', ''),
+            'odoo_conf_rel': ctx.get('ODOO_CONF_REL', ''),
+            'smoke_test_rel': ctx.get('SMOKE_TEST_REL', ''),
         },
         'addon_roots': list(ctx.get('ADDON_ROOTS', []) or []),
         'mcp_servers': list(ctx.get('MCP_SERVERS', []) or []),
@@ -241,6 +246,41 @@ def cmd_init(args):
     stack_cfg = project_cfg.get('stack') or {}
     preset_stack = preset.get('stack', {}) or {}
 
+    # Stack-specific binary paths (Odoo only) — never hard-code into
+    # templates. Resolution order: project_cfg.stack.<key> > preset.stack.<key>
+    # > empty string. Empty string is intentional: it signals "user did
+    # not configure" to the consuming template, which then prints a
+    # helpful "set <PREFIX>_ODOO_BIN env var to use" message instead of
+    # silently pointing at a non-existent path.
+    odoo_bin_rel = (
+        stack_cfg.get('odoo_bin_rel')
+        or preset_stack.get('odoo_bin_rel')
+        or ''
+    )
+    odoo_conf_rel = (
+        stack_cfg.get('odoo_conf_rel')
+        or preset_stack.get('odoo_conf_rel')
+        or ''
+    )
+    smoke_test_rel = (
+        stack_cfg.get('smoke_test_rel')
+        or preset_stack.get('smoke_test_rel')
+        or ''
+    )
+
+    # ADDON_GLOBS = brace-expanded form of ADDON_ROOTS for cursor-rules
+    # `globs:` lines, e.g. ["addons", "OCA"] → "{addons,OCA}/**/*".
+    # Empty addon_roots → "*" (matches everything; the rule effectively
+    # always applies, which is the right behavior for an
+    # unconfigured stack — the rule body still has the constraints).
+    if addon_roots:
+        if len(addon_roots) == 1:
+            addon_globs = f"{addon_roots[0]}/**/*"
+        else:
+            addon_globs = "{" + ",".join(addon_roots) + "}/**/*"
+    else:
+        addon_globs = "**/*"
+
     # ENV_PREFIX governs the env-var prefix used by every MCP wrapper +
     # server (`<PREFIX>_PGHOST`, `<PREFIX>_JIRA_*`, `<PREFIX>_WORKSPACE`).
     # Priority: CLI not exposed yet > project config > preset default >
@@ -268,6 +308,10 @@ def cmd_init(args):
                 preset_stack.get('framework_version', '')),
         'ADDON_ROOTS': addon_roots,
         'ADDON_ROOTS_CSV': ', '.join(addon_roots),
+        'ADDON_GLOBS': addon_globs,
+        'ODOO_BIN_REL': odoo_bin_rel,
+        'ODOO_CONF_REL': odoo_conf_rel,
+        'SMOKE_TEST_REL': smoke_test_rel,
         'DEFAULT_DB': db_cfg.get('default_db', ''),
         'DEFAULT_PG_PORT': str(db_cfg.get('default_port', 5432)),
         'MCP_SERVERS': mcp_servers,
@@ -530,11 +574,17 @@ def build_plan(preset, ctx, target):
             dst = target / '.cursor' / 'skills' / src.relative_to(stack_dir)
             plan.append((src, dst, 'TEMPLATE' if _looks_templated(src) else 'COPY'))
 
-    # 4. AGENTS.md + CLAUDE.md
+    # 4. AGENTS.md + CLAUDE.md + .pre-commit-config.yaml
     for top_template in ('AGENTS.md', 'CLAUDE.md'):
         src = TEMPLATES / top_template
         if src.exists():
             plan.append((src, target / top_template, 'TEMPLATE'))
+    # Pre-commit config is shipped as .yaml.tmpl to avoid pre-commit picking
+    # up the toolkit's own template repo as a config. Renamed at install time.
+    precommit_src = TEMPLATES / 'pre-commit-config.yaml.tmpl'
+    if precommit_src.exists():
+        plan.append((precommit_src, target / '.pre-commit-config.yaml',
+                     'TEMPLATE' if _looks_templated(precommit_src) else 'COPY'))
 
     # 5. .claude/ — Claude Code project-scoped settings + hooks
     claude_src = TEMPLATES / 'claude'

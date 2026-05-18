@@ -41,6 +41,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/probe_autostub.py",
+            "timeout": 5
+          },
+          {
+            "type": "command",
             "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/tdd_runner.py",
             "timeout": 35
           },

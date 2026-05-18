@@ -3,6 +3,12 @@
 Reusable Claude Code / Cursor / Codex agent infrastructure. Clone once,
 install into any project — Odoo 12, Odoo 17, plain Python, etc.
 
+> 🤖 **AI agents**: Read [`AI_REBUILD_CHECKLIST.md`](AI_REBUILD_CHECKLIST.md)
+> BEFORE invoking `setup.py init` or `setup.py update`. The 4-phase Q&A
+> protocol is mandatory — without it the toolkit silently inherits
+> defaults from whatever preset and you ship a misconfigured project.
+> Also read [`AGENTS.md`](AGENTS.md) for the hard rules.
+
 > **Hướng dẫn chi tiết bằng tiếng Việt:** xem [USAGE.md](USAGE.md).
 
 ## What you get
@@ -39,11 +45,12 @@ $EDITOR /path/to/your/project/.codex/mcp.local.env
 python setup.py list-presets
 ```
 
-| Preset | Stack | MCP servers | Rules | Skills | Memory |
-|--------|-------|-------------|-------|--------|--------|
-| `odoo-12` | Odoo 12 Enterprise, Python 3.8, QWeb+jQuery, `@api.multi` | codebase, postgres, realdata_test, jira×2 | _common + odoo-12 | _common + odoo-12 | _common + odoo-12 |
-| `odoo-17` | Odoo 17, Python 3.10+, OWL, recordset-by-default, `@api.model_create_multi` | codebase, postgres, realdata_test | _common + odoo-17 | _common + odoo-17 | _common + odoo-17 |
-| `generic` | Plain Python | codebase | _common | _common | (none) |
+| Preset | Stack | Defaults | MCP servers | Rules / Skills / Memory |
+|--------|-------|----------|-------------|------|
+| `odoo-12` | **Generic** Odoo 12, Python 3.8, QWeb+jQuery, `@api.multi` | empty `addon_roots`, empty `default_db` — user MUST supply via Phase 1 Q&A | codebase, postgres, realdata_test | _common + odoo-12 |
+| `odoo-12-nakivo` | Odoo 12 Enterprise, **extends `odoo-12`** with NAKIVO-specific defaults | `addon_roots_append`: nakivo / nakivooca / OCA / nakivo-server / odoo-12-enterprise-master; `db.default_db`: `Nakivo01`; `stack.odoo_bin_rel`: `nakivo-server/odoo-bin`; `response_language`: Vietnamese | + jira_production, jira_preproduction | inherited |
+| `odoo-17` | Odoo 17, Python 3.10+, OWL, recordset-by-default, `@api.model_create_multi` | `addon_roots`: addons / custom_addons / enterprise | codebase, postgres, realdata_test | _common + odoo-17 |
+| `generic` | Plain Python | `addon_roots`: src | codebase | _common |
 
 Add a new preset by dropping a JSON file into `presets/`. Optionally add
 matching `templates/cursor/rules/<name>/` and `templates/memory/<name>/`.

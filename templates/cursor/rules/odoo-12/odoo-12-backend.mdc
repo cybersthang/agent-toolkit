@@ -1,6 +1,6 @@
 ---
 description: Odoo 12 backend - ORM, views, performance, security, manifest
-globs: "{nakivo,base_addons,nakivooca,OCA,nakivo-server/addons,nakivo-server/odoo/addons}/**/*"
+globs: "{{ADDON_GLOBS}}"
 alwaysApply: false
 ---
 

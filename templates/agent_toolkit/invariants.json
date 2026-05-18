@@ -21,6 +21,6 @@
     "4. Verify with /inv-list before committing.",
     "5. The hook now BLOCKS any edit that strips the pattern."
   ],
-  "version": 1,
+  "version": 2,
   "invariants": []
 }

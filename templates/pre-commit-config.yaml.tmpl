@@ -1,0 +1,87 @@
+# Pre-commit mirror of .claude/hooks/invariant_guard.py
+#
+# The invariant_guard hook fires only when edits go through Claude Code's
+# Edit/Write tools. Dev edits made directly in VSCode/PyCharm bypass it
+# entirely. This config runs an equivalent check before each commit so
+# the invariant contract is enforced uniformly regardless of editor.
+#
+# Setup (one-time):
+#   pip install pre-commit
+#   pre-commit install
+#
+# The hook reads `.agent-toolkit/invariants.json` and rejects staged
+# changes whose diff strips a must_keep_regex pattern at blocker severity.
+# Bypass single-commit: `git commit --no-verify` (audit log shows it).
+#
+# Updating: when invariants.json changes, the hook auto-picks up — no
+# need to re-install. Adding a new hook script: drop into
+# `.codex/precommit_hooks/` and add a new repo block below.
+
+repos:
+  - repo: local
+    hooks:
+      - id: invariant-guard
+        name: agent-toolkit invariant guard (mirror of .claude/hooks/invariant_guard.py)
+        description: |
+          Block commits whose staged diff strips a `must_keep_regex` pattern
+          declared in .agent-toolkit/invariants.json at severity=blocker.
+        entry: python .codex/precommit_hooks/invariant_guard_precommit.py
+        language: system
+        # Run on every file change; the script filters by `applies_to` globs internally.
+        pass_filenames: true
+        always_run: false
+        stages: [pre-commit]
+        # Use the project venv for consistent behavior with the Claude hook.
+        # If venv missing, the script self-falls-back to python on PATH.
+
+      - id: probe-suggest
+        name: agent-toolkit probe-suggest (info-only)
+        description: |
+          Surface new HTTP routes / controller methods / cron handlers
+          in staged diff and suggest a `/probe-add` for each. Never
+          blocks — purely informational. Implements dev's auto-feature-
+          discovery wishlist.
+        entry: python .codex/precommit_hooks/feature_probe_suggest.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+        verbose: true
+
+      - id: auto-falsify
+        name: agent-toolkit auto-falsify gate
+        description: |
+          For each staged file, find non-stub probes whose path_globs
+          match and run their falsifier recipe. Block commit if any
+          probe verdict is REFUTED. Skips _stub probes + probes with
+          TODO measurement_command. Closes the auto-pipeline gap:
+          dev no longer runs `python falsify.py --probe X` manually.
+        entry: python .codex/precommit_hooks/auto_falsify.py
+        language: system
+        pass_filenames: true
+        stages: [pre-commit]
+        verbose: true
+
+      - id: probe-coverage
+        name: agent-toolkit probe-coverage gate
+        description: |
+          Block commit if a staged file in "feature scope"
+          (controllers/models/wizards/jobs) has no probe registered in
+          .agent-toolkit/acceptance-probes.json. Implements dev's
+          requirement: "tổng thể cho toàn bộ feature".
+        entry: python .codex/precommit_hooks/probe_coverage.py
+        language: system
+        pass_filenames: true
+        stages: [pre-commit]
+
+      - id: no-real-credentials
+        name: block credential-like patterns in committed files
+        description: |
+          Heuristic check for embedded credentials (passwords, tokens, API
+          keys) in committed `.codex/`, `.claude/`, `.agent-toolkit/` files.
+          Mirrors ADR-004 / invariant `credentials-not-in-committed-files`.
+        entry: python .codex/precommit_hooks/credential_guard.py
+        language: system
+        pass_filenames: true
+        files: '^(\.codex|\.claude|\.agent-toolkit)/.*\.(py|toml|json|md|yaml|yml|example|sh|ps1)$'
+        stages: [pre-commit]

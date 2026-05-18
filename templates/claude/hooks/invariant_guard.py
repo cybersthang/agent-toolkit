@@ -69,7 +69,7 @@ def _load_invariants(workspace: Path) -> List[Dict[str, Any]]:
     if not path.exists():
         return []
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
     except (json.JSONDecodeError, OSError):
         return []
     invariants = data.get("invariants") or []
@@ -242,6 +242,10 @@ def _bypass_requested(envelope: Dict[str, Any], blocker_ids: List[str]) -> bool:
 
 
 def main() -> int:
+    # Kill-switch: env var disables all enforcement (emergency).
+    if os.environ.get("AGENT_TOOLKIT_DISABLE") == "1":
+        _allow()
+
     raw = sys.stdin.read()
     if not raw.strip():
         _allow()

@@ -1,0 +1,77 @@
+{
+  "_doc": "Intent → skill routing table read by .claude/hooks/intent_router.py. Each entry has a regex (matched case-insensitive on the user's prompt) and a list of skill names. Skill names must match the on-disk skill folder names. For portability to non-Odoo stacks, change STACK / STACK_BARE values and the skill names below.",
+  "_schema": {
+    "stack": "stack identifier like 'odoo-12' / 'django-5' / 'rails-7'",
+    "stack_bare": "bare stack name like 'odoo' / 'django' / 'rails'",
+    "entries": "list of {pattern, skills, note?}"
+  },
+  "stack": "odoo-12",
+  "stack_bare": "odoo",
+  "entries": [
+    {
+      "note": "Clarification gate — action verbs that mutate state",
+      "pattern": "\\b(implement|build|deploy|sửa|fix|refactor|tạo|viết|làm|thêm|add|remove|xóa|delete|update|cập\\s*nhật|đổi|change|modify|tối\\s*ưu|optimize|migrate|chuyển|rewrite|làm\\s*lại|làm\\s*gọn|dọn|clean\\s*up|move|rename|extract|inline)\\b",
+      "skills": ["clarification-gate"]
+    },
+    {
+      "note": "Clarification gate — ambiguous reference triggers",
+      "pattern": "(\\b\\d+\\s*(cái|cái này|cái kia|thằng|thằng này|thằng kia|items?|things?|cụm|chỗ)\\b|\\b2\\s*cái\\s*này\\b|\\bcái\\s*này\\b|\\bcái\\s*kia\\b|\\bchỗ\\s*này\\b|\\bchỗ\\s*kia\\b|\\bnày\\s*khác\\b|\\bcùng\\s*một\\b)",
+      "skills": ["clarification-gate"]
+    },
+    {
+      "note": "Review / audit",
+      "pattern": "\\b(review|audit|phân\\s*tích\\s*sâu|tìm\\s*bug|kiểm\\s*tra\\s*code|còn\\s*gì.*fix|lỗ\\s*hổng|nguy\\s*hiểm)\\b",
+      "skills": ["code-review", "{stack_bare}-code-review", "doubt-driven-review"]
+    },
+    {
+      "note": "Doubt-driven probe",
+      "pattern": "\\b(double[-\\s]?check|are\\s*you\\s*sure|chắc.*không|chắc.*chưa|sure\\?)\\b",
+      "skills": ["doubt-driven-review"]
+    },
+    {
+      "note": "Canonical decision lookup",
+      "pattern": "\\b(how\\s*do\\s*we|convention|recurring|canonical|làm\\s*sao.*project|chuẩn.*project|theo\\s*chuẩn)\\b",
+      "skills": ["{stack}-deterministic-answers"]
+    },
+    {
+      "note": "Codebase discovery",
+      "pattern": "\\b(where\\s*is|tìm\\s*file|find.*file|trace.*call|locate|định\\s*nghĩa.*ở\\s*đâu|đọc\\s*hiểu\\s*module)\\b",
+      "skills": ["{stack}-codebase-discovery"]
+    },
+    {
+      "note": "Verify against real data",
+      "pattern": "\\b(real\\s*db|prod\\s*data|verify.*real|kiểm\\s*tra.*dữ\\s*liệu|live\\s*verify|thật\\s*hay\\s*không)\\b",
+      "skills": ["{stack}-data-verification"]
+    },
+    {
+      "note": "Debug",
+      "pattern": "\\b(bug|lỗi|error|exception|traceback|không\\s*chạy|crash|stuck|treo|hang|fail.*test)\\b",
+      "skills": ["{stack}-debug-troubleshoot"]
+    },
+    {
+      "note": "Module scaffold",
+      "pattern": "\\b(tạo\\s*module|scaffold|new\\s*module|module\\s*mới)\\b",
+      "skills": ["spec-driven-feature", "{stack}-module-scaffold"]
+    },
+    {
+      "note": "New feature",
+      "pattern": "\\b(feature\\s*mới|implement|refactor|new\\s*feature|tính\\s*năng\\s*mới|thêm.*tính\\s*năng|add.*feature)\\b",
+      "skills": ["spec-driven-feature"]
+    },
+    {
+      "note": "TDD",
+      "pattern": "\\b(tdd|test\\s*driven|viết\\s*test\\s*trước|test\\s*first|red.*green.*refactor)\\b",
+      "skills": ["{stack}-tdd"]
+    },
+    {
+      "note": "Stack code patterns",
+      "pattern": "\\b(theo\\s*pattern|follow.*style|tuân.*chuẩn|project\\s*style|code\\s*style)\\b",
+      "skills": ["{stack}-code-patterns"]
+    },
+    {
+      "note": "Jira / ticket",
+      "pattern": "\\b(jira|nkv[-\\s]?\\d+|ticket|sprint)\\b",
+      "skills": ["{stack}-jira-workflow"]
+    }
+  ]
+}

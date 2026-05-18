@@ -179,24 +179,24 @@ class TestCodexMcpWrappers(unittest.TestCase):
         env = {
             "db_host": "localhost",
             "db_port": "5435",
-            "db_user": "nakivo",
-            "db_password": "123456",
-            "db_name": "Nakivo01",
+            "db_user": "test_user",
+            "db_password": "test_pw",
+            "db_name": "test_db",
             "http_port": "12",
         }
         module.normalize_postgres_env(env)
 
         self.assertEqual(env["{{ENV_PREFIX}}_PGHOST"], "localhost")
         self.assertEqual(env["{{ENV_PREFIX}}_PGPORT"], "5435")
-        self.assertEqual(env["{{ENV_PREFIX}}_PGUSER"], "nakivo")
-        self.assertEqual(env["{{ENV_PREFIX}}_PGPASSWORD"], "123456")
-        self.assertEqual(env["{{ENV_PREFIX}}_PGDATABASE"], "Nakivo01")
+        self.assertEqual(env["{{ENV_PREFIX}}_PGUSER"], "test_user")
+        self.assertEqual(env["{{ENV_PREFIX}}_PGPASSWORD"], "test_pw")
+        self.assertEqual(env["{{ENV_PREFIX}}_PGDATABASE"], "test_db")
         self.assertEqual(env["{{ENV_PREFIX}}_HTTP_PORT"], "12")
         self.assertEqual(env["PGHOST"], "localhost")
         self.assertEqual(env["PGPORT"], "5435")
-        self.assertEqual(env["PGUSER"], "nakivo")
-        self.assertEqual(env["PGPASSWORD"], "123456")
-        self.assertEqual(env["PGDATABASE"], "Nakivo01")
+        self.assertEqual(env["PGUSER"], "test_user")
+        self.assertEqual(env["PGPASSWORD"], "test_pw")
+        self.assertEqual(env["PGDATABASE"], "test_db")
 
     @unittest.skipUnless(POSTGRES_INSTALLED, "postgres server not installed by this preset")
     def test_postgres_wrapper_prefers_codex_env_before_cursor_env(self):

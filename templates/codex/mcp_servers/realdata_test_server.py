@@ -17,9 +17,27 @@ from common import SimpleMcpServer, ToolDefinition
 WORKSPACE_ROOT = Path(
     os.environ.get("{{ENV_PREFIX}}_WORKSPACE", Path(__file__).resolve().parents[2])
 ).resolve()
-DEFAULT_ODOO_BIN = WORKSPACE_ROOT / "nakivo-server" / "odoo-bin"
-DEFAULT_ODOO_CONF = WORKSPACE_ROOT / "odoo-12-enterprise-master" / "odoo.conf"
-DEFAULT_SMOKE_TEST = WORKSPACE_ROOT / "scripts" / "smoke_test.py"
+
+# Stack-specific paths are templated at install time from preset/config.
+# Empty placeholder => user did not configure that path; the consumer
+# should report "set <PREFIX>_<KEY> env var" instead of silently using
+# a default that won't exist on their machine.
+_ODOO_BIN_REL = "{{ODOO_BIN_REL}}"
+_ODOO_CONF_REL = "{{ODOO_CONF_REL}}"
+_SMOKE_TEST_REL = "{{SMOKE_TEST_REL}}"
+
+DEFAULT_ODOO_BIN = (
+    Path(os.environ.get("{{ENV_PREFIX}}_ODOO_BIN") or
+         (WORKSPACE_ROOT / _ODOO_BIN_REL if _ODOO_BIN_REL else WORKSPACE_ROOT / "odoo-bin"))
+)
+DEFAULT_ODOO_CONF = (
+    Path(os.environ.get("{{ENV_PREFIX}}_ODOO_CONF") or
+         (WORKSPACE_ROOT / _ODOO_CONF_REL if _ODOO_CONF_REL else WORKSPACE_ROOT / "odoo.conf"))
+)
+DEFAULT_SMOKE_TEST = (
+    Path(os.environ.get("{{ENV_PREFIX}}_SMOKE_TEST") or
+         (WORKSPACE_ROOT / _SMOKE_TEST_REL if _SMOKE_TEST_REL else WORKSPACE_ROOT / "scripts" / "smoke_test.py"))
+)
 SAFE_MODULE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 MAX_OUTPUT_CHARS = 12000
 

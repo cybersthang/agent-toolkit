@@ -93,6 +93,71 @@ Examples of correct vs incorrect paraphrase fill-in:
 (Maximum 3 questions. Every question MUST offer 2-3 labelled options
 with exactly ONE marked **Recommended**. If you would list 4+ questions,
 you have not understood enough — go back to UNDERSTANDING.)
+
+### PROBE_READINESS (conditional — only for feature-scope tasks)
+
+Emit THIS block when the task will produce an edit/write that matches
+`.agent-toolkit/coverage_config.json` `feature_globs` (new controller,
+new model method, new endpoint, new cron, new wizard). The whole point
+is to extract probe parameters during grill, so the agent can register
+a FULL probe entry post-implementation — no `_stub: true`, no TODO
+placeholders, no DEV manual fill afterward.
+
+Required sub-questions (ask whichever are not already implied by the task):
+
+- **Verifiable behavior**: ONE empirical claim DEV will accept as "works".
+  Examples: "route returns ≤500 rows for partner=42", "request BLOCKs UI
+  until response arrives", "cron is idempotent (2 runs = same state)".
+  → maps to probe `description`.
+
+- **Empirical endpoint** (for HTTP routes / RPC): exact URL + method +
+  auth context that hits the new code path. *"Just `/api/v1/foo`"* is
+  insufficient — need full base URL (`http://localhost:8069`...) and
+  any required headers/cookies.
+  → maps to probe `falsification.runner.measurement_command`.
+
+- **Falsification recipe**: what physical perturbation would flip the
+  ACTUAL if the claim is wrong? Pick ONE of the 4 supported types:
+  - `timing_perturb` — inject `time.sleep(N)`, expect downstream delta
+    N±tolerance. Use for BLOCK / async / sync-vs-async claims.
+  - `playwright` — spawn `npx playwright test <spec>`, parse JSON
+    reporter. Use for browser-level claims (page render, UI flow,
+    click-then-assert). Requires Playwright installed in project.
+  - `log_assertion` — run command, grep stdout/stderr for
+    required/forbidden patterns. Use when output text is signal.
+  - `side_effect_inject` — declare a marker file; assert created/
+    absent after measurement_command. Use for "was function called?".
+  → maps to probe `falsification.type` + corresponding `runner.*`
+  fields (`sleep_seconds`, `spec_file`, `required_patterns`,
+  `marker_path`).
+
+- **MCP evidence tool**: which MCP server tool proves the contract on
+  real data? `mcp__realdata_test__run_module_test`,
+  `eval_orm_expression`, `consistency_check_eval`, etc.
+  → maps to probe `evidence.required_tools`.
+
+Output PROBE_READINESS as a 4-row checklist:
+
+```
+### PROBE_READINESS
+| Field | Captured from grill | Status |
+|-------|--------------------|--------|
+| description | <one-line semantic claim DEV gave> | ✓ / NEED ASK |
+| measurement_command | <full curl/CLI command> | ✓ / NEED ASK |
+| falsification recipe | <perturb type + expected delta> | ✓ / NEED ASK |
+| MCP evidence tool | <mcp__...__name> | ✓ / NEED ASK |
+```
+
+If ANY status is `NEED ASK`, add the missing-info questions to the
+QUESTIONS block above. DO NOT proceed with implementation until all 4
+rows are `✓`. After grill answers received, all 4 fields populated →
+agent writes FULL probe entry to `acceptance-probes.json` immediately
+after Edit/Write (no `_stub`, no TODO).
+
+This block exists because hooks (`probe_autostub`) can't infer
+semantic intent or DEV-specific URLs/auth — those are decision-level
+facts that must come from DEV during grill, not be stubbed
+mechanically afterward.
 ```
 
 OR, if every block can be filled with no ambiguity:

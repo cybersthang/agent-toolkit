@@ -1,30 +1,23 @@
 {
-  "description": "Odoo 12 Enterprise stack — Python 3.8, QWeb + jQuery, @api.multi",
-  "stack_label": "Odoo 12 Enterprise",
-  "response_language": "Vietnamese",
+  "description": "Odoo 12 stack — Python 3.8, QWeb + jQuery, @api.multi. GENERIC preset — no project-specific defaults; user supplies addon_roots, db, etc. via setup.py prompts or agent-toolkit.config.json overrides.",
+  "stack_label": "Odoo 12",
+  "response_language": "English",
   "stack": {
     "language": "python",
     "language_version": "3.8",
     "framework": "odoo",
     "framework_version": "12",
-    "frontend": "QWeb + jQuery"
+    "frontend": "QWeb + jQuery",
+    "_doc": "Per-stack optional path overrides — used by realdata_test MCP. Leave empty to let user set <PREFIX>_ODOO_BIN / <PREFIX>_ODOO_CONF env vars at runtime.",
+    "odoo_bin_rel": "",
+    "odoo_conf_rel": "",
+    "smoke_test_rel": ""
   },
-  "addon_roots": [
-    "nakivo",
-    "base_addons",
-    "nakivooca",
-    "OCA",
-    "nakivo-server/addons",
-    "nakivo-server/odoo/addons",
-    "odoo-12-enterprise-master/addons",
-    "odoo-12-enterprise-master/odoo/addons"
-  ],
+  "addon_roots": [],
   "mcp_servers": [
     "codebase",
     "postgres",
-    "realdata_test",
-    "jira_production",
-    "jira_preproduction"
+    "realdata_test"
   ],
   "external_mcp_servers": {
     "playwright": {
@@ -39,9 +32,9 @@
     }
   },
   "db": {
-    "default_db": "Nakivo01",
+    "default_db": "",
     "default_port": 5432,
-    "default_user": "nakivo"
+    "default_user": "odoo"
   },
   "rules": ["_common", "odoo-12"],
   "skills": ["_common", "odoo", "odoo-12"],

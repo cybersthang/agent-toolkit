@@ -28,9 +28,9 @@ Vibe-flow.
    - Testing Strategy (probe nào đã design sẵn).
 
 4. **Design probe** cho từng User Story:
-   - **ORM probe** (default): `mcp__nakivo-odoo12__run_python_tests` với
+   - **ORM probe** (default): `mcp__realdata_test__run_python_tests` với
      expression `self.env['<model>'].search([...])` + assertion.
-   - **Postgres probe**: `mcp__nakivo-odoo12__postgres_read_query` với COUNT /
+   - **Postgres probe**: `mcp__realdata_test__postgres_read_query` với COUNT /
      JOIN / EXPLAIN tùy story.
    - **HTTP probe**: nếu story liên quan controller → `Bash curl` hoặc
      `python -c "import requests; ..."`.
@@ -51,14 +51,14 @@ Spec: .agent-toolkit/specs/<slug>.md · status before: implementing
 
 | # | User Story (rút gọn) | Probe | Expected | Actual | Status |
 |---|---|---|---|---|---|
-| 1 | export CSV theo ngày | env['nakivo.log'].export() | size > 0 | 0 bytes | 🔴 BLOCKER |
+| 1 | export CSV theo ngày | env['<your.model>'].export() | size > 0 | 0 bytes | 🔴 BLOCKER |
 | 2 | menu chỉ nhóm X thấy | postgres ir_ui_menu | 1 row | 1 row | ✅ PASS |
 | 3 | cron 02:00 auto-run | ir.cron active=True | True | False | 🟡 GAP |
 
 ### Gaps / Blockers
 🔴 #1 BLOCKER: export() trả file rỗng
   Root cause [assumption]: domain filter `[('date','=', today)]` không match
-  định dạng date của `nakivo.log.create_date` (datetime, không phải date).
+  định dạng date của `<your.model>.create_date` (datetime, không phải date).
   Đề xuất fix: domain → `[('create_date', '>=', today_start), ('create_date', '<', tomorrow_start)]`
 
 🟡 #3 GAP: ir.cron chưa active sau install
@@ -91,7 +91,7 @@ Spec: .agent-toolkit/specs/<slug>.md · status before: implementing
 
 - Spec không tồn tại.
 - Spec ở `status: draft` (chưa code) → từ chối, gợi /grill + /go trước.
-- Không có MCP nakivo-odoo12 active → in lỗi rõ.
+- Không có MCP realdata_test active → in lỗi rõ.
 - User Stories rỗng trong spec (spec viết kém) → từ chối, gợi /plan lại.
 
 ## Không được làm

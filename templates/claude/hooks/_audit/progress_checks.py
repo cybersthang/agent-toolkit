@@ -40,9 +40,14 @@ TOOL_SUCCESS_CLAIM_RE = re.compile(
 TOOL_EXIT_NONZERO_RE = re.compile(r"\bexit\s*code\s*[:\s]*([1-9]\d*)\b", re.IGNORECASE)
 
 # C. Phantom citation.
+# Extension alternation MUST be longest-first: regex alternation matches the
+# FIRST matching alternative, not the longest, so `js` would shadow `json` /
+# `jsx`, `ts` would shadow `tsx`, `c` would shadow `cpp`, `h` would shadow
+# `hpp`. Real-world false-positive caught 2026-05-18: `invariants.json` was
+# mis-matched as `invariants.js`, causing phantom_citation false-block.
 CITATION_RE = re.compile(
-    r"(?<![A-Za-z0-9_])([A-Za-z0-9_./\\-]+\.(py|js|ts|tsx|jsx|md|json|xml|yaml|yml|"
-    r"toml|sh|ps1|java|go|rs|c|cpp|h|hpp|rb|sql|html|css|scss))"
+    r"(?<![A-Za-z0-9_])([A-Za-z0-9_./\\-]+\.(json|jsx|js|tsx|ts|yaml|yml|"
+    r"hpp|cpp|html|scss|toml|ps1|java|sql|css|xml|md|py|sh|go|rs|rb|c|h))"
     r"(?::(\d+)(?:-(\d+))?)?",
     re.IGNORECASE,
 )

@@ -8,6 +8,11 @@ verifies that every entry in the spec's `acceptance_evals:` frontmatter block
 was referenced in the report. If any eval id is missing → exit non-zero, list
 the missing ids. Stop hook + agent can then re-emit with full coverage.
 
+Additionally (2026-05-19), when spec frontmatter sets
+`feature_kind: classification`, the report MUST contain a "Real-Data Proof"
+section header — enforcing `verify-feature/SKILL.md` Step 1.8's mandate
+beyond the honor-system layer. Closes the M1 medium finding.
+
 Usage
 -----
     # Pipe report stdin → lint
@@ -18,10 +23,11 @@ Usage
 
 Exit codes
 ----------
-0 = report covers all acceptance_evals
+0 = report covers all acceptance_evals AND any required sections
 1 = missing eval(s) from report
 2 = spec not found / not readable
 3 = no acceptance_evals in spec (lint not applicable)
+4 = classifier spec missing the required Real-Data Proof section
 """
 from __future__ import annotations
 
@@ -49,15 +55,28 @@ def _find_workspace_root(start: Path) -> Path:
     return Path.cwd()
 
 
-def _load_spec_evals(spec_slug: str, workspace: Path) -> list[dict]:
-    """Return list of acceptance_evals entries from spec frontmatter.
+def _load_spec_meta(spec_slug: str, workspace: Path) -> dict:
+    """Return spec metadata needed for lint: evals + feature_kind + path.
 
-    Returns [] if spec has no acceptance_evals block.
+    Shape: ``{"evals": [{"id": ...}, ...], "feature_kind": str | None,
+              "spec_path": Path}``.
+
+    `evals` is [] when no acceptance_evals block is present.
+    `feature_kind` is the literal frontmatter value (lower-cased) when set,
+    else None — callers compare against ``"classification"``.
     """
-    spec_path = workspace / ".agent-toolkit" / "specs" / f"{spec_slug}.md"
-    if not spec_path.exists():
-        print(f"error: spec not found: {spec_path}", file=sys.stderr)
+    # Resolve spec via rglob — supports branch-scoped (`<branch>/<slug>.md`)
+    # and legacy flat layouts. Pick the most-recently-modified match.
+    specs_dir = workspace / ".agent-toolkit" / "specs"
+    matches = sorted(
+        specs_dir.rglob(f"{spec_slug}.md"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    ) if specs_dir.is_dir() else []
+    if not matches:
+        print(f"error: spec not found: {specs_dir}/**/{spec_slug}.md", file=sys.stderr)
         sys.exit(2)
+    spec_path = matches[0]
     text = spec_path.read_text(encoding="utf-8")
     # Extract YAML frontmatter (between first --- and second ---).
     m = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
@@ -66,19 +85,55 @@ def _load_spec_evals(spec_slug: str, workspace: Path) -> list[dict]:
         sys.exit(2)
     fm_text = m.group(1)
     if yaml is None:
-        # Fallback: crude regex parse of `- id: <slug>` lines under acceptance_evals.
-        if "acceptance_evals:" not in fm_text:
-            return []
-        after = fm_text.split("acceptance_evals:", 1)[1]
-        ids = re.findall(r"^\s*-\s*id:\s*([^\s]+)\s*$", after, re.MULTILINE)
-        return [{"id": i} for i in ids]
+        # Fallback: crude regex parse of `- id: <slug>` lines under
+        # acceptance_evals and a single-line `feature_kind: <value>`.
+        evals_list: list[dict] = []
+        if "acceptance_evals:" in fm_text:
+            after = fm_text.split("acceptance_evals:", 1)[1]
+            ids = re.findall(
+                r"^\s*-\s*id:\s*([^\s]+)\s*$", after, re.MULTILINE
+            )
+            evals_list = [{"id": i} for i in ids]
+        kind_m = re.search(
+            r"^\s*feature_kind\s*:\s*[\"']?([A-Za-z0-9_-]+)[\"']?\s*$",
+            fm_text, re.MULTILINE,
+        )
+        return {
+            "evals": evals_list,
+            "feature_kind": kind_m.group(1).lower() if kind_m else None,
+            "spec_path": spec_path,
+        }
     try:
         fm = yaml.safe_load(fm_text) or {}
     except yaml.YAMLError as exc:
         print(f"error: spec frontmatter not valid YAML: {exc}", file=sys.stderr)
         sys.exit(2)
     evals = fm.get("acceptance_evals") or []
-    return [e for e in evals if isinstance(e, dict) and e.get("id")]
+    kind = fm.get("feature_kind")
+    return {
+        "evals": [e for e in evals if isinstance(e, dict) and e.get("id")],
+        "feature_kind": (kind.lower() if isinstance(kind, str) else None),
+        "spec_path": spec_path,
+    }
+
+
+def _load_spec_evals(spec_slug: str, workspace: Path) -> list[dict]:
+    """Backward-compatible wrapper — returns just the evals list."""
+    return _load_spec_meta(spec_slug, workspace)["evals"]
+
+
+# Real-Data Proof section header — matches the canonical form emitted by
+# real-data-proof/SKILL.md Step 4: `## Real-Data Proof — <slug>` and the
+# tolerant variants (`### Real Data Proof`, `**Real-Data Proof Report**`).
+# Case-insensitive; allows hyphen OR space between Real and Data; optional
+# "Report" suffix; allowed inside a heading or bold span.
+_REAL_DATA_PROOF_RE = re.compile(
+    r"(?im)^\s*(?:#+\s*|\*\*\s*)real[-\s]?data\s*proof\b",
+)
+
+
+def _has_real_data_proof_section(report_text: str) -> bool:
+    return bool(_REAL_DATA_PROOF_RE.search(report_text))
 
 
 def _scan_report_for_ids(report_text: str, eval_ids: list[str]) -> dict:
@@ -111,7 +166,9 @@ def main() -> int:
 
     workspace = Path(args.workspace).resolve() if args.workspace else _find_workspace_root(Path.cwd())
 
-    evals = _load_spec_evals(args.spec_slug, workspace)
+    meta = _load_spec_meta(args.spec_slug, workspace)
+    evals = meta["evals"]
+    feature_kind = meta["feature_kind"]
     if not evals:
         print(f"info: spec '{args.spec_slug}' has no acceptance_evals — lint skipped.",
               file=sys.stderr)
@@ -135,7 +192,27 @@ def main() -> int:
         print(f"\nCovered: {len(covered)}/{len(eval_ids)}", file=sys.stderr)
         return 1
 
+    # Classifier specs MUST include a Real-Data Proof section — enforces
+    # verify-feature/SKILL.md Step 1.8 (mandatory for feature_kind:
+    # classification). Without this check Step 1.8 is honor-system.
+    if feature_kind == "classification" and not _has_real_data_proof_section(report_text):
+        print(
+            "FAIL: spec has feature_kind: classification but Verify Report "
+            "is missing the required `Real-Data Proof` section.",
+            file=sys.stderr,
+        )
+        print(
+            "  Fix: re-emit the report with a `## Real-Data Proof` section "
+            "(per real-data-proof/SKILL.md Step 4) — including a Data source "
+            "line, a Distribution table, a Falsification table with measured "
+            "Δ per tag, and a Revert checklist.",
+            file=sys.stderr,
+        )
+        return 4
+
     print(f"PASS: all {len(eval_ids)} acceptance_evals referenced in report.")
+    if feature_kind == "classification":
+        print("PASS: Real-Data Proof section present (classifier spec).")
     return 0
 
 

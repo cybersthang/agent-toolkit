@@ -114,7 +114,7 @@ def main() -> int:
     pass_re = defaults.get("pass_claim_regex") or DEFAULT_PASS_CLAIM_REGEX
     # Per-project override > auto-discovered from .mcp.json > toolkit default.
     # discover_required_prefixes reads `.mcp.json` and returns project's actual
-    # MCP server prefixes (e.g. `mcp__nakivo-odoo12__`) so PASS-claim contract
+    # MCP server prefixes (e.g. `mcp__<project>-odoo12__`) so PASS-claim contract
     # doesn't false-block projects with non-default MCP naming.
     required_prefixes = tuple(
         defaults.get("required_tool_prefixes")

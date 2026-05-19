@@ -1,6 +1,21 @@
+# SPDX-License-Identifier: MIT
 """agent-toolkit — install Claude Code / Cursor / Codex agent infrastructure
-into a target workspace, configured for a specific stack (Odoo 12, Odoo 17,
-Django, plain Python ...).
+into an Odoo workspace, configured for a specific Odoo version + variant.
+
+Shipped presets (3):
+
+    odoo-12   — Odoo 12 (Python 3.8, QWeb + jQuery, @api.multi era)
+    odoo-17   — Odoo 17 (Python 3.10+, OWL, recordset, @api.model_create_multi)
+    generic   — Plain Python fallback (not the primary path for Odoo)
+
+The toolkit's core (hooks, invariants, Spec Kit workflow) is stack-agnostic,
+but the shipped rules, skills, MCP servers, and canonical decisions are
+tuned for Odoo. Project-specific defaults (addon roots, default DB, JIRA
+endpoints, Enterprise overlays) belong in a private preset overlay that
+extends the public preset — see templates/agent_toolkit/PORTING.md.
+
+Non-Odoo stacks (Django/Rails/...) can be added via preset extension —
+see templates/agent_toolkit/PORTING.md.
 
 Run from the toolkit directory:
 
@@ -14,14 +29,15 @@ Run from the toolkit directory:
         --psql /usr/bin/psql
 
     # Refresh from latest toolkit (preserves user's mcp.local.env)
+    # Dry-run + diff by default; pass --apply to write.
     python setup.py update /path/to/project
 
     # Show what would be written without touching disk
     python setup.py init /path/to/project --preset odoo-17 --dry-run
 
-The toolkit is stack-agnostic: presets/<name>.yaml drives WHICH templates
-get installed and HOW placeholders are filled. Adding a new stack means
-adding a preset + (optionally) a new rules/<stack>/ folder.
+Presets live in presets/<name>.json. Adding a new Odoo version means
+adding a preset (often via `extends: odoo-17`) + (optionally) a new
+rules/<stack>/ folder and canonical_decisions.<preset>.json seed.
 """
 from __future__ import annotations
 

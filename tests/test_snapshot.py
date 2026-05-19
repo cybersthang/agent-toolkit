@@ -44,11 +44,23 @@ def test_dry_run_emits_stable_file_count(tmp_path, preset):
         f'{preset}: only {len(plan_lines)} plan items\n--- output ---\n{output}'
     )
 
-    # Stable lower bound per preset — bump consciously when adding templates.
-    minimums = {'generic': 10, 'odoo-12': 30, 'odoo-17': 30}
+    # Stable lower bound per preset — set just below current actual counts so
+    # an accidental large removal trips the test. Bump consciously when you
+    # add templates; the assert message tells you the new number.
+    # Actual counts at v0.5.0: generic=107, odoo-12=149, odoo-17=149.
+    minimums = {'generic': 100, 'odoo-12': 140, 'odoo-17': 140}
     assert len(plan_lines) >= minimums[preset], (
         f'{preset}: {len(plan_lines)} files planned, '
         f'expected >= {minimums[preset]}'
+    )
+    # Upper bound catches accidental duplication / template fan-out bug.
+    # 1.5× the current actual is loose enough for legitimate growth but
+    # would catch e.g. an `os.walk` doubling the plan.
+    maximums = {'generic': 160, 'odoo-12': 220, 'odoo-17': 220}
+    assert len(plan_lines) <= maximums[preset], (
+        f'{preset}: {len(plan_lines)} files planned, '
+        f'unexpectedly above ceiling {maximums[preset]} '
+        f'— accidental duplication?'
     )
 
 

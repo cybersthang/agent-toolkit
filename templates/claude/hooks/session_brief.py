@@ -28,9 +28,14 @@ wrap_utf8_stdio()
 
 MAX_INVARIANTS = 6
 MAX_ADRS = 3
-MAX_OUTPUT_CHARS = 1800  # +300 headroom for autonomy banner (ADR-002)
+MAX_OUTPUT_CHARS = 2100  # +600 headroom for autonomy + audit-lock banners
 
 AUTONOMY_REL = ".agent-toolkit/.autonomy_active.json"
+
+# Lock-file glob used by code-review/SKILL.md Section 0. The skill is on
+# the honor system to apply Section 0; surfacing the file count here is
+# the SessionStart enforcement nudge so the agent CAN'T plausibly miss it.
+_LOCK_GLOB = ".codex/audit_findings*_locked.md"
 
 
 def _format_autonomy(workspace: Path) -> str:
@@ -127,6 +132,48 @@ def _load_json(path: Path) -> Dict[str, Any]:
         return json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         return {}
+
+
+def _format_audit_locks(workspace: Path) -> str:
+    """Surface any `.codex/audit_findings*_locked.md` files at SessionStart.
+
+    Lock files are the canonical recount source for code-review/SKILL.md
+    Section 0 (lock-file precedence). Without this banner the agent can
+    silently skip Section 0 and produce a fresh count that contradicts
+    the locked one — the "recount drift" we saw before.
+    """
+    codex = workspace / ".codex"
+    if not codex.is_dir():
+        return ""
+    locks = sorted(codex.glob("audit_findings*_locked.md"))
+    if not locks:
+        return ""
+    lines = [
+        "🔒 **Audit lock-files present** — apply `code-review/SKILL.md` "
+        "Section 0 (Lock-file precedence) BEFORE any new review work:"
+    ]
+    for lock in locks[:5]:  # cap at 5 entries
+        try:
+            head = lock.read_text(encoding="utf-8-sig").splitlines()[:6]
+        except OSError:
+            head = []
+        # Best-effort: extract a count-looking line if present.
+        summary = next(
+            (l.strip() for l in head if re.search(r"\d+\s*(BLOCKER|MEDIUM|LOW)", l, re.IGNORECASE)),
+            "",
+        )
+        rel = lock.relative_to(workspace).as_posix()
+        if summary:
+            lines.append(f"- `{rel}` — {summary}")
+        else:
+            lines.append(f"- `{rel}`")
+    if len(locks) > 5:
+        lines.append(f"- … +{len(locks) - 5} more")
+    lines.append(
+        "  → Cite the recorded count verbatim. Only diverge with "
+        "reproducible PROOF (Section 0 rule 2)."
+    )
+    return "\n".join(lines)
 
 
 def _format_invariants(invariants: List[Dict[str, Any]]) -> str:
@@ -276,6 +323,12 @@ def _build_brief(workspace: Path) -> str:
     autonomy = _format_autonomy(workspace)
     if autonomy:
         sections.append(autonomy)
+
+    # Audit lock-files surface — same prominence tier as autonomy, since
+    # code-review/SKILL.md Section 0 is honor-system without it.
+    audit_locks = _format_audit_locks(workspace)
+    if audit_locks:
+        sections.append(audit_locks)
 
     inv = _format_invariants(invariants)
     if inv:

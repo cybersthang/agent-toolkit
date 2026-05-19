@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Shared install helpers — kept dependency-free (stdlib only)."""
 from __future__ import annotations
 
@@ -11,7 +12,7 @@ from typing import Any, Dict, Optional
 
 # Toolkit version. Bump when schema_version of agent-toolkit.config.json
 # changes or when CLI flags break backward compatibility.
-__version__ = '0.3.0'
+__version__ = '0.5.0'
 
 
 # ----------------------------------------------------- preset loader ---
@@ -214,18 +215,30 @@ def detect_python(workspace: Path) -> Optional[str]:
     return None
 
 
-def detect_psql() -> Optional[str]:
-    if os.name == 'nt':
-        candidates = [
+def psql_candidates(os_name: Optional[str] = None) -> list:
+    """Return candidate `psql` binary paths for the given OS family.
+
+    Split out from `detect_psql` so tests can exercise both branches
+    without monkey-patching `os.name` (which corrupts the pathlib
+    `_flavour` cache on Py3.8 + Windows and breaks pytest-cov teardown).
+
+    `os_name` defaults to the live `os.name`. Pass `"nt"` or `"posix"`
+    explicitly in tests to force a branch.
+    """
+    name = os_name if os_name is not None else os.name
+    if name == 'nt':
+        return [
             r'C:\Program Files\pgAdmin 4\runtime\psql.exe',
             r'C:\Program Files\PostgreSQL\17\bin\psql.exe',
             r'C:\Program Files\PostgreSQL\16\bin\psql.exe',
             r'C:\Program Files\PostgreSQL\15\bin\psql.exe',
             r'C:\Program Files\PostgreSQL\14\bin\psql.exe',
         ]
-    else:
-        candidates = ['/usr/bin/psql', '/usr/local/bin/psql', '/opt/homebrew/bin/psql']
-    for c in candidates:
+    return ['/usr/bin/psql', '/usr/local/bin/psql', '/opt/homebrew/bin/psql']
+
+
+def detect_psql() -> Optional[str]:
+    for c in psql_candidates():
         if Path(c).exists():
             return c
     return None

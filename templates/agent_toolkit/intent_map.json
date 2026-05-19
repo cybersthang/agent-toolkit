@@ -1,11 +1,11 @@
 {
-  "_doc": "Intent → skill routing table read by .claude/hooks/intent_router.py. Each entry has a regex (matched case-insensitive on the user's prompt) and a list of skill names. Skill names must match the on-disk skill folder names. For portability to non-Odoo stacks, change STACK / STACK_BARE values and the skill names below.",
+  "_doc": "Intent → skill routing table read by .claude/hooks/intent_router.py. Each entry has a regex (matched case-insensitive on the user's prompt) and a list of skill names. Skill names must match the on-disk skill folder names. Odoo skills are now version-aware (single skill per topic, runtime version detection via __manifest__.py) — no version placeholder needed.",
   "_schema": {
-    "stack": "stack identifier like 'odoo-12' / 'django-5' / 'rails-7'",
-    "stack_bare": "bare stack name like 'odoo' / 'django' / 'rails'",
+    "stack": "stack identifier — kept for backward compat with hooks reading this field (e.g. 'odoo-12'). Odoo skill names no longer interpolate it.",
+    "stack_bare": "bare stack name (kept for backward compat).",
     "entries": "list of {pattern, skills, note?}"
   },
-  "stack": "odoo-12",
+  "stack": "odoo",
   "stack_bare": "odoo",
   "entries": [
     {
@@ -21,7 +21,7 @@
     {
       "note": "Review / audit",
       "pattern": "\\b(review|audit|phân\\s*tích\\s*sâu|tìm\\s*bug|kiểm\\s*tra\\s*code|còn\\s*gì.*fix|lỗ\\s*hổng|nguy\\s*hiểm)\\b",
-      "skills": ["code-review", "{stack_bare}-code-review", "doubt-driven-review"]
+      "skills": ["code-review", "odoo-code-review", "doubt-driven-review"]
     },
     {
       "note": "Doubt-driven probe",
@@ -31,42 +31,67 @@
     {
       "note": "Canonical decision lookup",
       "pattern": "\\b(how\\s*do\\s*we|convention|recurring|canonical|làm\\s*sao.*project|chuẩn.*project|theo\\s*chuẩn)\\b",
-      "skills": ["{stack}-deterministic-answers"]
+      "skills": ["odoo-deterministic-answers"]
     },
     {
       "note": "Codebase discovery",
       "pattern": "\\b(where\\s*is|tìm\\s*file|find.*file|trace.*call|locate|định\\s*nghĩa.*ở\\s*đâu|đọc\\s*hiểu\\s*module)\\b",
-      "skills": ["{stack}-codebase-discovery"]
-    },
-    {
-      "note": "Verify against real data",
-      "pattern": "\\b(real\\s*db|prod\\s*data|verify.*real|kiểm\\s*tra.*dữ\\s*liệu|live\\s*verify|thật\\s*hay\\s*không)\\b",
-      "skills": ["{stack}-data-verification"]
+      "skills": ["odoo-codebase-discovery"]
     },
     {
       "note": "Debug",
       "pattern": "\\b(bug|lỗi|error|exception|traceback|không\\s*chạy|crash|stuck|treo|hang|fail.*test)\\b",
-      "skills": ["{stack}-debug-troubleshoot"]
+      "skills": ["odoo-debug-troubleshoot"]
     },
     {
-      "note": "Module scaffold",
+      "note": "Spec Kit Phase 1 — SPECIFY (auto-suggest plan-feature)",
+      "pattern": "\\b(/plan\\b|feature\\s*mới|new\\s*feature|tính\\s*năng\\s*mới|thêm.*tính\\s*năng|add.*feature|write\\s*(a\\s*)?prd|create.*spec|tạo\\s*spec)\\b",
+      "skills": ["plan-feature"]
+    },
+    {
+      "note": "Spec Kit Phase 2 — CLARIFY",
+      "pattern": "\\b(/clarify\\b|grill\\s*me|stress[-\\s]*test\\s*(the\\s*)?spec|challenge\\s*me|đóng\\s*gap|refine\\s*spec)\\b",
+      "skills": ["clarify"]
+    },
+    {
+      "note": "Spec Kit Phase 3 — TASKS (manual re-emit)",
+      "pattern": "\\b(/tasks\\b|rã\\s*task|task\\s*breakdown|emit\\s*tasks)\\b",
+      "skills": ["tasks-breakdown"]
+    },
+    {
+      "note": "Spec Kit Phase 3.5 — ANALYZE",
+      "pattern": "\\b(/analyze\\b|cross[-\\s]*artifact|lint\\s*spec|artifact\\s*consistency)\\b",
+      "skills": ["analyze-artifacts"]
+    },
+    {
+      "note": "Spec Kit Phase 4 — IMPLEMENT (auto-chain analyze→implement→verify)",
+      "pattern": "\\b(/implement\\b|bắt\\s*đầu\\s*code|execute\\s*tasks|start\\s*implement|implement\\s*đi)\\b",
+      "skills": ["analyze-artifacts", "verify-feature"]
+    },
+    {
+      "note": "Spec Kit Phase 5 — VERIFY",
+      "pattern": "\\b(/verify\\b|real\\s*db|prod\\s*data|verify.*real|kiểm\\s*tra.*dữ\\s*liệu|live\\s*verify|thật\\s*hay\\s*không|any\\s*gaps?|còn\\s*gap)\\b",
+      "skills": ["verify-feature", "odoo-data-verification"]
+    },
+    {
+      "note": "Classifier / count-and-classify / prove-tag → real-data-proof workflow (DEV pattern: BLOCK/ASYNC sleep-injection on real data). Pulls in claim-falsification (recipe catalog) + classifier-output-audit (mis-tag finder).",
+      "pattern": "\\b(classify|classification|phân\\s*loại|tag\\s*(each|every|từng)|gán\\s*nhãn|nhãn\\s*nào|block\\s*vs\\s*async|block\\s*hay\\s*async|sync\\s*vs\\s*async|prove.*(tag|label|classification)|chứng\\s*minh.*(tag|nhãn|đúng)|falsif(y|ication)|perturb[-\\s]?test|inverse\\s*perturb|count.*requests?.*(classify|tag|phân\\s*loại)|đếm.*request.*phân\\s*loại|sleep\\s*inject|inject\\s*sleep)\\b",
+      "skills": ["real-data-proof", "claim-falsification", "classifier-output-audit"]
+    },
+    {
+      "note": "Module scaffold (after spec exists)",
       "pattern": "\\b(tạo\\s*module|scaffold|new\\s*module|module\\s*mới)\\b",
-      "skills": ["spec-driven-feature", "{stack}-module-scaffold"]
-    },
-    {
-      "note": "New feature",
-      "pattern": "\\b(feature\\s*mới|implement|refactor|new\\s*feature|tính\\s*năng\\s*mới|thêm.*tính\\s*năng|add.*feature)\\b",
-      "skills": ["spec-driven-feature"]
+      "skills": ["plan-feature", "odoo-module-scaffold"]
     },
     {
       "note": "TDD",
       "pattern": "\\b(tdd|test\\s*driven|viết\\s*test\\s*trước|test\\s*first|red.*green.*refactor)\\b",
-      "skills": ["{stack}-tdd"]
+      "skills": ["odoo-tdd"]
     },
     {
       "note": "Stack code patterns",
       "pattern": "\\b(theo\\s*pattern|follow.*style|tuân.*chuẩn|project\\s*style|code\\s*style)\\b",
-      "skills": ["{stack}-code-patterns"]
+      "skills": ["odoo-code-patterns"]
     },
     {
       "note": "Toolkit-meta: /adr-add",
@@ -106,7 +131,7 @@
     {
       "note": "Jira / ticket",
       "pattern": "\\b(jira|nkv[-\\s]?\\d+|ticket|sprint)\\b",
-      "skills": ["{stack}-jira-workflow"]
+      "skills": ["odoo-jira-workflow"]
     }
   ]
 }

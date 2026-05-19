@@ -192,8 +192,7 @@ def check_phantom_citation(
         except OSError:
             pass
         # Subdir search by basename — handles bare filename citations
-        # (e.g. `perturb_test_block_classification.py` lives at
-        # `nakivo/nakivo_profiler/tests/perturb_test_block_classification.py`
+        # (e.g. `<test_name>.py` lives at `<addon-root>/<module>/tests/`
         # but cited without dir prefix). Short-circuit on first hit; skip
         # short basenames (< 8 chars) to avoid noisy match like `a.py`.
         # Real-world false-positive caught 2026-05-18: spec verify cited

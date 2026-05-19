@@ -58,7 +58,7 @@ def sample_ctx() -> dict:
         'PROJECT_NAME': 'MyProj',
         'PYTHON_BIN': '/usr/bin/python',
         'STACK_LABEL': 'Odoo 12 Enterprise',
-        'ADDON_ROOTS': ['nakivo', 'base_addons'],
+        'ADDON_ROOTS': ['addons', 'base_addons'],
         'MCP_SERVERS': ['codebase', 'postgres'],
         'TODAY_ISO_DATE': '2026-05-15',
     }

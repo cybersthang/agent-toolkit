@@ -20,8 +20,8 @@ the artifact that grounds the answer, in one of these forms:
 
 | Source kind | Format | Example |
 |---|---|---|
-| Code line | `path:line` (or range) | `nakivo/models/cron.py:118-124` |
-| Manifest / config | `path` | `nakivo/__manifest__.py` |
+| Code line | `path:line` (or range) | `<addon>/models/cron.py:118-124` |
+| Manifest / config | `path` | `<addon>/__manifest__.py` |
 | Framework doc | URL + section title | `https://www.odoo.com/documentation/12.0/reference/orm.html#methods` |
 | Locked finding | `.codex/audit_findings_locked.md#<id>` | `.codex/audit_findings_locked.md#BLOCKER-3` |
 | Stack convention | `<stack>:<rule>` referring to a `.cursor/rules/*.mdc` file | `odoo-12:backend.api-multi-decorator` |

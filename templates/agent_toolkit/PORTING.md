@@ -5,6 +5,14 @@ toolkit is currently bundled with an Odoo 12 stack overlay but the
 core enforcement layers (invariants, acceptance probes, evidence-audit
 hooks) are decoupled from any specific framework.
 
+> **Tip**: for project-specific defaults (addon roots, internal JIRA
+> URLs, custom DB name, Vietnamese response language, etc.), don't fork
+> the whole toolkit — drop a **private preset overlay** that `extends`
+> a public preset. A copy-paste seed lives at
+> [`presets/_example_private_overlay.json.template`](../../presets/_example_private_overlay.json.template).
+> Strip the `.template` suffix in your fork; the public toolkit loader
+> ignores `.template` files so you can ship the seed safely.
+
 ## What's portable as-is
 
 | Component | Path | Stack-agnostic? |
@@ -96,8 +104,9 @@ For a non-Odoo project, you'd create skill files matching the
   flow (or other tracker)
 
 Without these overlays, the intent_router still suggests
-`code-review` + `doubt-driven-review` + `spec-driven-feature`
-(stack-agnostic core skills) for matching prompts.
+`code-review` + `doubt-driven-review` + the Spec Kit chain
+(`plan-feature` → `clarify` → `tasks-breakdown` → `analyze-artifacts` →
+`verify-feature`) — stack-agnostic core skills.
 
 ## Smoke-test after porting
 

@@ -31,6 +31,11 @@
             "type": "command",
             "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/invariant_guard.py",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/analyze_halt_gate.py",
+            "timeout": 5
           }
         ]
       }

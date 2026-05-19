@@ -87,7 +87,7 @@ CASES = [
     ),
     (
         "explicit-noun-no-trigger",
-        "có 5 record trong bảng nakivo đếm đúng không",
+        "có 5 record trong bảng products đếm đúng không",
         # "5 record" — number + EXPLICIT noun "record" — no trap.
         # No action verb either. Should stay silent.
         [],

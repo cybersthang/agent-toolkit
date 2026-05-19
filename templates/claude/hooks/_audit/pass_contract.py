@@ -32,7 +32,7 @@ def discover_required_prefixes(
     when the configured prefixes don't match any real MCP server. Without
     this, the PASS-claim hook would hard-require `mcp__realdata_test__` /
     `mcp__postgres__` prefixes that may not exist on projects with
-    differently-named MCP servers (e.g. `mcp__nakivo-odoo12__`).
+    differently-named MCP servers (e.g. `mcp__<project>-odoo12__`).
 
     `exclude_servers` parameter:
       - None (default) → no exclusion: ALL declared MCP servers count as

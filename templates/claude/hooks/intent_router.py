@@ -107,7 +107,7 @@ _FALLBACK_ENTRIES: List[Tuple[str, List[str]]] = [
     # ---------- Review / audit ----------
     (
         r"\b(review|audit|phân\s*tích\s*sâu|tìm\s*bug|kiểm\s*tra\s*code|còn\s*gì.*fix|lỗ\s*hổng|nguy\s*hiểm)\b",
-        ["code-review", f"{_FALLBACK_STACK_BARE}-code-review", "doubt-driven-review"],
+        ["code-review", "odoo-code-review", "doubt-driven-review"],
     ),
     (
         r"\b(double[-\s]?check|are\s*you\s*sure|chắc.*không|chắc.*chưa|sure\?)\b",
@@ -117,49 +117,85 @@ _FALLBACK_ENTRIES: List[Tuple[str, List[str]]] = [
     # ---------- Discovery / lookup ----------
     (
         r"\b(how\s*do\s*we|convention|recurring|canonical|làm\s*sao.*project|chuẩn.*project|theo\s*chuẩn)\b",
-        [f"{_FALLBACK_STACK}-deterministic-answers"],
+        ["odoo-deterministic-answers"],
     ),
     (
         r"\b(where\s*is|tìm\s*file|find.*file|trace.*call|locate|định\s*nghĩa.*ở\s*đâu|đọc\s*hiểu\s*module)\b",
-        [f"{_FALLBACK_STACK}-codebase-discovery"],
+        ["odoo-codebase-discovery"],
     ),
 
     # ---------- Verify against real data ----------
     (
         r"\b(real\s*db|prod\s*data|verify.*real|kiểm\s*tra.*dữ\s*liệu|live\s*verify|thật\s*hay\s*không)\b",
-        [f"{_FALLBACK_STACK}-data-verification"],
+        ["odoo-data-verification"],
+    ),
+
+    # ---------- Classifier / count / prove-tag intent (real-data-proof) ----
+    # Matches the canonical DEV pattern: "count X and classify each as Y/Z";
+    # "prove that tag T is correct"; "phân loại"; "BLOCK/ASYNC"; etc.
+    # Pulls in real-data-proof for the 4-step mandatory workflow plus
+    # claim-falsification (its recipe catalog) and classifier-output-audit
+    # (for finding mis-tag candidates first).
+    (
+        r"\b(classify|classification|phân\s*loại|tag\s*(each|every|từng)|"
+        r"gán\s*nhãn|nhãn\s*nào|"
+        r"block\s*vs\s*async|block\s*hay\s*async|sync\s*vs\s*async|"
+        r"prove.*(tag|label|classification)|chứng\s*minh.*(tag|nhãn|đúng)|"
+        r"falsif(y|ication)|perturb[-\s]?test|inverse\s*perturb|"
+        r"count.*requests?.*(classify|tag|phân\s*loại)|"
+        r"đếm.*request.*phân\s*loại|"
+        r"sleep\s*inject|inject\s*sleep)\b",
+        ["real-data-proof", "claim-falsification", "classifier-output-audit"],
     ),
 
     # ---------- Debug ----------
     (
         r"\b(bug|lỗi|error|exception|traceback|không\s*chạy|crash|stuck|treo|hang|fail.*test)\b",
-        [f"{_FALLBACK_STACK}-debug-troubleshoot"],
+        ["odoo-debug-troubleshoot"],
     ),
 
-    # ---------- Feature / module ----------
+    # ---------- Spec Kit workflow ----------
     (
-        r"\b(tạo\s*module|scaffold|new\s*module|module\s*mới)\b",
-        ["spec-driven-feature", f"{_FALLBACK_STACK}-module-scaffold"],
+        r"\b(/plan\b|feature\s*mới|new\s*feature|tính\s*năng\s*mới|thêm.*tính\s*năng|add.*feature|write\s*(a\s*)?prd|create.*spec|tạo\s*spec)\b",
+        ["plan-feature"],
     ),
     (
-        r"\b(feature\s*mới|implement|refactor|new\s*feature|tính\s*năng\s*mới|thêm.*tính\s*năng|add.*feature)\b",
-        ["spec-driven-feature"],
+        r"\b(/clarify\b|grill\s*me|stress[-\s]*test\s*(the\s*)?spec|challenge\s*me|đóng\s*gap|refine\s*spec)\b",
+        ["clarify"],
+    ),
+    (
+        r"\b(/tasks\b|rã\s*task|task\s*breakdown|emit\s*tasks)\b",
+        ["tasks-breakdown"],
+    ),
+    (
+        r"\b(/analyze\b|cross[-\s]*artifact|lint\s*spec|artifact\s*consistency)\b",
+        ["analyze-artifacts"],
+    ),
+    (
+        r"\b(/implement\b|bắt\s*đầu\s*code|execute\s*tasks|start\s*implement|implement\s*đi|implement\b|refactor)\b",
+        ["analyze-artifacts", "verify-feature"],
+    ),
+
+    # ---------- Module scaffold (after spec exists) ----------
+    (
+        r"\b(tạo\s*module|scaffold|new\s*module|module\s*mới)\b",
+        ["plan-feature", "odoo-module-scaffold"],
     ),
 
     # ---------- TDD ----------
     (
         r"\b(tdd|test\s*driven|viết\s*test\s*trước|test\s*first|red.*green.*refactor)\b",
-        [f"{_FALLBACK_STACK}-tdd"],
+        ["odoo-tdd"],
     ),
 
     # ---------- Patterns / Jira ----------
     (
         r"\b(theo\s*pattern|follow.*style|tuân.*chuẩn|project\s*style|code\s*style)\b",
-        [f"{_FALLBACK_STACK}-code-patterns"],
+        ["odoo-code-patterns"],
     ),
     (
         r"\b(jira|nkv[-\s]?\d+|ticket|sprint)\b",
-        [f"{_FALLBACK_STACK}-jira-workflow"],
+        ["odoo-jira-workflow"],
     ),
 ]
 
@@ -174,7 +210,7 @@ def _matched_skills(prompt: str, intent_map: List[Tuple[str, List[str]]]) -> Lis
 
     Priority rule: when an action-verb prompt triggers
     `clarification-gate`, that skill is returned EXCLUSIVELY — the
-    follow-up skills (debug-troubleshoot, spec-driven-feature, etc.)
+    follow-up skills (debug-troubleshoot, plan-feature, etc.)
     are suppressed for this turn so the agent doesn't load ~1500 lines
     of SKILL.md content at once and lose focus on the user's prompt.
     Those skills re-emerge on the next turn ("go" / answers to the
@@ -243,12 +279,79 @@ SKILL_OUTPUT_FIELDS = {
         "Each finding adds a `Doubt-pass:` line stating the strongest "
         "doubt + how it was refuted (or 'unknown — user question')."
     ),
-    "spec-driven-feature": (
-        "6-field spec (Objective / Commands / Project Structure / "
-        "Code Style / Testing / Boundaries) then STOP for approval. "
-        "Before writing the spec, run codebase MCP discovery for the "
-        "affected modules — Project Structure section must cite "
-        "concrete `path:line` refs from the search, not invented paths."
+    "plan-feature": (
+        "8-section spec (Problem / Solution / Affected Modules / User "
+        "Stories / Implementation Decisions / Testing / Out-of-scope / "
+        "Open Questions) plus `acceptance_evals:` skeleton in "
+        "frontmatter, then STOP for `/clarify`. Before writing the spec, "
+        "run codebase MCP discovery for the affected modules — Affected "
+        "Modules section must cite concrete `path:line` refs from the "
+        "search, not invented paths. Spec lives at "
+        "`.agent-toolkit/specs/<branch>/<slug>.md` (branch-scoped)."
+    ),
+    "clarify": (
+        "One Q per turn, 5-layer self-resolve before each Q (ADR / "
+        "canonical_decisions / invariants / constitution / memory). "
+        "Each Q has (a)/(b)/(c) with EXACTLY ONE Recommended + Why. "
+        "On DEV 'done': refine `acceptance_evals` (set grader/layer/"
+        "expected, smoke-test ≥1 probe) → set spec `status: clarified` "
+        "→ auto-fire `/tasks <slug>` → STOP. Do NOT auto-fire /implement."
+    ),
+    "tasks-breakdown": (
+        "Emit `tasks.md` next to the spec — one task per ≤30 LOC unit. "
+        "Each task has Touches / Depends on / Acceptance / Verification / "
+        "Risk lines. Every User Story covered by ≥1 task; every "
+        "`acceptance_evals` entry cited by exactly 1 task. STOP after "
+        "emit — DEV review gate before `/implement`."
+    ),
+    "analyze-artifacts": (
+        "Run 7 cross-artifact checks (story coverage / eval coverage / "
+        "out-of-scope guard / invariant compat / constitution compat / "
+        "path realism / verification concreteness). Emit `analyze-report.md`"
+        " next to tasks.md. Return verdict READY / READY-with-warnings / "
+        "HALT. HALT stops the `/implement` auto-chain."
+    ),
+    "verify-feature": (
+        "Probes in parallel via realdata_test/postgres/Playwright MCP "
+        "(spread < 3s). Each User Story → 1 row in the PASS/GAP/BLOCKER "
+        "table. Re-use `acceptance_evals` defined in spec frontmatter; "
+        "do NOT re-design. Update spec status to verified/gaps-found/"
+        "blocked. Trigger `verify_lint` Stop hook via `.codex/lint_"
+        "verify_report.py`."
+    ),
+    "real-data-proof": (
+        "4 mandatory steps: (1) acquire REAL data — cite source + "
+        "realism (no synthetic-only fixtures); (2) emit DISTRIBUTION "
+        "table per tag with sample input_ids (count + % per label); "
+        "(3) FALSIFY each distinct tag value via `claim-falsification` "
+        "recipe (sleep-inject for BLOCK/ASYNC, etc.) — min 1 perturb-test "
+        "per tag including `default` bucket if non-empty, baseline + "
+        "perturb 3 runs each take median; (4) emit Real-Data Proof Report "
+        "(Data source / Distribution / Falsification table with Δ "
+        "predicted vs measured / Verdict / Revert checklist with "
+        "`grep PERTURB-TEST` = 0). See `references/block-async-worked-"
+        "example.md` for the canonical end-to-end shape. REFUTED on "
+        "any tag = BLOCKER for merge."
+    ),
+    "claim-falsification": (
+        "Pick a recipe from the 15-recipe catalog matching the claim "
+        "shape (P, X.kind). Instantiate (perturbation D, observable Y, "
+        "predicted Δ). Run baseline + perturb (3+3 runs minimum, take "
+        "median). Verdict CONSISTENT / REFUTED / inconclusive. ALWAYS "
+        "revert D — `grep PERTURB-TEST` must be empty before STOP. "
+        "Y must be INDEPENDENT of the classifier's output (no circular "
+        "self-reads). When subject is a classifier emitting N labels at "
+        "scale → escalate to `classifier-output-audit` (N-claim wrapper)."
+    ),
+    "classifier-output-audit": (
+        "Build path × signal matrix from the classifier source. Sample "
+        "K ≥ max(10, sqrt(n)) rows stratified by tag. Re-derive "
+        "T_expected from the FULL signal set (not just signals the "
+        "handling path read). Group mismatches by (path, deciding_"
+        "signal) and escalate the largest group to `claim-falsification`. "
+        "Emit Classifier Audit Report (matrix + sample table + mismatch "
+        "groups + proposed fix + verdict 🟢/🟡/🔴). Mis-tag rate > 5% "
+        "on sample = BLOCKER."
     ),
 }
 

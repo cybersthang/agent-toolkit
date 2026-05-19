@@ -29,6 +29,6 @@
     "default_user": "odoo"
   },
   "rules": ["_common", "odoo-17"],
-  "skills": ["_common", "odoo", "odoo-17"],
+  "skills": ["_common", "odoo"],
   "memory_packs": ["odoo-17"]
 }

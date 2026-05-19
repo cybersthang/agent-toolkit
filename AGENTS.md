@@ -38,10 +38,11 @@ project:
   Q&A. The toolkit assumes the AI gathered consent; if you skipped,
   the user gets misconfigured defaults silently.
 - Hard-code project-specific values (addon roots, env var prefixes,
-  module names like `nakivo_profiler`, db names like `Nakivo01`) into
-  templates. Use `{{PLACEHOLDER}}` and let `setup.py` render at install
-  time. See `presets/odoo-12-nakivo.json` for how NAKIVO-specific
-  defaults are kept OUT of the generic `odoo-12` preset.
+  module names, db names) into templates. Use `{{PLACEHOLDER}}` and
+  let `setup.py` render at install time. Project-specific defaults
+  belong in **private preset overlays** that `extends` a public preset
+  (see `templates/agent_toolkit/PORTING.md`) — never in the public
+  toolkit itself.
 - Copy files from another project's `.codex/` / `.claude/` directly
   into a new target. The toolkit's `setup.py` is the single source of
   truth — running it ensures placeholders render correctly for the new
@@ -52,9 +53,8 @@ project:
 ## Failure mode this rule prevents
 
 Without the Phase 1 Q&A:
-- AI silently picks `--preset odoo-12-nakivo` for a non-NAKIVO project →
-  installs `Nakivo01` as default DB + `nakivo` as addon root → toolkit
-  is broken on day 1.
+- AI silently picks the wrong preset → installs default DB + addon
+  roots that don't match the project → toolkit is broken on day 1.
 - AI assumes Python path from `which python` → ends up pointing at a
   global Python instead of the user's project venv → hooks fail import.
 - AI skips post-install pre-commit install → pre-commit gates silently
@@ -75,7 +75,7 @@ session. Read it before you skip it.
 |---|---|
 | `setup.py` | CLI entry. Commands: `init`, `update`, `list-presets`. Renders templates + writes `agent-toolkit.config.json` into target. |
 | `lib/installer.py` | Preset loader + validator + templating helpers. Versioning (`__version__`). |
-| `presets/*.json` | Stack/project presets. Generic + extends-overlay convention (e.g. `odoo-12` is generic, `odoo-12-nakivo` extends it with NAKIVO-specific defaults). |
+| `presets/*.json` | Stack presets. Generic + extends-overlay convention (e.g. a private overlay can `extends: odoo-12` to add project-specific defaults — see `templates/agent_toolkit/PORTING.md`). |
 | `templates/` | Files copied/rendered into target. Every `{{KEY}}` must have a corresponding `ctx[KEY]` in `setup.py`. |
 | `templates/cursor/` | Cursor IDE rules + skills (per-stack subdirs + `_common/`). |
 | `templates/claude/` | Claude Code hooks + slash commands + settings. |

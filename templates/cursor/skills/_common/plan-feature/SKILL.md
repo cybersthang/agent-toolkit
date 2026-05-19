@@ -1,20 +1,27 @@
 ---
 name: plan-feature
-description: The user invokes `/plan <feature>` to turn a feature request into a structured spec (Problem / Solution / Modules / User stories / Tests / Out-of-scope) BEFORE writing code. This is the entry-point of the 4-phase Vibe-flow (PLAN → GRILL → TDD auto → DEBUG auto). Open this skill WHEN the user says "make a plan for X", "write a PRD for Y", "/plan ...", or anything that will produce more than 50 lines of new code.
+description: Spec Kit Phase 1 — SPECIFY. The user invokes `/plan <feature>` to turn a feature request into a structured spec (Problem / Solution / Modules / User stories / Tests / Out-of-scope / Open Questions) BEFORE writing code. Entry-point of the 5-phase Spec Kit flow (PLAN → CLARIFY → TASKS → ANALYZE+IMPLEMENT → VERIFY). Open this skill WHEN the user says "make a plan for X", "write a PRD for Y", "/plan ...", or anything that will produce more than 30 lines of new code.
 ---
 
-# Plan Feature — Vibe-flow Phase 1
+# Plan Feature — Spec Kit Phase 1: SPECIFY
 
 > Purpose: before writing code, produce a clear spec both the user and the
-> agent can look at. This skill does NOT interview the user (that is `/grill`);
-> it consolidates what the agent already knows about the codebase + the
-> request into a first-draft spec, used as input for the GRILL phase.
+> agent can look at. This skill does NOT interview the user (that is
+> `/clarify`); it consolidates what the agent already knows about the
+> codebase + the request into a first-draft spec, used as input for the
+> CLARIFY phase.
 
-Different from `spec-driven-feature` (full 4-phase Specify → Plan → Tasks →
-Implement, requires user approval between phases): `plan-feature` only does
-Phase 1 (Specify) at a single-page PRD level. After the spec exists, the user
-runs `/grill` to stress-test, then hands off to `spec-driven-feature` for
-Tasks/Implement.
+This is **Phase 1** of the 5-phase Spec Kit flow:
+
+```
+DEV: /plan  →  /clarify
+              ↓ (auto-fires after clarify done)
+        /tasks  →  STOP (DEV review)
+                    ↓
+DEV: /implement
+              ↓ (auto-chain)
+        /analyze  →  execute tasks  →  /verify  →  report
+```
 
 ## When to apply
 
@@ -28,8 +35,9 @@ Tasks/Implement.
 
 - Tiny requests (one-character edit, one-constant change).
 - Read-only questions (read / understand / where is X).
-- A spec already exists at `.agent-toolkit/specs/<slug>.md` for the same
-  feature — open that spec and update it; do NOT create a new file.
+- A spec already exists at `.agent-toolkit/specs/**/<slug>.md` for the same
+  feature (Glob to find it across branch dirs) — open that spec and update
+  it; do NOT create a new file.
 
 ## Procedure
 
@@ -45,7 +53,15 @@ structure.
 
 ### Step 1 — Generate the spec using this template
 
-Write the file `<workspace>/.agent-toolkit/specs/<feature-slug>.md` with frontmatter:
+Compute the branch-scoped path:
+
+```bash
+branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null | tr '/' '_' | sed 's/^\.//')
+branch=${branch:-_default}    # fallback if not in a git repo or detached
+```
+
+Write to `<workspace>/.agent-toolkit/specs/<branch>/<feature-slug>.md`
+with frontmatter:
 
 ```yaml
 ---
@@ -57,6 +73,13 @@ last_updated: <YYYY-MM-DD>
 owner: <dev-name>
 related_adr: <ADR-NNN if any>
 related_jira: <ticket-id if any>
+# feature_kind drives Step 1.8 of /verify (mandatory Real-Data Proof
+# for classifier features). Set ONLY when keyword detection matches:
+#   - classification: classify/phân loại/gán nhãn/tag each/BLOCK vs ASYNC/severity low|med|high
+#   - aggregation:    count/đếm/distribution/phân bố/aggregate/gom nhóm
+#   - contract:       atomic/idempotent/cached/deterministic/retries + contract|guarantee|invariant
+# Omit the field entirely for generic features — don't ship `feature_kind: generic`.
+feature_kind: <classification | aggregation | contract>  # OPTIONAL
 ---
 ```
 
@@ -113,12 +136,12 @@ Print a 5-10-line summary so the user sees what was written. The path to the
 spec file is included. The final line MUST be one of:
 
 - `→ Next: run /grill to stress-test the Open Questions above.`
-- `→ To skip grill, run spec-driven-feature to move this spec to Tasks/Implement.`
+- `→ To skip clarify, run /tasks <slug> --no-evals (rare; evals stay draft).`
 
 ### Step 3 — STOP
 
 After writing the spec, stop. Do NOT call Edit/Write on source files. Do NOT
-implement. Wait for the user to type `/grill` or "go".
+implement. Wait for the user to type `/clarify <slug>`.
 
 ## Module-agnostic — no hardcoding
 
@@ -131,8 +154,8 @@ keep the name the user typed — do not auto-rename.
 | Temptation | Counter |
 |---|---|
 | "The feature is simple, no spec needed" | A 6-section spec takes 3-5 minutes; throw-away code costs hours. The spec threshold is lower than you think. |
-| "I can guess the Open Questions" | No. That is the GRILL phase — the user decides, you don't guess. |
-| "Spec and code in parallel for speed" | Vibe-flow is sequential: PLAN → GRILL → IMPLEMENT. Parallel = drift. |
+| "I can guess the Open Questions" | No. That is the CLARIFY phase — the user decides, you don't guess. |
+| "Spec and code in parallel for speed" | Spec Kit flow is sequential: PLAN → CLARIFY → TASKS → IMPLEMENT → VERIFY. Parallel = drift. |
 | "What if the user changes requirements after the spec?" | Update the spec file (bump `last_updated`, add a change-log section). The spec is a contract — change the contract before changing the code. |
 
 ## Red flags — the skill is failing if
@@ -142,21 +165,25 @@ keep the name the user typed — do not auto-rename.
 - "User Stories" has fewer than 3 items (not enough detail).
 - "Open Questions" is empty (everything was assumed — make sure that is not the case).
 - You called Edit/Write on a source file in the same turn (violates STOP).
-- The spec was written to the wrong location (not `.agent-toolkit/specs/`).
+- The spec was written to the wrong location (not `.agent-toolkit/specs/<branch>/`).
 
 ## Sibling skills
 
 - `clarification-gate` — runs BEFORE, ensures the request is understood.
-- `grill` — phase 2, after the spec exists.
-- `spec-driven-feature` — a heavier version (full 4 phases); plan-feature
-  is the Specify phase packaged as a slash command.
-- `<stack>-<version>-codebase-discovery` — discovers modules in Step 0.
-- `<stack>-<version>-tdd` — phase 3, automatic.
-- `<stack>-<version>-debug-troubleshoot` — phase 4, automatic.
+- `clarify` — Phase 2, refines Open Questions + acceptance_evals.
+- `tasks-breakdown` — Phase 3, emits tasks.md (auto-fired by clarify).
+- `analyze-artifacts` — Phase 3.5, cross-artifact lint (auto-fired by implement).
+- `verify-feature` — Phase 5, real-data validation after implement.
+- `<stack>-codebase-discovery` — discovers modules in Step 0
+  (version-aware: Step 0 reads `__manifest__.py` and loads matching
+  references — same folder works for Odoo 12 → 20+).
+- `<stack>-tdd` — TDD loop during implement (version-aware).
+- `<stack>-debug-troubleshoot` — debugger when implement hits errors
+  (version-aware).
 
 ## Reference
 
 Inspired by:
 - [mattpocock/skills/engineering/to-prd](https://github.com/mattpocock/skills/blob/main/skills/engineering/to-prd/SKILL.md) (MIT).
 - [mattpocock/skills/engineering/zoom-out](https://github.com/mattpocock/skills/tree/main/skills/engineering/zoom-out) (MIT).
-- Local `spec-driven-feature` (Specify phase).
+- GitHub Spec Kit (https://github.com/github/spec-kit) — SPECIFY phase concept.

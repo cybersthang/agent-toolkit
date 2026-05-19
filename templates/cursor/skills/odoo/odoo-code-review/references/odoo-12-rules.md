@@ -74,7 +74,7 @@ and the cross-version checklists under `_common/code-review/references/`.
 - Addon roots come from `agent-toolkit.config.json` (rendered into AGENTS.md "Addon / Code roots"). Read that file first instead of memorizing paths.
 - Always pass `root_hint` to `discover_modules` / `search_text` to avoid scanning all roots.
 - Before answering "is there anything else to fix in `<module>`?", read `.codex/audit_findings_locked.md` (or `.codex/audit_findings_<module>_locked.md`) and cite the locked count.
-- JIRA URLs live ONLY in `.codex/mcp.local.env` (env vars `NAKIVO_JIRA_PRODUCTION_*` / `NAKIVO_JIRA_PREPRODUCTION_*`); call `env_status` on the matching MCP to see the active URL. Never hard-code URLs or credentials in committed files.
+- JIRA URLs live ONLY in `.codex/mcp.local.env` (env vars `{{ENV_PREFIX}}_JIRA_PRODUCTION_*` / `{{ENV_PREFIX}}_JIRA_PREPRODUCTION_*` — the `ENV_PREFIX` is set at install time from `agent-toolkit.config.json`); call `env_status` on the matching MCP to see the active URL. Never hard-code URLs or credentials in committed files.
 
 ## Severity anchors (Odoo-12 audit examples — keep these even when the project differs)
 

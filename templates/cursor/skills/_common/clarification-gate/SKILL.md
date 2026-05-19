@@ -11,7 +11,7 @@ description: BEFORE any non-trivial action (implement, fix, refactor, audit, sca
 > guardrail: every non-trivial action goes through a 3-block check
 > first, regardless of which other skill is active.
 
-This skill is **lighter than `spec-driven-feature`** — it does not produce
+This skill is **lighter than `plan-feature`** — it does not produce
 a 6-field spec or a task list. It is a pre-flight check that runs on
 every action prompt to decide:
 
@@ -28,7 +28,7 @@ every action prompt to decide:
   ("clean this up", "tối ưu lại", "làm gọn module này").
 - Any prompt whose success criteria are not measurable from the wording
   alone ("faster", "cleaner", "đẹp hơn", "tốt hơn").
-- Whenever opening another skill (code-review, spec-driven-feature, etc.)
+- Whenever opening another skill (code-review, plan-feature, etc.)
   — run this gate FIRST, then the skill's own STOP checkpoints take over.
 
 ## When to SKIP (let the prompt through)
@@ -176,7 +176,7 @@ Q1: Threshold value lấy từ đâu?
 
 - A state-changing tool was called before the 3 blocks were emitted.
 - ASSUMPTIONS block has zero items (claim: nothing was assumed) — almost always wrong.
-- QUESTIONS block has 4+ items — break into a SPECIFY phase (open `spec-driven-feature` instead).
+- QUESTIONS block has 4+ items — break into a SPECIFY phase (open `plan-feature` instead).
 - A question lacks a default — it forces the user to spell out an answer they could have said "go" to.
 - The gate was emitted, the user said "wait, also do X" — but the next turn started implementing without re-emitting the gate.
 - The gate's UNDERSTANDING block is a verbatim copy of the user's prompt (paraphrase failure — re-write in your own words to prove comprehension).
@@ -371,7 +371,7 @@ không hỏi, dẫn tới build dashboard chỉ N worker thay vì N request.
 
 ## Sibling skills
 
-- `spec-driven-feature` — promotes a passed clarification gate into a full 6-field spec when the feature is large.
+- `plan-feature` — promotes a passed clarification gate into a full 6-field spec when the feature is large.
 - `doubt-driven-review` — runs AFTER implementation to verify the gate's UNDERSTANDING actually matched reality.
 - `<stack>-<version>-codebase-discovery` — read-only discovery you may run BEFORE emitting the gate to populate UNDERSTANDING accurately.
 - `<stack>-<version>-deterministic-answers` — settled conventions you do NOT need to put as questions (they're already canonical).

@@ -306,7 +306,11 @@ class TestCodexMcpWrappers(unittest.TestCase):
         module_path = ROOT / ".codex" / "mcp_servers" / "codebase_server.py"
         module = load_module(module_path, "test_codebase_server")
 
-        inside = module.resolve_path("nakivo")
+        # Use a generic relative name — `resolve_path` only needs to return
+        # an absolute path under ROOT, not a path that exists on disk.
+        # Avoid baking project-specific module names into a test that
+        # ships into every installed project.
+        inside = module.resolve_path("addons")
         self.assertTrue(str(inside).startswith(str(ROOT)))
 
         with self.assertRaises(ValueError):
@@ -317,9 +321,14 @@ class TestCodexMcpWrappers(unittest.TestCase):
         module_path = ROOT / ".codex" / "mcp_servers" / "realdata_test_server.py"
         module = load_module(module_path, "test_realdata_test_server")
 
+        # `database` value is opaque to the command builder — the test only
+        # asserts shape of the emitted argv. Use a clearly synthetic name so
+        # the installed test doesn't ship a project-specific literal into
+        # every project.
+        test_db = "test_db_staging"
         command = module.module_test_command(
             {
-                "database": "Nakivo01_staging",
+                "database": test_db,
                 "module_name": "sale",
                 "module_action": "update",
                 "test_tag": "/sale",
@@ -333,7 +342,7 @@ class TestCodexMcpWrappers(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             module.run_module_test(
-                {"database": "Nakivo01_staging", "module_name": "sale"}
+                {"database": test_db, "module_name": "sale"}
             )
 
     # --- New: JIRA multi-profile wrapper ----------------------------------

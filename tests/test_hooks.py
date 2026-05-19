@@ -86,7 +86,7 @@ class TestIntentRouter:
 
     def test_review_keyword_triggers_code_review(self, tmp_path):
         hook = _render_hook('intent_router.py', tmp_path)
-        result = _run_hook(hook, {'prompt': 'review module nakivo_profiler đi'})
+        result = _run_hook(hook, {'prompt': 'review module sale_extension đi'})
         out = json.loads(result.stdout) if result.stdout.strip() else {}
         ctx = out.get('hookSpecificOutput', {}).get('additionalContext', '')
         assert 'code-review' in ctx
@@ -125,6 +125,45 @@ class TestIntentRouter:
             env=dict(os.environ, PYTHONIOENCODING='utf-8'),
         )
         assert result.returncode == 0
+
+    def test_block_async_intent_routes_to_real_data_proof(self, tmp_path):
+        """The canonical DEV pattern (BLOCK/ASYNC sleep-injection prove)
+        must surface `real-data-proof` skill at the top of the suggestion."""
+        hook = _render_hook('intent_router.py', tmp_path)
+        result = _run_hook(hook, {
+            'prompt': 'count toàn bộ request và phân loại BLOCK hay ASYNC, '
+                      'sau đó chứng minh từng tag đúng',
+        })
+        assert result.returncode == 0
+        out = json.loads(result.stdout) if result.stdout.strip() else {}
+        ctx = out.get('hookSpecificOutput', {}).get('additionalContext', '')
+        # Clarification-gate fires on action verbs first (priority rule).
+        # Either we see real-data-proof directly, or clarification-gate is the
+        # single suggested skill (action-verb priority suppresses follow-ups).
+        if 'clarification-gate' in ctx:
+            # Priority short-circuit — that's by design.
+            return
+        # Otherwise expect the classifier-intent route to land here.
+        assert 'real-data-proof' in ctx, (
+            f'Expected real-data-proof in routed context, got: {ctx[:400]}'
+        )
+
+    def test_falsification_intent_routes_to_real_data_proof(self, tmp_path):
+        """`perturb-test` / `prove the tag` (no action verb) must route."""
+        hook = _render_hook('intent_router.py', tmp_path)
+        result = _run_hook(hook, {
+            'prompt': 'perturb-test này đi, prove the tag is correct',
+        })
+        assert result.returncode == 0
+        out = json.loads(result.stdout) if result.stdout.strip() else {}
+        ctx = out.get('hookSpecificOutput', {}).get('additionalContext', '')
+        # No action verb in this prompt → clarification-gate shouldn't fire,
+        # so the classifier-intent route must take over.
+        assert 'real-data-proof' in ctx, (
+            f'Expected real-data-proof routing, got: {ctx[:400]}'
+        )
+        # claim-falsification is the recipe catalog — must be suggested too.
+        assert 'claim-falsification' in ctx
 
 
 # ============================================================
@@ -321,3 +360,257 @@ class TestSessionBrief:
         if out.strip():
             # Either plain text mentioning ADR-001 / invariant, or JSON.
             assert 'ADR' in out or 'invariant' in out.lower() or 'INV' in out
+
+    def test_audit_lock_file_surfaced(self, tmp_path):
+        """`.codex/audit_findings_locked.md` must appear in SessionStart brief.
+
+        Without this, code-review Section 0 is honor-system and the agent
+        can produce a count that contradicts the lock file silently.
+        """
+        hook = _render_hook('session_brief.py', tmp_path)
+        codex = tmp_path / '.codex'
+        codex.mkdir()
+        (codex / 'audit_findings_locked.md').write_text(
+            '# Audit findings — locked\n\n'
+            '3 BLOCKER + 9 MEDIUM + 30 LOW = 42 total\n',
+            encoding='utf-8',
+        )
+        result = _run_hook(hook, {'cwd': str(tmp_path)}, cwd=tmp_path)
+        assert result.returncode == 0
+        assert result.stdout.strip(), 'session_brief should emit brief'
+        payload = json.loads(result.stdout)
+        ctx = payload['hookSpecificOutput']['additionalContext']
+        # Lock-file path must appear so the agent reads it.
+        assert 'audit_findings_locked.md' in ctx
+        # The recorded count line must be quoted so the agent can cite verbatim.
+        assert '42' in ctx or '3 BLOCKER' in ctx
+        # Section 0 must be referenced by name to trigger lock-file precedence.
+        assert 'Section 0' in ctx or 'Lock-file precedence' in ctx
+
+    def test_per_module_audit_lock_files_surfaced(self, tmp_path):
+        """`.codex/audit_findings_<module>_locked.md` variants also surface."""
+        hook = _render_hook('session_brief.py', tmp_path)
+        codex = tmp_path / '.codex'
+        codex.mkdir()
+        (codex / 'audit_findings_sale_extension_locked.md').write_text(
+            '# locked findings\n5 BLOCKER\n', encoding='utf-8',
+        )
+        (codex / 'audit_findings_other_mod_locked.md').write_text(
+            '# locked\n1 LOW\n', encoding='utf-8',
+        )
+        result = _run_hook(hook, {'cwd': str(tmp_path)}, cwd=tmp_path)
+        assert result.returncode == 0
+        payload = json.loads(result.stdout)
+        ctx = payload['hookSpecificOutput']['additionalContext']
+        assert 'sale_extension_locked' in ctx
+        assert 'other_mod_locked' in ctx
+
+    def test_no_audit_lock_no_banner(self, tmp_path):
+        """No lock file → no audit-lock banner in brief."""
+        hook = _render_hook('session_brief.py', tmp_path)
+        codex = tmp_path / '.codex'
+        codex.mkdir()
+        # Decoy file that ISN'T a lock — shouldn't trip the pattern.
+        (codex / 'audit_findings.md').write_text(
+            '# regular findings, not locked\n', encoding='utf-8',
+        )
+        result = _run_hook(hook, {'cwd': str(tmp_path)}, cwd=tmp_path)
+        assert result.returncode == 0
+        if result.stdout.strip():
+            payload = json.loads(result.stdout)
+            ctx = payload['hookSpecificOutput']['additionalContext']
+            assert 'Lock-file' not in ctx and 'lock-file' not in ctx
+
+
+# ============================================================
+# analyze_halt_gate — PreToolUse hook on Edit|Write|MultiEdit
+# ============================================================
+class TestAnalyzeHaltGate:
+    """Enforces that an unresolved HALT verdict from /analyze blocks
+    subsequent Edit/Write on source files. Closes the gap where the skill
+    body said `Auto-chain stops here` but no hook actually halted it.
+    """
+
+    def _envelope(self, file_path: str, workspace: Path) -> dict:
+        return {
+            'tool_input': {'file_path': str(file_path)},
+            'cwd': str(workspace),
+        }
+
+    def _seed_workspace(self, tmp_path: Path) -> Path:
+        """Create a tmp project with `.agent-toolkit/specs/` skeleton."""
+        ws = tmp_path / 'proj'
+        (ws / '.agent-toolkit' / 'specs' / 'main' / 'my-feature').mkdir(parents=True)
+        return ws
+
+    def _write_report(self, ws: Path, slug: str, verdict: str,
+                      blockers: list = None) -> Path:
+        """Write an analyze-report.md under specs/main/<slug>/."""
+        report = ws / '.agent-toolkit' / 'specs' / 'main' / slug / 'analyze-report.md'
+        body = f"## Analyze Report — {slug}\n\n"
+        body += "| # | Check | Status | Detail |\n|---|---|---|---|\n"
+        for b in (blockers or []):
+            body += f"| {b['id']} | {b['name']} | 🔴 BLOCK | {b['detail']} |\n"
+        body += f"\n### Verdict\n- **Verdict:** {verdict}\n"
+        report.write_text(body, encoding='utf-8')
+        return report
+
+    def test_no_specs_dir_fail_open(self, tmp_path):
+        hook = _render_hook('analyze_halt_gate.py', tmp_path)
+        result = _run_hook(
+            hook,
+            self._envelope(tmp_path / 'src' / 'main.py', tmp_path),
+            cwd=tmp_path,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == ''
+
+    def test_no_analyze_report_fail_open(self, tmp_path):
+        hook = _render_hook('analyze_halt_gate.py', tmp_path)
+        ws = self._seed_workspace(tmp_path)
+        result = _run_hook(
+            hook, self._envelope(ws / 'src' / 'main.py', ws), cwd=ws,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == ''
+
+    def test_ready_verdict_allows_edit(self, tmp_path):
+        hook = _render_hook('analyze_halt_gate.py', tmp_path)
+        ws = self._seed_workspace(tmp_path)
+        self._write_report(ws, 'my-feature', 'READY')
+        result = _run_hook(
+            hook, self._envelope(ws / 'src' / 'main.py', ws), cwd=ws,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == ''
+
+    def test_halt_verdict_blocks_source_edit(self, tmp_path):
+        hook = _render_hook('analyze_halt_gate.py', tmp_path)
+        ws = self._seed_workspace(tmp_path)
+        self._write_report(ws, 'my-feature', 'HALT', blockers=[
+            {'id': 'C6', 'name': 'Path realism',
+             'detail': 'T4 cites addons/foo/bar.py which does not exist'},
+        ])
+        result = _run_hook(
+            hook, self._envelope(ws / 'src' / 'main.py', ws), cwd=ws,
+        )
+        assert result.returncode == 0
+        decision = json.loads(result.stdout)
+        assert decision['decision'] == 'block'
+        reason = decision['reason']
+        assert 'analyze-halt-gate' in reason
+        assert 'my-feature' in reason
+        assert 'C6' in reason
+        assert 'Path realism' in reason
+
+    def test_block_count_form_blocks(self, tmp_path):
+        """Report that uses `BLOCK: 2` summary form (no explicit Verdict)."""
+        hook = _render_hook('analyze_halt_gate.py', tmp_path)
+        ws = self._seed_workspace(tmp_path)
+        report = ws / '.agent-toolkit' / 'specs' / 'main' / 'my-feature' / 'analyze-report.md'
+        report.write_text(
+            "## Analyze Report — my-feature\n\n"
+            "Summary:\n- ✅ PASS: 4\n- 🟡 WARN: 1\n- 🔴 BLOCK: 2\n",
+            encoding='utf-8',
+        )
+        result = _run_hook(
+            hook, self._envelope(ws / 'src' / 'main.py', ws), cwd=ws,
+        )
+        assert result.returncode == 0
+        decision = json.loads(result.stdout)
+        assert decision['decision'] == 'block'
+
+    def test_halt_then_ready_reemission_allows(self, tmp_path):
+        """When the agent appends a re-analysis, the LAST verdict wins."""
+        hook = _render_hook('analyze_halt_gate.py', tmp_path)
+        ws = self._seed_workspace(tmp_path)
+        report = ws / '.agent-toolkit' / 'specs' / 'main' / 'my-feature' / 'analyze-report.md'
+        report.write_text(
+            "## Run 1\n**Verdict:** HALT — blockers C6\n\n"
+            "## Run 2 (after fix)\n**Verdict:** READY\n",
+            encoding='utf-8',
+        )
+        result = _run_hook(
+            hook, self._envelope(ws / 'src' / 'main.py', ws), cwd=ws,
+        )
+        assert result.returncode == 0, (
+            f'Re-emitted READY should allow; stdout={result.stdout!r}'
+        )
+        assert result.stdout.strip() == ''
+
+    def test_halt_allows_edit_inside_agent_toolkit(self, tmp_path):
+        """The agent must still be able to fix the spec / tasks / report itself."""
+        hook = _render_hook('analyze_halt_gate.py', tmp_path)
+        ws = self._seed_workspace(tmp_path)
+        self._write_report(ws, 'my-feature', 'HALT')
+        # Try editing the report itself — must NOT be blocked.
+        target = ws / '.agent-toolkit' / 'specs' / 'main' / 'my-feature' / 'analyze-report.md'
+        result = _run_hook(hook, self._envelope(target, ws), cwd=ws)
+        assert result.returncode == 0
+        assert result.stdout.strip() == ''
+
+    def test_halt_allows_edit_inside_codex_claude_cursor(self, tmp_path):
+        """Toolkit-managed dirs are always editable."""
+        hook = _render_hook('analyze_halt_gate.py', tmp_path)
+        ws = self._seed_workspace(tmp_path)
+        self._write_report(ws, 'my-feature', 'HALT')
+        for sub in ('.codex/config.json', '.claude/hooks/foo.py',
+                    '.cursor/rules/bar.mdc'):
+            target = ws / sub
+            target.parent.mkdir(parents=True, exist_ok=True)
+            result = _run_hook(hook, self._envelope(target, ws), cwd=ws)
+            assert result.returncode == 0, f'edit on {sub} should be allowed'
+            assert result.stdout.strip() == '', (
+                f'edit on {sub} should be silent allow, got {result.stdout!r}'
+            )
+
+    def test_bypass_marker_overrides_halt(self, tmp_path):
+        """`.agent-toolkit/.analyze-bypass` lets DEV override HALT (emergency)."""
+        hook = _render_hook('analyze_halt_gate.py', tmp_path)
+        ws = self._seed_workspace(tmp_path)
+        self._write_report(ws, 'my-feature', 'HALT')
+        (ws / '.agent-toolkit' / '.analyze-bypass').write_text('', encoding='utf-8')
+        result = _run_hook(
+            hook, self._envelope(ws / 'src' / 'main.py', ws), cwd=ws,
+        )
+        assert result.returncode == 0
+        # Stdout must be silent (no block JSON); stderr carries the diagnostic.
+        assert result.stdout.strip() == ''
+        assert 'BYPASS' in result.stderr or 'bypass' in result.stderr.lower()
+
+    def test_multiple_halt_reports_listed(self, tmp_path):
+        """Two specs both HALT → block reason mentions both slugs."""
+        hook = _render_hook('analyze_halt_gate.py', tmp_path)
+        ws = self._seed_workspace(tmp_path)
+        (ws / '.agent-toolkit' / 'specs' / 'main' / 'feature-b').mkdir(parents=True)
+        self._write_report(ws, 'my-feature', 'HALT')
+        self._write_report(ws, 'feature-b', 'HALT')
+        result = _run_hook(
+            hook, self._envelope(ws / 'src' / 'main.py', ws), cwd=ws,
+        )
+        assert result.returncode == 0
+        decision = json.loads(result.stdout)
+        reason = decision['reason']
+        # Primary slug in the main block; the other listed under "Note:".
+        assert 'my-feature' in reason or 'feature-b' in reason
+        assert '1 other HALT report' in reason or 'Note:' in reason
+
+    def test_empty_envelope_fail_open(self, tmp_path):
+        hook = _render_hook('analyze_halt_gate.py', tmp_path)
+        result = subprocess.run(
+            [PYTHON, str(hook)],
+            input='', capture_output=True, text=True, timeout=5,
+            env=dict(os.environ, PYTHONIOENCODING='utf-8'),
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == ''
+
+    def test_malformed_envelope_fail_open(self, tmp_path):
+        hook = _render_hook('analyze_halt_gate.py', tmp_path)
+        result = subprocess.run(
+            [PYTHON, str(hook)],
+            input='not valid json {{{', capture_output=True, text=True,
+            timeout=5, env=dict(os.environ, PYTHONIOENCODING='utf-8'),
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == ''

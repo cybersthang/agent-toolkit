@@ -12,9 +12,10 @@ rebuilding** an agent-toolkit installation on a target project.
 
 This toolkit is **template-driven** — concrete values (project name, addon
 roots, DB name, Python path, env-var prefix) MUST come from the user. The
-toolkit ships zero project-specific defaults — silently inheriting
-`Cursor_NAKIVO` values is a known anti-pattern (DEV directive, see
-`presets/odoo-12-nakivo.json` for the NAKIVO-specific overlay).
+toolkit ships zero project-specific defaults — silently inheriting any
+prior project's values is a known anti-pattern. Project-specific defaults
+belong in a **private preset overlay** that `extends` a public preset
+(see `templates/agent_toolkit/PORTING.md`).
 
 ---
 
@@ -22,7 +23,7 @@ toolkit ships zero project-specific defaults — silently inheriting
 
 | Check | Tool | Block if fails |
 |---|---|---|
-| Toolkit source exists | `ls C:/Users/<user>/Desktop/NAKIVO/agent-toolkit/setup.py` (or wherever toolkit cloned) | YES |
+| Toolkit source exists | `ls <path-to-toolkit-clone>/setup.py` (wherever toolkit cloned) | YES |
 | Target path is writable | `Test-Path <target>` / try `mkdir -p` | YES |
 | Target is empty OR a git repo | `git -C <target> status` | WARN — ask user confirm overwrite |
 | Python ≥ 3.8 available | `python --version` | YES — toolkit needs stdlib |
@@ -44,7 +45,7 @@ If any HARD check fails, STOP and report to user. Do NOT proceed.
 |---|---|---|---|---|
 | `TARGET_PATH` | Where toolkit lands | `C:/projects/odoo17-shop` | folder of current cwd | "Path tuyệt đối tới project root?" |
 | `PROJECT_NAME` | Identifier baked into config + env-prefix derivation | `odoo17-shop` | basename of `TARGET_PATH` | "Tên project (slug, no spaces)?" |
-| `PRESET_NAME` | Template family to install | `odoo-12`, `odoo-17`, `odoo-12-nakivo`, `generic` | NONE — must pick | "Preset nào? Chạy `python setup.py list-presets` xem options" |
+| `PRESET_NAME` | Template family to install | `odoo-12`, `odoo-17`, `generic`, or a private overlay extending one | NONE — must pick | "Preset nào? Chạy `python setup.py list-presets` xem options" |
 | `RESPONSE_LANGUAGE` | Reply language the agent uses | `Vietnamese`, `English`, `日本語` | `English` | "Reply language?" |
 
 ### 1.2 Toolchain paths (required for runtime)
@@ -171,9 +172,9 @@ Phase 1 questions on update.
    ```bash
    cd <TARGET_PATH> && <PYTHON_BIN> -m pytest .codex/tests/hooks -q
    ```
-   Expected: all tests pass. If any fail with `nakivo` / `Nakivo01` literal
-   strings, the toolkit version installed has a known hard-code bug —
-   bump toolkit to ≥ 0.4.0.
+   Expected: all tests pass. If any fail with project-specific literal
+   strings hardcoded into the toolkit (instead of `{{PLACEHOLDER}}`),
+   that's a toolkit bug — file an issue.
 
 3. **Verify env file**:
    - `.codex/mcp.local.env.example` exists
@@ -199,12 +200,12 @@ Phase 1 questions on update.
 
 | Anti-pattern | Why bad | Correct move |
 |---|---|---|
-| Use `odoo-12-nakivo` preset for a non-NAKIVO project | Inherits `nakivo` addon root + `Nakivo01` DB → toolkit broken | Use `odoo-12` (generic) or another preset; create new overlay if needed |
-| Hard-code `CURSOR_NAKIVO_PYTHON_BIN` anywhere | Project-specific env var name | Render `{{ENV_PREFIX}}_PYTHON_BIN` from setup.py ctx |
+| Use a private preset overlay for a project it wasn't built for | Inherits wrong addon root + wrong DB → toolkit broken | Use the public preset (`odoo-12` / `odoo-17` / `generic`); create a new private overlay if needed |
+| Hard-code env var name with a project prefix (e.g. `<MYPROJ>_PYTHON_BIN`) | Project-specific env var name | Render `{{ENV_PREFIX}}_PYTHON_BIN` from setup.py ctx |
 | Skip `ADDON_ROOTS` for Odoo projects | Cursor rule globs render empty → rule never fires | ASK; never silent-default to `["addons"]` |
 | Run `setup.py init` without `--preset` in CI | Falls back to interactive prompt → CI hangs | Always pass `--preset <name> --yes` in non-interactive contexts |
 | Install toolkit then commit `mcp.local.env` | Leaks secrets | Verify `.gitignore` covers `**/mcp.local.env` before any git operation |
-| Treat preset defaults as user answers | E.g. `odoo-12` preset has NAKIVO-flavored addon_roots — silently inheriting them gives wrong globs | Always SHOW preset defaults to user + ask "use these or override?" |
+| Treat preset defaults as user answers | Public presets ship with empty addon_roots — silently inheriting them gives wrong globs | Always SHOW preset defaults to user + ask "use these or override?" |
 | Skip Phase 4 smoke-test and report success | Toolkit may install but hooks not wired → silent failure | Always run pytest + first MCP boot before saying done |
 
 ---
@@ -213,7 +214,7 @@ Phase 1 questions on update.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `nakivo` / `Nakivo01` strings in installed config | Old toolkit ver (< 0.4.0) | Update toolkit, re-run `setup.py update --apply` |
+| Project-specific literal strings (not from `{{PLACEHOLDER}}`) in installed config | Toolkit bug — placeholder missed at render | Update toolkit + re-run `setup.py update --apply`; file an issue if it persists |
 | `pre-commit run` says "no hooks installed" | Skipped Phase 4 step 1 | Run `pre-commit install` |
 | MCP server fails to boot — "WORKSPACE not set" | ENV_PREFIX mismatch | Check `.codex/mcp.local.env`: must have `<ENV_PREFIX>_WORKSPACE=<TARGET_PATH>` |
 | Cursor rule never fires on edit | ADDON_ROOTS empty OR rule glob template not re-rendered | `setup.py update --apply --force-dirty` |
@@ -232,8 +233,8 @@ AI: Before I install agent-toolkit at <X>, I need to confirm a few inputs.
     1. Target path: <X> — confirm? (yes/edit)
     2. Project name: <derived from path basename> — confirm? (yes/edit)
     3. Which preset? (run `python setup.py list-presets` to see options)
-       Common: odoo-12 (generic), odoo-17, generic
-       For NAKIVO-specific defaults: odoo-12-nakivo
+       Options: odoo-12, odoo-17, generic (or your private overlay
+       that `extends` one of these).
     4. Reply language: Vietnamese / English / other?
     5. Python interpreter path: <detected or NONE>
        …

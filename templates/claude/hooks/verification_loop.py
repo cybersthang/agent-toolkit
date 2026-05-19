@@ -212,9 +212,12 @@ def _build_message(file_path: str, rel_path: str, kinds: List[str], mcp_prefix: 
         lines.append(
             f"  {step}. Chạy test addon `{addon}` qua `odoo-bin --test-enable`:\n"
             f"     ```\n"
-            f"     <venv-python> nakivo-server/odoo-bin -d <dev_db> "
+            f"     <venv-python> <odoo-bin-path> -d <dev_db> "
             f"-i {addon} --test-enable --stop-after-init --log-level=test\n"
             f"     ```\n"
+            f"     (Thay `<odoo-bin-path>` bằng `odoo-bin` thực tế của "
+            f"project — discover qua `agent-toolkit.config.json` "
+            f"`stack.odoo_bin_rel`, hoặc `find . -name odoo-bin`.)\n"
             f"     KHÔNG dùng MCP `python_import_check` hoặc `run_python_tests` "
             f"cho Odoo addon — cả hai chạy subprocess KHÔNG load Odoo registry "
             f"→ HttpCase/TransactionCase fail import `from odoo.tests.common`."

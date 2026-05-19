@@ -7,6 +7,20 @@ __pycache__/
 .vscode/
 .idea/
 
+# Test + coverage artefacts
+.coverage
+.coverage.*
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+
+# Build / packaging artefacts
+*.egg-info/
+dist/
+build/
+.tox/
+
 # Local dev artifacts — never commit
 .codex/mcp.local.env
 .cursor/mcp.local.env

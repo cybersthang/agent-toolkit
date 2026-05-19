@@ -62,8 +62,11 @@ SLUG_PATTERNS = [
         r"verify\s*report\s*[-—]\s*`?([a-z0-9][a-z0-9_-]+)`?",
         re.IGNORECASE | re.UNICODE,
     ),
+    # Branch-scoped layout: .agent-toolkit/specs/<branch>/<slug>.md
+    # Flat legacy layout: .agent-toolkit/specs/<slug>.md
+    # Both captured via optional `<branch>/` segment.
     re.compile(
-        r"\.agent-toolkit/specs/([a-z0-9][a-z0-9_-]+)\.md",
+        r"\.agent-toolkit/specs/(?:[A-Za-z0-9_-]+/)?([a-z0-9][a-z0-9_-]+)\.md",
         re.IGNORECASE | re.UNICODE,
     ),
     re.compile(

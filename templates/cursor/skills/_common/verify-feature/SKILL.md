@@ -1,9 +1,9 @@
 ---
 name: verify-feature
-description: Vibe-flow Phase 5 — reconcile the coded feature against the original spec using real data. Each User Story → 1 probe via MCP → Gap/Blocker/Pass table. Auto-triggers when the agent self-detects tasks PASS, or when the user types `/verify`. Open this skill WHEN: a spec at status=implementing is moving to done; the user says "verify", "check against real data", "any gaps", "match the requirements yet".
+description: Spec Kit Phase 5 — VERIFY. Reconcile the coded feature against the original spec using real data. Each User Story → 1 probe via MCP → Gap/Blocker/Pass table. Auto-triggers as the final step of `/implement` after all tasks PASS, or when the user types `/verify`. Open this skill WHEN: a spec at status=implementing is moving to done; the user says "verify", "check against real data", "any gaps", "match the requirements yet".
 ---
 
-# Verify Feature — Vibe-flow Phase 5
+# Verify Feature — Spec Kit Phase 5: VERIFY
 
 > Purpose: "compile passes + mock tests pass" does NOT mean "feature meets
 > the requirement". Verify is the only gatekeeper that checks "does the
@@ -18,7 +18,7 @@ description: Vibe-flow Phase 5 — reconcile the coded feature against the origi
 
 ## When to SKIP
 
-- Spec status=`draft` or `grilled` (not yet coded) → refuse, suggest `/go` first.
+- Spec status=`draft` or `clarified` (not yet coded) → refuse, suggest `/implement` first.
 - Spec has no User Stories (the spec is poorly written) → refuse, suggest `/plan`.
 - The MCP server is not reachable → fall back to manual smoke test.
 
@@ -51,7 +51,7 @@ requirement (the prompt that triggered `/plan`):
    | "...verbatim..." | (not in spec) | — | 🔴 SPEC DRIFT |
 4. A row at "SPEC DRIFT" → the spec failed to capture the requirement;
    this is a 🔴 BLOCKER at the planning layer, not at the code layer. The
-   fix is `/plan` rework, not `/go` rework.
+   fix is `/plan` rework, not `/implement` rework.
 
 This step closes the gap "agent verifies what spec says, not what DEV
 asked" — a recurring failure mode where unit tests pass + verify passes
@@ -61,7 +61,8 @@ but DEV says "this isn't what I wanted".
 
 ### Step 1 — Load + parse the spec
 
-Read `.agent-toolkit/specs/<slug>.md`. Extract:
+Locate spec via `Glob: .agent-toolkit/specs/**/<slug>.md` (branch-scoped
+layout). Pick the most-recently-modified hit. Read the file. Extract:
 - User Stories (numbered list).
 - Implementation Decisions (identify which model / table / endpoint was coded).
 - Testing Strategy (pre-designed probes if any).
@@ -77,9 +78,18 @@ If the spec frontmatter has the `acceptance_evals:` key (produced by
 3. Re-use the defined probe; do NOT re-design from scratch. This is the
    machine-readable contract; re-designing defeats the eval-driven workflow.
 4. For entries with `smoke: verified` + `smoke_result.executed_at`:
-   - If `executed_at` < 5 minutes ago → may re-use; mark `(cached)` in the Verify Report.
-   - If > 5 minutes → MUST re-run the probe (verify is point-in-time, not
-     a history lookup).
+   - **Default — re-run every probe**. Verify is point-in-time; cached
+     results from `/clarify` are stale once any tasks have run. Cheaper
+     to re-probe than miss a regression.
+   - Cache re-use is ONLY allowed when ALL conditions hold:
+     - `executed_at` < 5 minutes ago, AND
+     - `tasks.md` `status:` is not `done` (still iterating, no source
+       mutations queued), AND
+     - No Edit/Write tool use happened in this session AFTER
+       `executed_at` (check transcript; if any → mandatory re-run).
+   - When all 3 hold → mark `(cached)` in the Verify Report row + cite
+     `smoke_result.executed_at`.
+   - Any condition fails → MUST re-run the probe.
 5. For entries with `smoke: pending` → run now; update `smoke: verified` +
    `smoke_result`.
 
@@ -123,14 +133,29 @@ Before designing User-Story probes, check the spec frontmatter:
 - One acceptance_eval per User Story is NOT enough coverage. The spec
   authors enumerated the cases they thought of; the long tail is
   unverified.
-- Invoke `[[classifier-output-audit]]` BEFORE Step 2. Its findings
-  become an extra section in the Verify Report (between User Stories
-  and Gaps).
 
-The audit may surface mismatches the User Stories don't cover; treat
-each mismatch group like a GAP/BLOCKER with the proposed fix already
-written (typically "add signal s_k to path A" or "re-route inputs of
-kind K to path B").
+**Mandatory two-step audit for classifier features** (run BEFORE Step 2):
+
+1. **Static audit** — invoke `[[classifier-output-audit]]`. Builds the
+   path × signal matrix, samples K rows, finds mismatch candidates.
+   Output: list of `(path, deciding_signal)` groups that may be mis-tagged.
+
+2. **Falsification proof** — invoke `[[real-data-proof]]`. Mandatory; not
+   deferred to manual judgement. For each distinct tag value emitted by
+   the classifier, real-data-proof runs the 4-step workflow (acquire
+   real data → distribution → per-tag perturbation → report). At least 1
+   perturb-test per distinct tag, including the `default` bucket if
+   non-empty.
+
+   The Real-Data Proof Report becomes a top-level section of the Verify
+   Report (between User Stories and Gaps); see
+   `real-data-proof/references/block-async-worked-example.md` for the
+   canonical shape.
+
+Either skill returning REFUTED / mis-tag findings → treat as
+GAP/BLOCKER with the proposed fix already written (typically "add
+signal s_k to path A", "re-route inputs of kind K to path B", or "fix
+the rule that emits L_i").
 
 ### Step 2 — Design a probe per User Story
 
@@ -226,7 +251,7 @@ Tag `[assumption]` so `evidence_audit` does not reject — verify cannot be
 
 ```markdown
 ## Verify Report — <slug> · <ISO datetime>
-Spec: .agent-toolkit/specs/<slug>.md · status before: implementing
+Spec: <path-from-Glob> · status before: implementing
 
 | # | User Story (short) | Probe | Expected | Actual | Status |
 |---|---|---|---|---|---|
@@ -267,14 +292,25 @@ If autonomy is ON:
 ### Step 8 — Coverage self-check (REQUIRED)
 
 After printing the Verify Report, the agent MUST run the lint script to
-confirm every entry in `acceptance_evals:` was consumed:
+confirm every entry in `acceptance_evals:` was consumed. The exact
+Python binary + workspace are templated at install time — use whichever
+form fits the shell you are in:
 
 ```bash
-cat <verify-report-text>.md | /home/voducthang/NAKIVO/venv/bin/python /home/voducthang/NAKIVO/.codex/lint_verify_report.py <spec-slug>
+# POSIX / Git Bash — placeholders filled by setup.py
+cat <verify-report-text>.md | {{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.codex/lint_verify_report.py <spec-slug>
+```
+
+```powershell
+# PowerShell (Windows native)
+Get-Content <verify-report-text>.md | & "{{PYTHON_BIN}}" "{{WORKSPACE_ROOT}}/.codex/lint_verify_report.py" <spec-slug>
 ```
 
 `.codex/` is the agent-toolkit installer convention; if the project has
 renamed the helpers directory, adjust the path (see `agent-toolkit.config.json`).
+The Stop hook `.claude/hooks/verify_lint.py` runs the same script
+automatically when a Verify Report is emitted, so manual invocation is
+only needed when running outside Claude Code (e.g. CLI smoke).
 
 The script reads the spec frontmatter, lists eval ids, scans the report by
 word-boundary match → exit code:
@@ -306,10 +342,13 @@ Some stories are inherently subjective (UX, performance promise). In that case:
 
 ### "Which DB does verify run against"
 
-Default: the dev/test DB defined in project config. NEVER verify against the
-prod DB. If the spec demands prod data → print a warning + require the user
-to confirm explicitly via `/verify --on-prod` (not yet implemented, treat as
-refused).
+Default: the dev/test DB defined in project config. **NEVER verify against
+the prod DB.** If the spec demands prod data → print a warning + refuse
+the run. There is no `--on-prod` flag; if the team needs prod
+verification, run the probes manually with explicit ops sign-off
+outside this skill. This refusal is intentional — `/verify` should never
+mutate prod data even by accident (most probes are read-only but some
+classifier-falsification recipes write test fixtures).
 
 ## Anti-rationalizations
 
@@ -357,4 +396,4 @@ refused).
   canonical decision registry (toolkit-default: `.codex/canonical_decisions.json`)
   — e.g. `<feature>-perturb-test` entries with `enforcement` metadata.
 - Original — Phase 5 was not derived from upstream mattpocock skills; it
-  is a Vibe-flow addition.
+  is a Spec Kit addition specific to this toolkit.

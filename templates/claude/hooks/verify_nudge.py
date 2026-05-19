@@ -3,8 +3,9 @@
 at status `implementing`.
 
 Closes enforcement gap: previously agent could Edit production code, claim
-done, never run /verify. This hook scans `.agent-toolkit/specs/*.md` for any
-spec with `status: implementing` whose section `## 3. Affected Modules /
+done, never run /verify. This hook scans `.agent-toolkit/specs/**/*.md`
+(branch-scoped layout + legacy flat) for any spec with `status: implementing`
+whose section `## 3. Affected Modules /
 Files` (or any code-fence path) references the edited file path. If match
 → emit reminder.
 
@@ -92,7 +93,9 @@ def _scan_specs(workspace: Path) -> List[Tuple[str, Path, str]]:
     new_cache: Dict[str, Any] = {}
     out: List[Tuple[str, Path, str]] = []
     cache_dirty = False
-    for path in specs_dir.glob("*.md"):
+    # rglob picks up both branch-scoped (`<branch>/<slug>.md`) and legacy
+    # flat (`<slug>.md`) layouts. Cost is still O(N) where N = total specs.
+    for path in specs_dir.rglob("*.md"):
         try:
             mtime = path.stat().st_mtime
         except OSError:
@@ -155,9 +158,13 @@ def _is_duplicate(workspace: Path, key: str) -> bool:
     if (now - int(last)) < TTL_SECONDS:
         return True
     state[key] = now
-    # Trim state to last 50 entries (oldest first by timestamp).
-    if len(state) > 50:
-        kept = sorted(state.items(), key=lambda kv: kv[1])[-50:]
+    # Trim state to last 500 entries (oldest first by timestamp).
+    # Bumped from 50 → 500 (2026-05-19): the previous bound evicted
+    # entries within a single hour on workspaces with many specs, causing
+    # spurious re-nudges as evicted keys were treated as "first edit".
+    # 500 × ~120 bytes per entry = ~60 KB on disk; negligible.
+    if len(state) > 500:
+        kept = sorted(state.items(), key=lambda kv: kv[1])[-500:]
         state = dict(kept)
     atomic_write_json(path, state)
     return False

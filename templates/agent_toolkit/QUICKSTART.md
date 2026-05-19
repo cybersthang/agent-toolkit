@@ -1,48 +1,63 @@
 # Agent-Toolkit — 5-minute Quickstart
 
-For dev who just inherited this project, or for porting to a new
-project. **English only** so non-VN devs can onboard.
+For an Odoo dev who just inherited this project, or for installing the
+toolkit into a fresh Odoo workspace. **English** version; Vietnamese
+guide is at the toolkit repo root (`USAGE.md`).
 
 ## TL;DR (90 seconds)
 
-The toolkit catches **"agent reports tests pass, but real-data reveals
-bugs"** failures via 5 layers of mechanical enforcement:
+The toolkit is for **Odoo projects** (12 / 17 / future Odoo majors). It
+bundles:
 
-1. **Invariant guard** (PreToolUse): blocks Edits that remove
-   declared `must_keep_regex` patterns.
-2. **PASS-claim contract** (Stop): blocks `tests pass / verified / done`
-   claims without an MCP real-data call in the same turn.
-3. **Hallucinated-progress checks** (Stop): blocks past-tense action
-   claims without matching tool_use, success claims contradicted by
-   error tool_results, completion claims while TodoWrite has open
-   items, and aggregate over-counts.
-4. **Generic claim audit** (Stop): blocks `X is slow / missing / root
-   cause` claims without any tool call in the turn.
-5. **Pre-commit mirror** (git): same enforcement at commit time so dev
-   edits in IDE don't bypass.
+- A **Spec Kit-aligned spec-driven workflow** — DEV runs `/plan` +
+  `/clarify`, agent auto-chains `/tasks` → `/analyze` → `/implement` →
+  `/verify` under autonomy.
+- **Odoo MCP servers**: codebase / postgres / realdata_test / JIRA.
+- **Mechanical enforcement** that catches "agent reports tests pass,
+  but real-data reveals bugs" failures via 5 layers:
+
+  1. **Invariant guard** (PreToolUse): blocks Edits that remove
+     declared `must_keep_regex` patterns.
+  2. **PASS-claim contract** (Stop): blocks `tests pass / verified /
+     done` claims without an MCP real-data call in the same turn.
+  3. **Hallucinated-progress checks** (Stop): blocks past-tense action
+     claims without matching tool_use, success claims contradicted by
+     error tool_results, completion claims while TodoWrite has open
+     items, and aggregate over-counts.
+  4. **Generic claim audit** (Stop): blocks `X is slow / missing / root
+     cause` claims without any tool call in the turn.
+  5. **Pre-commit mirror** (git): same enforcement at commit time so
+     dev edits in IDE don't bypass.
 
 ## Install in a new project
 
+The main install path is `setup.py init` at the toolkit root (NOT the
+internal `.codex/tools/agent_toolkit_init.py` — that's a legacy
+bootstrap script).
+
 ```bash
-# From this repo:
-python .codex/tools/agent_toolkit_init.py \
-    --target /path/to/your/new/project \
-    --stack django-5 \
-    --stack-bare django \
-    --venv /path/to/your/venv/bin/python
+# Clone toolkit (once per machine)
+git clone <toolkit-repo> ~/agent-toolkit
+
+# Install into an Odoo project
+python ~/agent-toolkit/setup.py init /path/to/your/odoo/project \
+    --preset odoo-12 \                  # or odoo-17 / generic
+    --python /path/to/venv/bin/python \
+    --yes
 ```
 
-Output: copies hooks + commands + tests + tools, writes empty starter
-registries + auto-generated `.claude/settings.json` + QUICKSTART.md.
+Output: copies hooks + commands + tests + tools + Spec Kit skills,
+seeds `.agent-toolkit/constitution.md` + canonical_decisions registry +
+auto-generated `.claude/settings.json` + `.mcp.json`.
 
 ## Verify install
 
 ```bash
 cd /path/to/your/new/project
-python -m unittest discover -s .codex/tests/hooks -p "test_*.py"
+python -m pytest .codex/tests/hooks/ -v
 ```
 
-Expected: 93+ tests pass.
+Expected: 120+ tests pass.
 
 Open Claude Code in the project → SessionStart hook shows
 `Registry loaded: 0 invariant · 0 probe`. You're live.
@@ -67,36 +82,49 @@ tests the hook + reports.
 
 In Claude Code, type:
 ```
-/probe-add my-api-list-endpoint
+/probe-add load-views-blocking
 ```
 
-Claude will prompt for:
-- `description`: "GET /api/v1/items returns ≤500 rows for user X"
-- `applies_when.path_globs`: `["app/api/items.py"]`
-- `evidence.required_tools`: `["mcp__django_test__run_module_test"]`
+Claude will prompt for (example Odoo 12 controller):
+- `description`: "GET /web/dataset/load_views must block UI until response"
+- `applies_when.path_globs`: `["<addon>/controllers/web.py"]`
+- `evidence.required_tools`: `["mcp__realdata_test__run_smoke_test"]`
 - `falsification.runner`:
   ```json
   {
-    "target_file": "app/api/items.py",
-    "target_line_pattern": "def list_items\\(",
+    "target_file": "<addon>/controllers/web.py",
+    "target_line_pattern": "def load_views\\(",
     "sleep_seconds": 2,
-    "measurement_command": "curl -s -w '%{time_total}' http://localhost:8000/api/v1/items",
+    "measurement_command": "curl -s -w '%{time_total}' http://localhost:8069/web/dataset/load_views",
     "expected_delta_seconds": 2.0,
     "tolerance": 0.3
   }
   ```
 
-Now any edit to `app/api/items.py` requires a probe-satisfying MCP
-call before Claude can say "PASS". And dev can run:
+Now any edit to `<addon>/controllers/web.py` requires a probe-satisfying
+MCP call before Claude can say "PASS". And dev can run:
 
 ```bash
-python .codex/tools/falsify.py --probe my-api-list-endpoint
+python .codex/tools/falsify.py --probe load-views-blocking
 ```
 
 …to **empirically prove** the endpoint behaves as claimed (or refute
 the claim if timing doesn't shift by 2s).
 
 ## Slash commands
+
+**Spec Kit workflow (the main path)**:
+
+| Command | When to use |
+|---|---|
+| `/plan <feature>` | Phase 1 — turn a feature ask into a structured spec |
+| `/clarify <slug>` | Phase 2 — DEV interview to close every Open Question |
+| `/tasks <slug>` | Phase 3 — auto-fired by `/clarify`; can re-emit manually |
+| `/analyze <slug>` | Phase 3.5 — cross-artifact lint (auto-fired by `/implement`) |
+| `/implement <slug>` | Phase 4 — autonomy ON, execute tasks, auto-verify |
+| `/verify <slug>` | Phase 5 — real-data probes, emit PASS/GAP/BLOCKER report |
+
+**Toolkit meta** (durable rules + decisions):
 
 | Command | When to use |
 |---|---|

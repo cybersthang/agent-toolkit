@@ -16,7 +16,7 @@ remains hypothetical.
 Argument: `$ARGUMENTS` — one of:
   - `staged` (default): files currently staged for commit
   - `branch`: files changed in current branch vs origin/main
-  - `<path-glob>`: explicit glob (e.g. `nakivo-server/addons/foo/**`)
+  - `<path-glob>`: explicit glob (e.g. `<addon-root>/<module>/**`)
 
 ## Step-by-step
 
@@ -42,8 +42,8 @@ Argument: `$ARGUMENTS` — one of:
    ```
    | File | Bucket | Covering probe(s) |
    |------|--------|-------------------|
-   | nakivo-server/addons/foo/controllers/main.py | uncovered | — |
-   | nakivo-server/addons/foo/models/bar.py       | covered   | foo-bar-validate |
+   | <addon-root>/foo/controllers/main.py | uncovered | — |
+   | <addon-root>/foo/models/bar.py       | covered   | foo-bar-validate |
    ```
 
 5. **Summary line**: `N total scoped · X covered · Y uncovered`

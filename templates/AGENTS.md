@@ -6,10 +6,32 @@
 This file is the entry-point for any AI coding agent in this workspace.
 The heavy material lives in:
 
+- `.agent-toolkit/constitution.md` (toolkit principles — read FIRST before specs)
 - `.cursor/rules/*.mdc` (always-apply project rules)
 - `.cursor/skills/*` (focused skills)
 - `.codex/canonical_decisions.json` (single source of truth for recurring answers)
 - `.codex/audit_findings_locked.md` (locked audit findings, if present)
+
+## Spec-driven workflow (Spec Kit aligned)
+
+The default flow for anything > 30 LOC:
+
+```
+DEV:    /plan <feature>  →  /clarify <slug>
+            ↓                    ↓
+        spec.md draft       spec refined + acceptance_evals locked
+
+[agent auto-fires]
+        /tasks <slug>   →   STOP (DEV reviews tasks.md)
+                                ↓
+DEV:    /implement <slug>
+                                ↓
+[agent auto-chain]
+        /analyze  →  execute tasks  →  /verify  →  báo cáo DEV
+```
+
+DEV chỉ làm 3 lệnh: `/plan`, `/clarify`, `/implement` (sau khi review
+tasks.md). Phần còn lại agent tự chạy dưới autonomy.
 
 ## Workspace
 
@@ -40,17 +62,21 @@ shown.
 | User says (intent) | Open skill(s) |
 |---|---|
 | Any action verb that mutates state ("làm", "tạo", "sửa", "fix", "implement", "refactor", "thêm", "add", "update"…) | `clarification-gate` (run FIRST — emits UNDERSTANDING/ASSUMPTIONS/QUESTIONS + STOP before any Edit/Write) |
-| "review", "audit", "phân tích sâu", "tìm bug", "còn gì cần fix nữa không?" | `code-review` → then `{{STACK_FRAMEWORK}}-code-review` overlay |
+| `/plan <feature>`, "tạo feature mới", "implement X", "refactor Y" (> 30 LOC) | `plan-feature` (Spec Kit Phase 1: SPECIFY) |
+| `/clarify <slug>`, "grill me", "stress-test spec", "đóng GAP" | `clarify` (Spec Kit Phase 2: CLARIFY — auto-fires `/tasks`) |
+| `/tasks <slug>` (manual re-emit), "rã task" | `tasks-breakdown` (Spec Kit Phase 3: TASKS — STOPs for DEV review) |
+| `/analyze <slug>`, "lint spec ↔ tasks" | `analyze-artifacts` (Spec Kit Phase 3.5: ANALYZE — gate before implement) |
+| `/implement <slug>`, "bắt đầu code", "execute tasks" | auto-chain: analyze → tasks execute → `verify-feature` (Phase 5) |
+| `/verify <slug>`, "kiểm tra dữ liệu", "verify real data" | `verify-feature` (Spec Kit Phase 5: VERIFY) |
+| "review", "audit", "phân tích sâu", "tìm bug", "còn gì cần fix nữa không?" | `code-review` → then `odoo-code-review` overlay (auto-detects v12/17/18/19/20 from `__manifest__.py`) |
 | "I'm not sure", "double-check", "are you sure?", before sending a non-trivial finding | `doubt-driven-review` (overlay on any finding skill) |
-| "how do we do X in this project", "what's the convention for…", recurring fact lookup | `{{STACK_FRAMEWORK}}-{{STACK_FRAMEWORK_VERSION}}-deterministic-answers` |
-| "tìm file", "where is X defined", "trace the call site" | `{{STACK_FRAMEWORK}}-{{STACK_FRAMEWORK_VERSION}}-codebase-discovery` |
-| "kiểm tra dữ liệu", "verify against real DB", "is this true on prod data?" | `{{STACK_FRAMEWORK}}-{{STACK_FRAMEWORK_VERSION}}-data-verification` |
-| "lỗi", "bug", "không chạy", "exception", traceback pasted | `{{STACK_FRAMEWORK}}-{{STACK_FRAMEWORK_VERSION}}-debug-troubleshoot` |
-| "tạo feature mới", "implement X", "refactor Y" (> 30 LOC) | `spec-driven-feature` (Phase 1-3) → then `{{STACK_FRAMEWORK}}-{{STACK_FRAMEWORK_VERSION}}-module-scaffold` (Phase 4) |
-| "viết test trước", "TDD", "test driven" | `{{STACK_FRAMEWORK}}-{{STACK_FRAMEWORK_VERSION}}-tdd` |
-| "tạo module", "scaffold" (already specced) | `{{STACK_FRAMEWORK}}-{{STACK_FRAMEWORK_VERSION}}-module-scaffold` |
-| "viết theo pattern X", "follow project style for Y" | `{{STACK_FRAMEWORK}}-{{STACK_FRAMEWORK_VERSION}}-code-patterns` |
-| "Jira", "ticket", "NKV-…" | `{{STACK_FRAMEWORK}}-{{STACK_FRAMEWORK_VERSION}}-jira-workflow` |
+| "how do we do X in this project", "what's the convention for…", recurring fact lookup | `odoo-deterministic-answers` (canonical_decisions.json — registry is version-agnostic) |
+| "tìm file", "where is X defined", "trace the call site" | `odoo-codebase-discovery` (MCP tools are version-agnostic) |
+| "lỗi", "bug", "không chạy", "exception", traceback pasted | `odoo-debug-troubleshoot` (auto-detects version, loads matching pitfalls) |
+| "viết test trước", "TDD", "test driven" | `odoo-tdd` (auto-detects version, loads matching framework quirks) |
+| "tạo module", "scaffold" (already specced) | `odoo-module-scaffold` (auto-detects version from sibling manifests) |
+| "viết theo pattern X", "follow project style for Y" | `odoo-code-patterns` (auto-detects version, loads matching patterns ref) |
+| "Jira", "ticket", "NKV-…" | `odoo-jira-workflow` (version-agnostic) |
 
 If two intents match (e.g. a review of a real-DB issue), open both skills
 and merge their workflows — do not pick one.

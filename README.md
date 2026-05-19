@@ -1,7 +1,21 @@
 # agent-toolkit
 
-Reusable Claude Code / Cursor / Codex agent infrastructure. Clone once,
-install into any project — Odoo 12, Odoo 17, plain Python, etc.
+Reusable Claude Code / Cursor / Codex agent infrastructure for **Odoo
+projects** (12 / 17). Clone once, install into any Odoo workspace with
+one `setup.py init`.
+
+The toolkit packages a **GitHub Spec Kit-aligned spec-driven workflow**
+(`/plan` → `/clarify` → `/tasks` → `/analyze` → `/implement` → `/verify`)
+on top of Odoo-specific MCP servers (codebase + postgres + Odoo
+realdata_test + JIRA), Cursor rules, Claude Code hooks, and Spec
+Kit-style skills.
+
+> **🌐 Languages / Ngôn ngữ:** the toolkit is **bilingual EN + VN**.
+> README/USAGE/AGENTS/CLAUDE docs ship both languages; the runtime
+> response language is per-preset (`response_language` field — defaults
+> to English; override per project via `agent-toolkit.config.json`).
+> Toàn bộ project hỗ trợ **2 ngôn ngữ Tiếng Anh + Tiếng Việt**: docs có
+> cả 2, runtime reply theo preset (override được trong config project).
 
 > 🤖 **AI agents**: Read [`AI_REBUILD_CHECKLIST.md`](AI_REBUILD_CHECKLIST.md)
 > BEFORE invoking `setup.py init` or `setup.py update`. The 4-phase Q&A
@@ -11,18 +25,202 @@ install into any project — Odoo 12, Odoo 17, plain Python, etc.
 
 > **Hướng dẫn chi tiết bằng tiếng Việt:** xem [USAGE.md](USAGE.md).
 
+## How to use — DEV vs AGENT split / DEV làm gì, AGENT làm gì
+
+The toolkit splits responsibility cleanly so DEV stays in control of
+**intent** (what to build, what's correct) while AGENT handles
+**execution** (implement, run probes, prove on real data).
+
+Toolkit tách rõ trách nhiệm: **DEV** giữ quyền quyết định *muốn build gì,
+correct là gì*; **AGENT** lo phần *thực thi — viết code, chạy probe,
+chứng minh trên dữ liệu thật*.
+
+### What DEV does — **3 manual steps** / DEV chỉ làm **3 bước**
+
+| Step | Command | Purpose / Mục đích |
+|------|---------|--------------------|
+| **1** | `/plan <feature description>` | Turn idea into structured spec (8 sections + acceptance_evals skeleton). Spec saved at `.agent-toolkit/specs/<branch>/<slug>.md`. *Biến yêu cầu → spec có cấu trúc.* |
+| **2** | `/clarify <slug>` | Answer 0-3 questions per turn until all Open Questions close + every acceptance eval gets a concrete grader + probe. Agent auto-fires `/tasks <slug>` after final "done", then **STOPs**. *Trả lời câu hỏi đến khi mọi GAP đóng; agent tự sinh tasks.md rồi dừng.* |
+| **3** | Review `tasks.md` → `/implement <slug>` | Eyeball the task breakdown (≤ 30 LOC per task, each with Touches/Acceptance/Verification/Risk). When happy, type `/implement` to authorize the auto-chain. *Duyệt tasks.md rồi gõ `/implement` để bật autonomy.* |
+
+That's it. DEV does NOT manually run `/analyze`, `/tasks`, or `/verify`
+— those fire automatically. *DEV không cần gõ tay `/analyze`, `/tasks`,
+`/verify` — agent tự chạy.*
+
+### What AGENT does automatically — **5 auto-chained phases** / AGENT tự làm **5 phase auto-chain**
+
+After DEV types `/implement <slug>`, the agent chains these steps under
+autonomy (default 4h, configurable via `--until`). *Sau khi DEV gõ
+`/implement`, agent tự chạy chuỗi sau dưới autonomy (mặc định 4h).*
+
+```
+DEV: /implement <slug>
+        ↓
+[agent auto-chain — DEV không cần can thiệp]
+        ↓
+1. /analyze   →  7 cross-artifact checks (spec ↔ tasks ↔ evals ↔ invariants ↔ constitution ↔ paths ↔ verification concreteness).
+              →  Verdict READY / WARN / HALT. HALT blocks Edit/Write
+                 via `analyze_halt_gate` PreToolUse hook until DEV fixes.
+
+2. autonomy ON →  `.agent-toolkit/.autonomy_active.json` written with
+                  approved scopes + still-blocked actions.
+
+3. Execute tasks T1 → T2 → … sequentially:
+   - Read Touches files, Edit them.
+   - Run Verification step (MCP / shell command).
+   - Record PASS/FAIL per task in tasks.md.
+   - On FAIL → 3-option prompt to DEV: (r)etry / (s)kip / (a)bort.
+
+4. /verify    →  Probes real data in parallel (postgres / realdata_test /
+                 Playwright MCP). Each User Story → 1 row in
+                 PASS/GAP/BLOCKER table. Re-uses `acceptance_evals`
+                 from spec frontmatter — does NOT re-design probes.
+              →  For classifier features (`feature_kind: classification`):
+                 mandatory Real-Data Proof — acquire real data →
+                 distribute by tag → perturb-test each tag (sleep-inject /
+                 heavy-query / fault inject) → revert.
+
+5. Report back →  ✅ Implement done · Tasks N/N PASS · Verify verdict ·
+                  Spec status → verified | gaps-found | blocked.
+                  Autonomy auto-OFF if all PASS.
+```
+
+### Worked example — log + classify user requests / ví dụ thực tế
+
+**DEV's ask** (verbatim, paraphrased):
+
+> "Log toàn bộ request của user được cấu hình. Với mỗi request, đo
+>  dung lượng (request size + response size), thời gian phản hồi
+>  (server-side processing time), và tốc độ mạng user (network
+>  round-trip). Mục tiêu: phân biệt user chậm là do **server-side**
+>  (response chậm) hay **client-side network** (latency cao)."
+>
+> *"Log every request of configured users. For each request, measure
+>  payload size, server response time, and user network round-trip. Goal:
+>  classify slowness as server-side (slow response) or client-side
+>  (slow network)."*
+
+This is a **classifier feature** — emits a tag (`server_slow` /
+`network_slow` / `ok`) per request. The full DEV flow:
+
+```
+DEV: /plan log user requests + classify slowness as server vs network
+
+    → Agent reads codebase (controllers, HTTP layer), drafts spec at
+      .agent-toolkit/specs/<branch>/log-request-slowness/log-request-slowness.md
+      with 8 sections + acceptance_evals skeleton, sets
+      feature_kind: classification + eval_status: draft. STOPs.
+      (Agent đọc codebase, draft spec, dừng — KHÔNG implement.)
+
+DEV: /clarify log-request-slowness
+
+    → Agent asks 1 question per turn (5-layer self-resolve first):
+       Q1: Which network metric? options (a) TCP RTT (b) browser
+           PerformanceObserver paint timing (c) custom beacon — Recommended (a)
+       Q2: Threshold for "network slow" vs "server slow"?
+           options (a) RTT > 300ms AND server_time < 100ms → network_slow
+                   (b) server_time > 500ms regardless of RTT → server_slow
+                   (c) ratio-based — Recommended (a) + (b) compound
+       Q3 (only if needed): which users are "configured"? → from ir.config_parameter? per-group?
+    → DEV answers each, agent refines spec inline + acceptance_evals get
+      concrete probes:
+        - us1-payload-recorded: postgres SELECT request_log WHERE user_id IN (...)
+        - us2-server-tag-correct: real-data-proof Recipe 1 — inject
+          sleep(2s) into handler → server_time should rise by ~2s → tag = server_slow
+        - us3-network-tag-correct: real-data-proof Recipe 13 — leave server
+          fast, simulate user network via Playwright route().continue_({delay: 500})
+          → RTT should rise, server_time unchanged → tag = network_slow
+    → Agent smoke-tests 1 probe (postgres connect + sample query) → OK.
+    → Agent auto-fires /tasks log-request-slowness, emits tasks.md
+      (e.g. T1 add request_log model, T2 hook BaseRequest dispatch,
+      T3 compute classification, T4 expose via /web/log_metrics endpoint),
+      STOPs for DEV review.
+      (Agent test thử 1 probe, sinh tasks.md, dừng cho DEV review.)
+
+DEV: (reads tasks.md, OK) /implement log-request-slowness
+
+    → Agent auto-chains:
+        /analyze → 7 checks PASS → READY
+        autonomy ON
+        T1 (model) → PASS · T2 (hook) → PASS · T3 (classify) → PASS · T4 (endpoint) → PASS
+        /verify:
+          - us1: 10 000 rows logged for 3 configured users — ✅ PASS
+          - us2: sleep(2s) injected into handler, server_time delta = +2.1s,
+                 tag flipped baseline=ok → perturbed=server_slow — ✅ CONSISTENT
+          - us3: Playwright network delay 500ms, RTT delta = +480ms,
+                 server_time unchanged, tag flipped ok → network_slow — ✅ CONSISTENT
+          - Real-Data Proof Report attached (Distribution table + Falsification table)
+          - verify_lint.py hook ran — all evals covered, Real-Data Proof
+            section present → exit 0
+        autonomy auto-OFF
+        Spec status → verified
+    → ✅ Implement done — DEV reads Verify Report, merges.
+```
+
+**Why this matters / Tại sao đáng học:**
+
+- The classifier tag (`server_slow` / `network_slow`) is proven on
+  REAL data via perturbation — not just "looks right by eyeball".
+  Sleep-injection forces server-side latency; Playwright network
+  delay forces client-side latency. Tag flip must match the
+  perturbation direction — that's falsification, not assertion.
+- *Tag (`server_slow` / `network_slow`) được chứng minh trên dữ liệu
+  thật bằng perturbation — không phải "nhìn thấy đúng". Inject sleep
+  ép server chậm; Playwright delay ép network chậm. Tag phải flip
+  theo perturbation — đó là falsification, không phải assertion.*
+- See [`real-data-proof/SKILL.md`](templates/cursor/skills/_common/real-data-proof/SKILL.md)
+  + [worked example for BLOCK/ASYNC pattern](templates/cursor/skills/_common/real-data-proof/references/block-async-worked-example.md)
+  for the canonical 4-step contract.
+
 ## What you get
 
 For any project where you run `setup.py init`:
 
-- **`.codex/`** — MCP server implementations (codebase, postgres, jira, realdata_test) + canonical decisions registry + tests
-- **`.cursor/rules/`** — Cursor IDE rules (always-apply) for the chosen stack
-- **`.cursor/skills/`** — Cursor skills
-- **`.cursor/mcp.json`** — auto-generated MCP server config with absolute paths
-- **`AGENTS.md`** + **`CLAUDE.md`** — agent entry-points pre-filled with project facts
-- **`~/.claude/projects/<encoded>/memory/*.md`** — Claude Code memory seeded with workspace + Python paths
+- **`.codex/`** — Odoo MCP server implementations (codebase, postgres,
+  realdata_test, jira) + canonical decisions registry + 120+ hook tests
+- **`.cursor/rules/`** — Cursor IDE rules (always-apply) for the chosen
+  Odoo version
+- **`.cursor/skills/`** — Spec Kit workflow skills (plan-feature,
+  clarify, tasks-breakdown, analyze-artifacts, verify-feature) + Odoo
+  stack skills (code-patterns, codebase-discovery, data-verification,
+  debug-troubleshoot, deterministic-answers, jira-workflow,
+  module-scaffold, tdd)
+- **`.claude/`** — slash commands (`/plan`, `/clarify`, `/tasks`,
+  `/analyze`, `/implement`, `/verify`, etc.) + enforcement hooks
+  (invariant_guard, evidence_audit, intent_router, verify_lint…)
+- **`.agent-toolkit/`** — per-project state: `constitution.md`,
+  `decision-log.md` (ADRs), `invariants.json`, `acceptance-probes.json`,
+  spec dir `.agent-toolkit/specs/<branch>/<slug>.md`
+- **`.cursor/mcp.json`** + **`.mcp.json`** — auto-generated MCP wiring
+  with absolute paths
+- **`AGENTS.md`** + **`CLAUDE.md`** — agent entry-points pre-filled with
+  project facts
+- **`~/.claude/projects/<encoded>/memory/*.md`** — Claude Code memory
+  seeded with workspace + Python paths
 - **`.codex/mcp.local.env`** — credentials template (you fill the secrets)
 - **`.gitignore`** snippets
+
+## Spec-driven workflow (Spec Kit-aligned)
+
+DEV chỉ làm **3 lệnh** trong session Claude Code / Cursor:
+
+```
+DEV:    /plan <feature>  →  /clarify <slug>
+            ↓                    ↓
+        spec.md draft       spec refined + acceptance_evals locked
+
+[agent auto-fires]
+        /tasks <slug>   →   STOP (DEV reviews tasks.md)
+                                ↓
+DEV:    /implement <slug>
+                                ↓
+[agent auto-chain]
+        /analyze  →  execute tasks  →  /verify  →  báo cáo DEV
+```
+
+Specs lưu **branch-scoped**: `.agent-toolkit/specs/<branch>/<slug>.md`.
+Mỗi phase có skill + slash command riêng. Xem
+[USAGE.md §5](USAGE.md) cho ví dụ end-to-end.
 
 ## Quick start
 
@@ -30,13 +228,15 @@ For any project where you run `setup.py init`:
 # Clone toolkit once on any machine
 git clone <toolkit-repo> ~/agent-toolkit
 
-# Install into any project
-python ~/agent-toolkit/setup.py init /path/to/your/project --preset odoo-12 --yes
+# Install into an Odoo project (pick the preset matching the Odoo major version)
+python ~/agent-toolkit/setup.py init /path/to/your/project \
+    --preset odoo-12 --yes
 
 # Edit credentials
 $EDITOR /path/to/your/project/.codex/mcp.local.env
 
 # Restart Cursor / Claude Code → MCP servers load automatically
+# In Claude Code, start a feature with:  /plan <feature description>
 ```
 
 ## Available presets
@@ -45,23 +245,72 @@ $EDITOR /path/to/your/project/.codex/mcp.local.env
 python setup.py list-presets
 ```
 
+**3 presets** ship out of the box (2 Odoo-focused + 1 fallback):
+
 | Preset | Stack | Defaults | MCP servers | Rules / Skills / Memory |
 |--------|-------|----------|-------------|------|
-| `odoo-12` | **Generic** Odoo 12, Python 3.8, QWeb+jQuery, `@api.multi` | empty `addon_roots`, empty `default_db` — user MUST supply via Phase 1 Q&A | codebase, postgres, realdata_test | _common + odoo-12 |
-| `odoo-12-nakivo` | Odoo 12 Enterprise, **extends `odoo-12`** with NAKIVO-specific defaults | `addon_roots_append`: nakivo / nakivooca / OCA / nakivo-server / odoo-12-enterprise-master; `db.default_db`: `Nakivo01`; `stack.odoo_bin_rel`: `nakivo-server/odoo-bin`; `response_language`: Vietnamese | + jira_production, jira_preproduction | inherited |
+| `odoo-12` | Odoo 12, Python 3.8, QWeb+jQuery, `@api.multi` | empty `addon_roots`, empty `default_db` — user supplies via Phase 1 Q&A or `agent-toolkit.config.json` overrides | codebase, postgres, realdata_test | _common + odoo-12 |
 | `odoo-17` | Odoo 17, Python 3.10+, OWL, recordset-by-default, `@api.model_create_multi` | `addon_roots`: addons / custom_addons / enterprise | codebase, postgres, realdata_test | _common + odoo-17 |
-| `generic` | Plain Python | `addon_roots`: src | codebase | _common |
+| `generic` | Plain Python — fallback for stack-agnostic experiments only. **Not** the recommended preset for Odoo work. | `addon_roots`: src | codebase | _common |
 
-Add a new preset by dropping a JSON file into `presets/`. Optionally add
-matching `templates/cursor/rules/<name>/` and `templates/memory/<name>/`.
+> **Project-specific overlays**: real projects almost always have extra
+> addon roots, a custom `odoo-bin` path, internal JIRA endpoints,
+> Enterprise-only modules, etc. Keep those in a **private preset** that
+> `extends` one of the public presets — see
+> [`templates/agent_toolkit/PORTING.md`](templates/agent_toolkit/PORTING.md)
+> for the recipe. Don't fork the toolkit just to bake in your defaults.
+
+The toolkit's *design* is stack-agnostic — you can drop a new preset
+JSON into `presets/` (e.g. for Django, Rails) and matching
+`templates/cursor/rules/<name>/` + `templates/memory/<name>/`. **In
+practice the shipped presets target Odoo**; the rules, skills,
+canonical decisions, and MCP servers are tuned for Odoo conventions.
 
 ### Shipped skills
 
-| Skill | Scope | What it does |
+**Spec Kit workflow skills** (`_common`, every preset):
+
+| Skill | Phase | What it does |
 |-------|-------|--------------|
-| `code-review` | `_common` (every preset) | Exhaustive single-pass review — surfaces ALL Blocker + Medium + Low findings in one session, with a reproducible PROOF line per finding. Opens on "review / audit / phân tích sâu / tìm bug / còn gì cần fix?". |
-| `odoo-code-review` | `odoo` (both `odoo-12` and `odoo-17` presets) | **Version-aware (12 + 17 + 18 + 19 + 20 pre-GA)**: Step 0 reads `__manifest__.py` `version` via `read_manifest` MCP, then loads the matching cascade: 12 standalone, 17→18→19→20 chained. Same skill handles mixed-version monorepos. Each finding labeled `(v<N>)`. |
-| `odoo-17-code-patterns`, `odoo-17-codebase-discovery`, `odoo-17-data-verification`, `odoo-17-module-scaffold` | `odoo-17` | Patterns, MCP routing, real-data verification, scaffolding (version-specific, unchanged). |
+| `plan-feature` | 1 — SPECIFY | Turn a feature request into an 8-section spec at `.agent-toolkit/specs/<branch>/<slug>.md` + emit `acceptance_evals` skeleton. |
+| `clarify` | 2 — CLARIFY | One Q per turn until every Open Question closes; refine `acceptance_evals` (set grader/layer/expected, smoke-test); auto-fire `/tasks`. |
+| `tasks-breakdown` | 3 — TASKS | Emit `tasks.md` next to spec — Touches / Acceptance / Verification / Risk per task. STOPs for DEV review. |
+| `analyze-artifacts` | 3.5 — ANALYZE | 7 cross-artifact checks (story / eval coverage + invariant + constitution + path realism + verification concreteness) before implement. |
+| `verify-feature` | 5 — VERIFY | Real-data probes via realdata_test/postgres/Playwright MCP in parallel; emit Verify Report (PASS/GAP/BLOCKER per User Story). |
+
+**Guardrails** (`_common`, every preset):
+
+| Skill | What it does |
+|-------|--------------|
+| `clarification-gate` | Pre-flight 3-block (UNDERSTANDING / ASSUMPTIONS / QUESTIONS) before any action verb. |
+| `code-review` | Exhaustive single-pass review — surfaces ALL Blocker + Medium + Low findings in one session, with a reproducible PROOF line. |
+| `doubt-driven-review` | CLAIM → EXTRACT → DOUBT → RECONCILE overlay before reporting non-trivial findings. |
+| `claim-falsification` | 15-recipe catalog for perturb-test (BLOCK/ASYNC, caching, idempotency, atomicity, …). |
+| `classifier-output-audit` | Long-tail audit for classification features (sample K rows, re-derive expected tag, find mismatch groups). |
+| `karpathy-guidelines` | Operating-principle skill (think before coding, simplicity, surgical changes, MCP-before-files). |
+
+**Odoo skills** (auto-included by every Odoo preset — 9 skills, all **version-aware**):
+
+Each skill's Step 0 reads `__manifest__.py` from the target module, then
+loads the matching `references/odoo-<N>-*.md`. One skill folder covers
+Odoo 12 → 20 (and future 21+ — just add a reference file).
+
+| Skill | What it does |
+|-------|--------------|
+| `odoo-code-review` | Exhaustive review. Cascade: 12 standalone, 17→18→19→20. |
+| `odoo-code-patterns` | Canonical patterns (model / wizard / view / OWL). Version-specific `references/odoo-<N>-patterns.md`. |
+| `odoo-codebase-discovery` | MCP discovery (`discover_modules`, `read_manifest`, …). Version-agnostic. |
+| `odoo-data-verification` | Real-DB ORM probes via `realdata_test` MCP. Version-agnostic. |
+| `odoo-debug-troubleshoot` | Quick-fix tables. Version-specific `references/odoo-<N>-pitfalls.md`. |
+| `odoo-deterministic-answers` | `canonical_decisions.json` registry workflow. Version-agnostic. |
+| `odoo-jira-workflow` | JIRA MCP tools. Version-agnostic. |
+| `odoo-module-scaffold` | New module scaffold. Version-specific `references/odoo-<N>-scaffold.md`. |
+| `odoo-tdd` | Red-Green-Refactor + perturb-test routing. Version-specific `references/odoo-<N>-tdd-pitfalls.md`. |
+
+**Adding support for a new Odoo major** (e.g. 21): drop 5 reference
+files (one per version-specific skill), optionally add `presets/odoo-21.json`
+extending `odoo-17`. No skill body edits, no preset edits in shipped skills.
+Full recipe: see [Khi Odoo 21+ ra mắt — chỉ cần thêm files](#khi-odoo-21-ra-mắt--chỉ-cần-thêm-files) below.
 
 ## CLI
 
@@ -91,41 +340,74 @@ python setup.py update /path/to/project
 
 ```
 agent-toolkit/
-├── setup.py                  # CLI entry
-├── lib/installer.py          # render + detect helpers
+├── setup.py                  # CLI entry (init / update / list-presets)
+├── lib/
+│   ├── installer.py          # preset loader + templating + detect helpers (__version__)
+│   └── plugins.py            # plugin hook interface stub
 ├── presets/
-│   ├── odoo-12.json
-│   ├── odoo-17.json
-│   └── generic.json
+│   ├── odoo-12.json          # generic Odoo 12
+│   ├── odoo-17.json          # generic Odoo 17
+│   └── generic.json          # plain-Python fallback (not recommended for Odoo)
 ├── templates/
 │   ├── codex/
-│   │   ├── mcp_servers/                      # 5 MCP server impls (codebase, postgres, realdata_test, jira, common)
-│   │   ├── start_*_mcp.py                    # stdio launcher wrappers
-│   │   ├── canonical_decisions.json          # default seed (Odoo 12 / NAKIVO)
-│   │   ├── canonical_decisions.odoo-17.json  # preset-specific seed
+│   │   ├── mcp_servers/                      # 5 MCP impls (codebase, postgres, realdata_test, jira, common)
+│   │   ├── start_*_mcp.py                    # stdio launcher wrappers per server
+│   │   ├── canonical_decisions.json          # default seed (Odoo 12)
+│   │   ├── canonical_decisions.generic.json
+│   │   ├── canonical_decisions.odoo-17.json
+│   │   ├── precommit_hooks/                  # invariant_guard, credential_guard, probe_coverage, auto_falsify
+│   │   ├── tools/                            # falsify.py CLI, agent_toolkit_init.py
+│   │   ├── lint_verify_report.py             # /verify Step 8 coverage check
 │   │   ├── config.toml.example
 │   │   ├── mcp.local.env.example
-│   │   └── tests/
+│   │   └── tests/                            # 120+ hook unit tests
+│   ├── claude/
+│   │   ├── settings.json                     # permissions + hooks + env wiring
+│   │   ├── hooks/                            # session_brief, intent_router, invariant_guard, evidence_audit,
+│   │   │                                     #  verify_lint, verify_nudge, post_edit_verify_gate, tdd_runner,
+│   │   │                                     #  verification_loop, probe_autostub, debug_sentry, _audit/ pkg
+│   │   └── commands/                         # slash commands: /plan /clarify /tasks /analyze /implement
+│   │                                         #  /verify /adr-add /inv-add /inv-list /probe-add /probe-coverage
+│   │                                         #  /run-probes /eval-define /eval-backfill /bug-to-test /tdd
+│   │                                         #  /recall /review /test-env /stop-autonomy
 │   ├── cursor/
 │   │   ├── rules/
-│   │   │   ├── _common/      # stack-agnostic: karpathy, decision-consistency, mcp-routing, audit-methodology
-│   │   │   ├── odoo-12/      # backend, generic, project-context, nakivo-modules
+│   │   │   ├── _common/      # karpathy, decision-consistency, mcp-routing, audit-methodology
+│   │   │   ├── odoo-12/      # backend, generic, project-context
 │   │   │   └── odoo-17/      # backend, generic, project-context, data-verification
 │   │   └── skills/
-│   │       ├── _common/      # code-review (stack-agnostic exhaustive Blocker/Medium/Low pass)
-│   │       │   └── code-review/
-│   │       │       └── references/   # security-checklist.md, performance-checklist.md
-│   │       ├── odoo/         # odoo-code-review (version-aware 12/17/18/19/20; both presets pull from here)
-│   │       │   └── odoo-code-review/
-│   │       │       └── references/   # odoo-12-rules, odoo-17-rules, odoo-18-rules, odoo-19-rules, odoo-20-rules (pre-GA stub)
-│   │       └── odoo-17/      # codebase-discovery, code-patterns, data-verification, module-scaffold (version-specific)
+│   │       ├── _common/      # Spec Kit chain (plan-feature, clarify, tasks-breakdown,
+│   │       │                 #  analyze-artifacts, verify-feature) + guardrails
+│   │       │                 #  (clarification-gate, code-review, doubt-driven-review,
+│   │       │                 #  claim-falsification, classifier-output-audit, karpathy-guidelines)
+│   │       ├── odoo/         # odoo-code-review (version-aware 12/17/18/19/20)
+│   │       ├── odoo-12/      # 8 stack skills (code-patterns, codebase-discovery, data-verification,
+│   │       │                 #  debug-troubleshoot, deterministic-answers, jira-workflow,
+│   │       │                 #  module-scaffold, tdd)
+│   │       └── odoo-17/      # 4 stack skills (codebase-discovery, code-patterns,
+│   │                         #  data-verification, module-scaffold)
 │   ├── memory/
 │   │   ├── _common/          # user_profile, feedback_*, reference_karpathy, MEMORY.md
 │   │   ├── odoo-12/          # project_workspace, project_mcp_routing
 │   │   └── odoo-17/          # project_workspace, project_mcp_routing
+│   ├── agent_toolkit/        # files installed to project's .agent-toolkit/
+│   │   ├── constitution.md   # toolkit principles + project hard rules
+│   │   ├── decision-log.md   # ADR template
+│   │   ├── invariants.json
+│   │   ├── acceptance-probes.json
+│   │   ├── intent_map.json
+│   │   ├── coverage_config.json
+│   │   ├── tdd.json, verification.json, debug.json
+│   │   ├── README.md, QUICKSTART.md, PORTING.md
+│   ├── pre-commit-config.yaml.tmpl
 │   ├── AGENTS.md             # template with {{PLACEHOLDERS}}
 │   └── CLAUDE.md
-└── README.md
+├── tests/                    # toolkit-level pytest suite (installer, e2e, hooks, snapshot)
+├── AGENTS.md                 # toolkit's own AI agent rules
+├── AI_REBUILD_CHECKLIST.md   # 4-phase Q&A protocol for init/update
+├── CHANGELOG.md
+├── README.md                 # this file
+└── USAGE.md                  # detailed VN user guide
 ```
 
 ## Placeholders (filled by setup.py)
@@ -147,37 +429,101 @@ Templates use `{{KEY}}` substitution. Available keys:
 | `{{RESPONSE_LANGUAGE}}` | preset |
 | `{{PRESET_NAME}}` | the preset chosen |
 
-## Adding a new stack preset (example: Django)
+## Khi Odoo 21+ ra mắt — chỉ cần thêm files
 
-1. Drop `presets/django.json`:
+Toolkit hiện đã ship **9 Odoo skills version-aware** (Odoo 12 → 20). Khi
+Odoo 21 (hoặc 22, 23…) ra mắt, **không cần sửa skill body, không cần
+sửa preset gốc, không cần sửa intent_router**. Chỉ cần drop 5 file
+reference vào đúng chỗ — Step 0 của mỗi skill tự đọc `__manifest__.py`
+của module rồi load reference tương ứng.
+
+### Bước 1 — Drop 5 reference files (BẮT BUỘC)
+
+Đây là phần duy nhất *bắt buộc*. Toolkit tự cascade `17 → 18 → 19 → 20`,
+nên nếu Odoo 21 gần giống 20 anh có thể copy nội dung `odoo-20-*.md`
+sang làm baseline rồi chỉnh delta.
+
+```
+templates/cursor/skills/odoo/
+├── odoo-code-patterns/references/odoo-21-patterns.md
+├── odoo-code-review/references/odoo-21-rules.md
+├── odoo-debug-troubleshoot/references/odoo-21-pitfalls.md
+├── odoo-module-scaffold/references/odoo-21-scaffold.md
+└── odoo-tdd/references/odoo-21-tdd-pitfalls.md
+```
+
+> 4 skills còn lại (`odoo-codebase-discovery`, `odoo-data-verification`,
+> `odoo-deterministic-answers`, `odoo-jira-workflow`) là 100% version-agnostic
+> — không có folder `references/`, không cần đụng đến.
+
+### Bước 2 — Optional: thêm preset `odoo-21` (chỉ nếu muốn `--preset odoo-21`)
+
 ```json
+// presets/odoo-21.json
 {
-  "description": "Django project — Python 3.11, Postgres",
-  "stack_label": "Django",
-  "response_language": "English",
+  "description": "Odoo 21 stack — Python 3.12+, OWL, recordset-by-default",
+  "extends": "odoo-17",
+  "stack_label": "Odoo 21",
   "stack": {
-    "language": "python",
-    "language_version": "3.11",
-    "framework": "django",
-    "framework_version": "5"
-  },
-  "addon_roots": ["apps", "core"],
-  "mcp_servers": ["codebase", "postgres"],
-  "db": {"default_db": "myproject", "default_port": 5432, "default_user": "django"},
-  "rules": ["_common", "django"],
-  "skills": ["_common"],
-  "memory_packs": ["django"]
+    "language_version": "3.12",
+    "framework_version": "21"
+  }
 }
 ```
 
-2. Optionally add `templates/cursor/rules/django/*.mdc` (Django-specific
-   rules). If the dir is missing, only `_common` rules ship.
+Nếu bỏ qua bước này — toolkit vẫn chạy đúng với preset `odoo-17` (hoặc
+`odoo-12`); Step 0 của skill đọc `__manifest__.py` thấy `'version':
+'21.0.x.x.x'` rồi load `odoo-21-*.md` reference. **Preset chỉ phục vụ
+mục đích default config (Python version, MCP servers), không quyết định
+skill nào được dùng.**
 
-3. Optionally add `templates/memory/django/*.md` for stack-specific
-   memory templates with `{{PLACEHOLDERS}}`.
+### Bước 3 — Optional: rules + memory + canonical_decisions
 
-4. `python setup.py init /path/to/django-proj --preset django` works
-   immediately.
+Hoàn toàn optional (giống Bước 2 — bỏ qua được, fallback về `odoo-17`):
+
+```
+templates/cursor/rules/odoo-21/         # nếu Cursor IDE cần rules riêng cho v21
+templates/memory/odoo-21/               # nếu cần memory pack stack-specific
+templates/codex/canonical_decisions.odoo-21.json
+```
+
+### Bước 4 — Bump toolkit version
+
+```python
+# lib/installer.py
+__version__ = '0.6.0'  # bump khi schema_version đổi hoặc CLI flags break compat
+```
+
+Plus `CHANGELOG.md` entry.
+
+### Tóm tắt — "Odoo 21 support trong 30 phút"
+
+| File | Bắt buộc? | Effort |
+|------|----------|--------|
+| 5 × `references/odoo-21-*.md` | ✅ YES | 20 phút (copy `odoo-20-*.md` + chỉnh delta) |
+| `presets/odoo-21.json` | ⚠️ Optional | 2 phút |
+| `templates/cursor/rules/odoo-21/*.mdc` | ⚠️ Optional | tùy delta |
+| `templates/memory/odoo-21/*.md` | ⚠️ Optional | tùy delta |
+| `templates/codex/canonical_decisions.odoo-21.json` | ⚠️ Optional | tùy delta |
+| Skill body / intent_router / preset cũ | ❌ NO TOUCH | 0 phút |
+
+**Verify:**
+
+```bash
+# Vẫn pass đầy đủ test sau khi thêm Odoo 21
+python -m pytest tests/ -v   # 72+ pass
+
+# Install thử vào project Odoo 21
+python setup.py init /path/to/odoo21-proj --preset odoo-21 --yes
+# (hoặc --preset odoo-17 nếu chưa tạo odoo-21.json — vẫn chạy đúng)
+```
+
+> **Non-Odoo stacks (Django, Rails, FastAPI…)**: technically supported
+> via the same preset mechanism, but you'll need to author the
+> stack-specific rules, skills, MCP servers, and canonical decisions
+> yourself. See `templates/agent_toolkit/PORTING.md` for the porting
+> guide. The shipped Odoo MCP servers (`realdata_test`, `jira`) are
+> Odoo-specific and won't transfer.
 
 ## Re-seeding memory after edits
 
@@ -196,7 +542,7 @@ the next install:
 `canonical_decisions.json` is the single source of truth for recurring "how do we
 do X" answers. The toolkit ships per-preset starter registries:
 
-- `templates/codex/canonical_decisions.json` — default seed (Odoo 12 / NAKIVO).
+- `templates/codex/canonical_decisions.json` — default seed (Odoo 12).
 - `templates/codex/canonical_decisions.<preset>.json` — preset-specific seed
   (e.g. `canonical_decisions.odoo-17.json`).
 
@@ -213,10 +559,26 @@ to the default file and the installer will pick it up automatically.
 
 ## Verifying an install
 
+Lightweight wrapper tests (offline):
+
 ```bash
 python /path/to/project/.codex/tests/test_mcp_wrappers.py
-# Odoo 12: Ran 27 tests in <X>s — OK
-# Odoo 17: Ran 27 tests in <X>s — OK (skipped=6  # JIRA tests skipped, not installed)
+# Odoo 12:                  Ran 27 tests — OK
+# Odoo 17:                   Ran 27 tests — OK (skipped=6, JIRA tests skipped)
+```
+
+Full hook suite (run from the project after install):
+
+```bash
+python -m pytest /path/to/project/.codex/tests/hooks/ -v
+# Expected: 120+ tests pass
+```
+
+Toolkit-level pytest (run from the toolkit repo):
+
+```bash
+python -m pytest /path/to/agent-toolkit/tests/ -v
+# Expected: 72+ tests pass (installer / e2e / snapshot / hooks)
 ```
 
 ## Why JSON presets (not YAML)
@@ -233,3 +595,93 @@ prefers JSON when both exist.
 - Real credentials (always machine-local in `.codex/mcp.local.env`)
 - Python venv binary (project-specific install)
 - Postgres data (project-specific)
+
+## Credits & References
+
+This toolkit is original work but stands on the shoulders of several
+upstream projects + academic ideas. Adopting / extending any of these
+in your own toolkit is encouraged — check each license.
+
+### Upstream skill repos
+
+- **[github/spec-kit](https://github.com/github/spec-kit)** — the
+  5-phase Spec Kit workflow (`SPECIFY → CLARIFY → TASKS → ANALYZE →
+  IMPLEMENT → VERIFY`) that this toolkit's slash-command surface mirrors.
+  We added a 6th phase (`/verify` real-data probes via MCP) and renamed
+  the entry point from `/specify` → `/plan` to match the DEV mental model.
+
+- **[mattpocock/skills](https://github.com/mattpocock/skills) (MIT)** —
+  Matt Pocock's open skill library. We adopted the structural ideas
+  from these specific skills (cite paths kept in each SKILL.md
+  "Reference" section):
+  - [`engineering/to-prd`](https://github.com/mattpocock/skills/blob/main/skills/engineering/to-prd/SKILL.md)
+    — basis for `plan-feature/SKILL.md`.
+  - [`engineering/zoom-out`](https://github.com/mattpocock/skills/tree/main/skills/engineering/zoom-out)
+    — feeds the `plan-feature` discovery loop.
+  - [`productivity/grill-me`](https://github.com/mattpocock/skills/tree/main/skills/productivity/grill-me)
+    + [`engineering/grill-with-docs`](https://github.com/mattpocock/skills/tree/main/skills/engineering/grill-with-docs)
+    — basis for `clarify/SKILL.md` (1-Q-per-turn interview loop).
+
+- **[forrestchang/andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills)**
+  — local mirror of Andrej Karpathy's behavioural guidelines (think
+  before coding, smallest change, surgical edits, goal-driven
+  verification). Sourced verbatim into `karpathy-guidelines/SKILL.md`
+  and `templates/memory/_common/reference_karpathy.md`.
+
+### Academic / methodology references
+
+- **[Karl Popper](https://en.wikipedia.org/wiki/Falsifiability)
+  *Logic of Scientific Discovery* (1959)** — "a claim that cannot be
+  shown false also cannot be shown true". Backbone of
+  `claim-falsification/SKILL.md` and `real-data-proof/SKILL.md` —
+  every property claim must come with a perturbation that *could*
+  refute it on real data.
+
+- **Property-based testing tradition** —
+  [Hypothesis](https://hypothesis.readthedocs.io/) (Python) +
+  [QuickCheck](https://hackage.haskell.org/package/QuickCheck) (Haskell).
+  The "perturb input → invariant must hold" frame in
+  `claim-falsification` is the runtime analogue.
+
+- **[Andrej Karpathy](https://karpathy.ai/)** — the
+  *Think Before Coding / Simplicity / Surgical Changes / Goal-Driven*
+  formulation that the toolkit treats as a hard invariant for every
+  skill body and every agent turn.
+
+### Runtime platforms the toolkit installs into
+
+- **[Claude Code](https://docs.claude.com/en/docs/claude-code)** (Anthropic)
+  — primary target; hooks (`templates/claude/hooks/*.py`), slash commands
+  (`templates/claude/commands/*.md`), and `settings.json` are all Claude
+  Code-shaped.
+
+- **[Cursor IDE](https://cursor.com/)** — secondary target; the
+  toolkit ships always-apply rules under `.cursor/rules/` and on-demand
+  skills under `.cursor/skills/`.
+
+- **[Codex CLI](https://github.com/openai/codex)** — supported via the
+  same MCP servers (codebase, postgres, realdata_test, jira) +
+  `.codex/` directory layout.
+
+- **[Model Context Protocol (MCP)](https://modelcontextprotocol.io/)**
+  (Anthropic) — the protocol every shipped MCP server speaks
+  (`codebase_server.py`, `postgres_server.py`, `jira_server.py`,
+  `realdata_test_server.py`).
+
+### Author + maintenance
+
+- **Author / maintainer**: **Thang Vo** — Senior Developer (Odoo & Agent AI)
+  - Work email: [thang.vo@nakivo.com](mailto:thang.vo@nakivo.com)
+  - Personal email: [ducthangict.dhtn@gmail.com](mailto:ducthangict.dhtn@gmail.com)
+  - Contact: `ictlucky.dhtn` · Zalo [0989 464 344](tel:+84989464344)
+  - Original work; toolkit is in active use on production Odoo 12 + 17
+    Enterprise workspaces.
+- **Issues / contributions**: open an issue on the toolkit repo or
+  reach out via the contacts above.
+- **License**: toolkit is **MIT** — see [`LICENSE`](LICENSE) at root.
+  Third-party MIT attribution (mattpocock/skills, github/spec-kit,
+  andrej-karpathy-skills) is consolidated in [`NOTICE`](NOTICE).
+  Original Python code in `lib/`, `setup.py` carries
+  `# SPDX-License-Identifier: MIT` at file top; skills/hooks/templates
+  inherit the toolkit LICENSE unless an in-file `license:` frontmatter
+  states otherwise.

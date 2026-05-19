@@ -53,7 +53,7 @@ def test_validate_preset_flags_unknown_field_with_suggestion():
     errors = validate_preset({
         'description': 'oops',
         'stack': {},
-        'addon_root': ['nakivo'],  # typo: singular
+        'addon_root': ['addons'],  # typo: singular
     })
     msg = ' '.join(errors)
     assert 'unknown field `addon_root`' in msg
@@ -118,6 +118,65 @@ def test_resolve_preset_missing_suggests(tmp_presets_dir, minimal_preset):
         resolve_preset('minimall', tmp_presets_dir)  # typo
 
 
+def test_resolve_preset_private_overlay_extends_public_preset(
+    tmp_presets_dir, minimal_preset,
+):
+    """User-facing v0.5.1 migration path: a private preset overlay
+    extending a public preset must resolve cleanly (no missing-parent
+    error, additive overrides merged, response_language inherited).
+
+    Mirrors the recipe shipped in
+    `presets/_example_private_overlay.json.template`.
+    """
+    # Public preset shape (proxy for `odoo-12` etc.):
+    (tmp_presets_dir / 'public_base.json').write_text(json.dumps({
+        'description': 'public Odoo-12-shaped preset',
+        'stack': {'language': 'python', 'framework': 'odoo',
+                  'framework_version': '12'},
+        'response_language': 'English',
+        'addon_roots': [],
+        'mcp_servers': ['codebase', 'postgres', 'realdata_test'],
+        'rules': ['_common', 'odoo-12'],
+        'skills': ['_common', 'odoo'],
+    }), encoding='utf-8')
+
+    # Private overlay — what a user creates after v0.5.0 → v0.5.1 migration:
+    (tmp_presets_dir / 'private_overlay.json').write_text(json.dumps({
+        'extends': 'public_base',
+        'description': 'Private overlay for <my-project>',
+        'stack_label': 'Odoo 12 — MyCo',
+        'response_language': 'Vietnamese',
+        'stack': {'odoo_bin_rel': 'server-fork/odoo-bin'},
+        'addon_roots_append': ['custom_addons', 'enterprise', 'myco_addons'],
+        'mcp_servers_append': ['jira_production'],
+        'db': {'default_db': 'myco_main', 'default_port': 5432},
+    }), encoding='utf-8')
+
+    data = resolve_preset('private_overlay', tmp_presets_dir)
+
+    # Description overridden.
+    assert data['description'] == 'Private overlay for <my-project>'
+    # response_language overridden (not inherited blindly).
+    assert data['response_language'] == 'Vietnamese'
+    # stack_label introduced.
+    assert data['stack_label'] == 'Odoo 12 — MyCo'
+    # stack dict shallow-merged (framework inherited, odoo_bin_rel added).
+    assert data['stack']['framework'] == 'odoo'
+    assert data['stack']['framework_version'] == '12'
+    assert data['stack']['odoo_bin_rel'] == 'server-fork/odoo-bin'
+    # addon_roots_append extends parent's empty list.
+    assert data['addon_roots'] == ['custom_addons', 'enterprise', 'myco_addons']
+    # mcp_servers_append extends parent's list.
+    assert data['mcp_servers'] == [
+        'codebase', 'postgres', 'realdata_test', 'jira_production',
+    ]
+    # Parent's rules + skills inherited (no _append → no extension needed).
+    assert data['rules'] == ['_common', 'odoo-12']
+    assert data['skills'] == ['_common', 'odoo']
+    # db dict shallow-merged.
+    assert data['db']['default_db'] == 'myco_main'
+
+
 def test_resolve_preset_dict_field_shallow_merge(tmp_presets_dir):
     (tmp_presets_dir / 'base.json').write_text(json.dumps({
         'description': 'base', 'stack': {},
@@ -140,7 +199,7 @@ def test_render_text_simple_substitution(sample_ctx):
 
 def test_render_text_list_becomes_bullets(sample_ctx):
     out = render_text('Roots:\n{{ADDON_ROOTS}}', sample_ctx)
-    assert '- nakivo' in out
+    assert '- addons' in out
     assert '- base_addons' in out
 
 
@@ -204,3 +263,214 @@ def test_git_dirty_status_detects_dirty(tmp_path):
     result = git_dirty_status(tmp_path)
     assert result is not None
     assert 'change' in result
+
+
+def test_git_dirty_status_handles_missing_git(tmp_path, monkeypatch):
+    """If `git` binary is absent, helper must return None (not crash)."""
+    import subprocess as sp
+
+    def boom(*a, **kw):
+        raise FileNotFoundError('git not installed in this PATH')
+
+    monkeypatch.setattr(sp, 'run', boom)
+    assert git_dirty_status(tmp_path) is None
+
+
+# --------------------------------------------------------- private meta fields ---
+def test_validate_preset_accepts_underscore_meta_fields():
+    """Keys starting with `_` are private metadata — must not flag as unknown."""
+    errors = validate_preset({
+        'description': 'meta-fields preset',
+        'stack': {},
+        '_internal_note': 'this is private, ignore me',
+        '_owner': 'thang.vo',
+    })
+    assert errors == [], f'expected clean, got {errors}'
+
+
+# --------------------------------------------------------- resolve_preset error paths ---
+def test_resolve_preset_raises_on_invalid_child(tmp_presets_dir):
+    """validate_preset error → resolve_preset must raise ValueError with msg."""
+    (tmp_presets_dir / 'broken.json').write_text(json.dumps({
+        'description': 'broken: missing stack field',
+        # `stack` omitted — should trip the required-field check.
+        'addon_root': 'typo-singular',  # also bad type + unknown
+    }), encoding='utf-8')
+    with pytest.raises(ValueError, match='preset validation failed'):
+        resolve_preset('broken', tmp_presets_dir)
+
+
+def test_resolve_preset_dict_append_shallow_merges(tmp_presets_dir):
+    """`<dict_field>_append` should shallow-merge child into parent dict."""
+    (tmp_presets_dir / 'base.json').write_text(json.dumps({
+        'description': 'base', 'stack': {},
+        'external_mcp_servers': {
+            'playwright': {'command': 'npx', 'args': ['@playwright/mcp']},
+            'other': {'command': 'npx', 'args': ['other-mcp']},
+        },
+    }), encoding='utf-8')
+    (tmp_presets_dir / 'kid.json').write_text(json.dumps({
+        'extends': 'base', 'description': 'kid', 'stack': {},
+        'external_mcp_servers_append': {
+            'playwright': {'command': 'npx', 'args': ['@playwright/mcp', '--headless']},
+            'extra': {'command': 'node', 'args': ['./extra.js']},
+        },
+    }), encoding='utf-8')
+    data = resolve_preset('kid', tmp_presets_dir)
+    servers = data['external_mcp_servers']
+    # Child entry overlays parent entry of same key.
+    assert servers['playwright']['args'] == ['@playwright/mcp', '--headless']
+    # Parent-only entry preserved.
+    assert servers['other']['args'] == ['other-mcp']
+    # Child-only entry added.
+    assert servers['extra']['command'] == 'node'
+
+
+# --------------------------------------------------------- render_into ---
+def test_render_into_writes_substituted_file(tmp_path, sample_ctx):
+    from installer import render_into
+    src = tmp_path / 'tpl.md'
+    src.write_text('# {{PROJECT_NAME}}\nPython: {{PYTHON_BIN}}', encoding='utf-8')
+    dst = tmp_path / 'out.md'
+    render_into(src, dst, sample_ctx)
+    content = dst.read_text(encoding='utf-8')
+    assert content == '# MyProj\nPython: /usr/bin/python'
+
+
+# --------------------------------------------------------- detect_python ---
+def test_detect_python_finds_venv_in_workspace(tmp_path):
+    """Detector must return the absolute path of the first matching candidate."""
+    from installer import detect_python
+    # Build a fake `.venv/bin/python` (POSIX shape) or
+    # `.venv\Scripts\python.exe` (Windows shape).
+    import os
+    if os.name == 'nt':
+        venv_bin = tmp_path / '.venv' / 'Scripts'
+        venv_bin.mkdir(parents=True)
+        py = venv_bin / 'python.exe'
+    else:
+        venv_bin = tmp_path / '.venv' / 'bin'
+        venv_bin.mkdir(parents=True)
+        py = venv_bin / 'python'
+    py.write_text('#!/bin/sh\necho stub', encoding='utf-8')
+    found = detect_python(tmp_path)
+    assert found is not None
+    assert Path(found).resolve() == py.resolve()
+
+
+def test_detect_python_returns_none_when_no_venv(tmp_path):
+    """No venv in any candidate slot → None."""
+    from installer import detect_python
+    assert detect_python(tmp_path) is None
+
+
+# --------------------------------------------------------- detect_psql ---
+def test_detect_psql_returns_string_or_none():
+    """detect_psql must hit the right candidate-list branch per OS."""
+    from installer import detect_psql
+    result = detect_psql()
+    # Either a string path to an existing file, or None — both legal.
+    assert result is None or Path(result).exists(), (
+        f'detect_psql returned {result!r} but it does not exist on disk'
+    )
+
+
+def test_psql_candidates_windows_branch():
+    """`psql_candidates('nt')` must return Windows-style PostgreSQL paths.
+
+    Tests the static branch without monkey-patching `os.name` — we pass
+    the OS family explicitly. Avoids the pathlib `_flavour` cache bug
+    on Py3.8 + Windows.
+    """
+    from installer import psql_candidates
+    cands = psql_candidates('nt')
+    assert all(c.endswith('.exe') for c in cands), cands
+    assert any('PostgreSQL' in c for c in cands)
+    # pgAdmin path is the highest-priority hit.
+    assert cands[0].endswith('psql.exe')
+
+
+def test_psql_candidates_posix_branch():
+    """`psql_candidates('posix')` must return POSIX-style paths.
+
+    Closes the long-standing coverage gap on `installer.py:228-230`
+    (the `else:` branch). Doesn't need a real psql on disk — only the
+    list shape is asserted.
+    """
+    from installer import psql_candidates
+    cands = psql_candidates('posix')
+    assert '/usr/bin/psql' in cands
+    assert '/usr/local/bin/psql' in cands
+    assert '/opt/homebrew/bin/psql' in cands
+    # No Windows-shaped entries.
+    assert not any('.exe' in c for c in cands)
+
+
+def test_psql_candidates_defaults_to_current_os():
+    """`psql_candidates()` with no arg uses the live `os.name`."""
+    from installer import psql_candidates
+    import os as _os
+    cands = psql_candidates()
+    expected_shape = '.exe' if _os.name == 'nt' else '/'
+    assert all(expected_shape in c for c in cands)
+
+
+# --------------------------------------------------------- encode_claude_project_path ---
+def test_encode_claude_project_path_posix_no_drive():
+    """POSIX path (no `:` at index 1) takes the non-drive branch."""
+    from installer import encode_claude_project_path
+    # We can't really pass a POSIX path on Windows (Path resolves it back to
+    # CWD), so we just exercise the function on a relative path that resolves
+    # to something without a drive separator. The `_path_has_drive` branch
+    # at installer.py:243 is covered indirectly by the existing test;
+    # this asserts the function is total (never raises).
+    out = encode_claude_project_path(Path('.'))
+    assert out.parts[-1] == 'memory'
+
+
+# --------------------------------------------------------- info / ok / warn / confirm ---
+def test_warn_writes_to_stderr(capsys):
+    from installer import warn
+    warn('something fishy')
+    captured = capsys.readouterr()
+    assert 'something fishy' in captured.err
+    # warn must NOT pollute stdout — install scripts pipe stdout for plans.
+    assert captured.out == ''
+
+
+def test_info_and_ok_write_to_stdout(capsys):
+    from installer import info, ok
+    info('plain info')
+    ok('done')
+    captured = capsys.readouterr()
+    assert 'plain info' in captured.out
+    assert 'done' in captured.out
+
+
+def test_confirm_returns_true_for_yes(monkeypatch):
+    from installer import confirm
+    monkeypatch.setattr('builtins.input', lambda prompt='': 'y')
+    assert confirm('proceed? ') is True
+
+
+def test_confirm_returns_true_for_yes_uppercase(monkeypatch):
+    from installer import confirm
+    monkeypatch.setattr('builtins.input', lambda prompt='': 'YES')
+    assert confirm('proceed? ') is True
+
+
+def test_confirm_returns_false_for_no(monkeypatch):
+    from installer import confirm
+    monkeypatch.setattr('builtins.input', lambda prompt='': 'n')
+    assert confirm('proceed? ') is False
+
+
+def test_confirm_returns_false_on_eof(monkeypatch):
+    """When stdin closes (pipe/CI), confirm must default to False (safe)."""
+    from installer import confirm
+
+    def raise_eof(prompt=''):
+        raise EOFError
+
+    monkeypatch.setattr('builtins.input', raise_eof)
+    assert confirm('proceed? ') is False

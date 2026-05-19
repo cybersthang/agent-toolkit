@@ -271,6 +271,23 @@ all up-front.
 
 ## Sibling skills
 
+- `karpathy-guidelines` — operating principles (think before coding,
+  surgical changes, surface assumptions). Apply when writing PROOF lines
+  in Step 3 ("don't claim, measure") and when assessing whether a
+  proposed fix is in scope (Karpathy §3 Surgical Changes maps to
+  Dimension matrix §3 "Refactor sibling" anti-pattern).
+- `doubt-driven-review` — CLAIM → EXTRACT → DOUBT → RECONCILE loop.
+  Layer this OVER the exhaustive pass when a finding is non-trivial;
+  the 3-doubt minimum prevents "agreed with myself" false positives.
+- `claim-falsification` — 15-recipe perturb-test catalog used by Dimension
+  10 (Edge cases) + Dimension 14 (Drift formulas) to design BLOCK / ASYNC
+  / cache invalidation falsification probes.
+- `real-data-proof` — **mandatory** when the change under review touches
+  a classifier / aggregator / contract-claim feature (writes a label
+  column, computes a count, asserts a code contract). The review verdict
+  cannot be ✅ PASS for that finding without a Real-Data Proof Report
+  attached. See `real-data-proof/references/block-async-worked-example.md`
+  for the canonical end-to-end shape.
 - `<stack>-code-review` — framework-specific overlay (Odoo 12 / Odoo 17 / …); reuse this file's workflow + rubric.
 - `<stack>-codebase-discovery` — the MCP routing used in Step 1.
 - `<stack>-data-verification` — the live-verify tooling used in Step 6.

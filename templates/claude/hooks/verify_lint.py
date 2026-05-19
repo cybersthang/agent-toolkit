@@ -23,6 +23,7 @@ response text piped to stdin. Exit code:
   0 → allow Stop
   1 → BLOCK with "missing N evals: <ids>" reason
   3 → allow (spec has no acceptance_evals — lint not applicable)
+  4 → BLOCK with "classifier spec missing Real-Data Proof section" reason
   any other → allow (script error; don't punish agent for infra)
 
 Loops are bounded: if `stop_hook_active` is set in envelope, exit allow.
@@ -99,7 +100,10 @@ def _extract_spec_slug(text: str, workspace: Optional[Path] = None) -> Optional[
     if workspace is not None:
         specs_dir = workspace / ".agent-toolkit" / "specs"
         for slug in candidates:
-            if (specs_dir / f"{slug}.md").exists():
+            # Branch-scoped layout: specs/<branch>/<slug>.md
+            # Legacy flat layout:   specs/<slug>.md
+            # rglob picks both.
+            if any(specs_dir.rglob(f"{slug}.md")):
                 return slug
     return candidates[0]
 
@@ -142,10 +146,17 @@ def main() -> int:
         # Can't determine which spec — fail-open with diagnostic.
         _exit_allow()
 
-    spec_path = workspace / ".agent-toolkit" / "specs" / f"{slug}.md"
-    if not spec_path.exists():
+    # Resolve spec via rglob (branch-scoped + legacy flat both supported).
+    specs_dir = workspace / ".agent-toolkit" / "specs"
+    matches = sorted(
+        specs_dir.rglob(f"{slug}.md"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    ) if specs_dir.is_dir() else []
+    if not matches:
         # Slug parsed but spec file missing — agent typo'd; fail-open.
         _exit_allow()
+    spec_path = matches[0]
 
     lint_script = workspace / ".codex" / "lint_verify_report.py"
     if not lint_script.exists():
@@ -171,6 +182,18 @@ def main() -> int:
             + "\n\nFix: re-emit Verify Report cite các eval id thiếu (mỗi id trong "
             "1 row của bảng `| <eid> | <result> | ...`). Hoặc nếu eval không "
             "còn applicable, sửa spec frontmatter để remove entry đó trước."
+        )
+    if result.returncode == 4:
+        _emit_block(
+            f"[verify-lint] Spec `{slug}` có `feature_kind: classification` "
+            f"nhưng Verify Report thiếu section bắt buộc `Real-Data Proof`.\n\n"
+            + (result.stderr or "<no detail>")
+            + "\n\nFix: re-emit Verify Report kèm `## Real-Data Proof` "
+            "section đầy đủ 4 mục (Data source / Distribution / Falsification / "
+            "Revert checklist) — xem `real-data-proof/SKILL.md` Step 4 + "
+            "worked example `references/block-async-worked-example.md`. "
+            "Mỗi tag distinct phải có ≥1 perturb-test row trong bảng "
+            "Falsification."
         )
     # exit_code 0, 2, 3, or other → allow
     _exit_allow()

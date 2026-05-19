@@ -1,10 +1,14 @@
 #!/usr/bin/env python
-"""Bootstrap a new project with agent-toolkit.
+"""Legacy bootstrap script — NOT the primary install path.
 
-Usage:
+The recommended install path is `setup.py init` at the toolkit root.
+This script remains for one-off porting work where the toolkit's
+opinionated preset machinery is too heavy.
+
+Usage (example for a non-Odoo stack — toolkit's primary path is Odoo):
   python agent_toolkit_init.py --target /path/to/your/project \
-                               --stack django-5 \
-                               --stack-bare django \
+                               --stack odoo-12 \
+                               --stack-bare odoo \
                                --venv /path/to/venv/python
 
 Idempotent: re-running on a target that already has agent-toolkit
@@ -261,7 +265,7 @@ reviewers.
 
 This toolkit ships with empty registries. You build per-feature
 contracts as you go via `/probe-add`. The schema is stack-agnostic:
-swap `mcp__django_test__*` for `mcp__rails_test__*` etc.
+swap `mcp__realdata_test__*` for `mcp__<your_test_server>__*` etc.
 
 ## Next steps
 
@@ -279,8 +283,8 @@ Project bootstrapped {stack_label}. Welcome.
 def main() -> int:
     parser = argparse.ArgumentParser(description="Bootstrap agent-toolkit in a new project")
     parser.add_argument("--target", required=True, help="Target project root path")
-    parser.add_argument("--stack", default="generic", help="Stack identifier (e.g. django-5, rails-7)")
-    parser.add_argument("--stack-bare", default="generic", help="Bare stack name (e.g. django, rails)")
+    parser.add_argument("--stack", default="odoo-12", help="Stack identifier (e.g. odoo-12, odoo-17)")
+    parser.add_argument("--stack-bare", default="odoo", help="Bare stack name (e.g. odoo, django)")
     parser.add_argument("--venv", default=sys.executable,
                         help="Path to Python interpreter for hooks (default: current)")
     parser.add_argument("--overwrite", action="store_true",

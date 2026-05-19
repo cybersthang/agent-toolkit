@@ -26,7 +26,10 @@ Five MCP servers are wired into this workspace. Pick the right one before openin
 
 ## Token discipline
 
-- Always pass a `root_hint` (e.g. `nakivo`) when the question is module-scoped — this halves search time and tokens.
+- Always pass a `root_hint` (e.g. the top-level addon directory the
+  module lives in — discover via `discover_modules` rather than
+  hardcoding) when the question is module-scoped; this halves search
+  time and tokens.
 - Use `read_file_chunk` with `start_line/end_line` instead of full reads.
 - Cap `search_text` with `limit` and use `glob` to constrain file types.
 - For JIRA, default `maxResults: 20`; raise only when the user asks for a wider window.

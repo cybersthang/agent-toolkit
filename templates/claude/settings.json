@@ -63,6 +63,21 @@
             "type": "command",
             "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/verify_nudge.py",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/auto_test_runner.py",
+            "timeout": 600
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/auto_run_probes.py",
+            "timeout": 300
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/daemon_manager.py",
+            "timeout": 90
           }
         ]
       }
@@ -89,6 +104,11 @@
             "type": "command",
             "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/debug_sentry.py",
             "timeout": 8
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/spec_drift_advisory.py",
+            "timeout": 5
           }
         ]
       }

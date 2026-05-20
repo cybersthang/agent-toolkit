@@ -1,0 +1,24 @@
+{
+  "_doc": "Patterns for Django stack — pytest output, Django admin login, Django RPC-style POST endpoints. Stack-detection: presence of `manage.py` in project root. Pattern engine loads ALL *.json regardless of stack; project teams can scope-out unused patterns by deleting / renaming files.",
+  "stack": "django",
+  "patterns": [
+    {
+      "id": "django-admin-login",
+      "match_regex": "(?i)(?:django\\s+)?admin\\s+login|/admin/login",
+      "template": "        # Django admin login via /admin/login/.\n        page.goto(BASE + '/admin/login/')\n        page.fill('input[name=username]', LOGIN)\n        page.fill('input[name=password]', PASSWORD)\n        page.click('button[type=submit]')\n        page.wait_for_load_state('networkidle', timeout=15000)\n",
+      "vars": {}
+    },
+    {
+      "id": "django-csrf-rpc",
+      "match_regex": "(?i)trigger\\s+(?P<count>\\d+)\\s+(?:Django|django)\\s+(?:RPC|view|endpoint)",
+      "template": "        # {count} Django POST calls (CSRF-aware via cookie passthrough).\n        for _i in range({count}):\n            page.evaluate('''async () => {{\n                const csrf = document.cookie.match(/csrftoken=([^;]+)/);\n                await fetch('/api/test-endpoint/', {{\n                    method: 'POST',\n                    headers: {{'Content-Type':'application/json',\n                              'X-CSRFToken': csrf ? csrf[1] : ''}},\n                    credentials: 'same-origin',\n                    body: JSON.stringify({{}})\n                }});\n            }}''')\n",
+      "vars": {"count": "from_match"}
+    },
+    {
+      "id": "pytest-django-run",
+      "match_regex": "(?i)run\\s+pytest\\s+(?:-x\\s+)?(?P<test_path>[\\w./_-]+)",
+      "template": "        # Run pytest subprocess + assert exit code 0.\n        import subprocess\n        proc = subprocess.run(['pytest', '-x', '{test_path}'],\n                              capture_output=True, text=True, timeout=300)\n        EVIDENCE['checks']['pytest_{test_path}'] = {{\n            'returncode': proc.returncode,\n            'stdout_tail': (proc.stdout or '')[-400:],\n            'pass': proc.returncode == 0\n        }}\n",
+      "vars": {"test_path": "from_match"}
+    }
+  ]
+}

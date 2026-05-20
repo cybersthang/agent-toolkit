@@ -529,6 +529,123 @@ def _run_playwright(probe: Dict[str, Any], dry_run: bool) -> int:
     return 1
 
 
+def _run_mcp_call(probe: Dict[str, Any], dry_run: bool) -> int:
+    """mcp_call — invoke an MCP tool via the toolkit's mcp-call CLI bridge
+    (templates/codex/tools/mcp_call.py) and assert returncode + optional
+    stdout regex.
+
+    Probe schema:
+
+      "falsification": {
+        "type": "mcp_call",
+        "description": "<human readable>",
+        "runner": {
+          "server": "realdata_test",
+          "tool": "run_module_test",
+          "args": {"module_name": "{MODULE}", "module_action": "update"},
+          "args_substitutions": {"MODULE": "nakivo_profiler"},
+          "expected_returncode": 0,
+          "expected_stdout_regex": "Ran \\d+ tests in .* OK"
+        }
+      }
+
+    `args_substitutions` is a plain string-format dict applied to JSON-
+    encoded args before invocation; lets one probe template serve
+    multiple modules. Project-agnostic.
+
+    PROVEN when returncode matches AND (no regex OR regex matched in
+    stdout). REFUTED otherwise.
+    """
+    runner = probe.get("runner") or (probe.get("falsification") or {}).get("runner") or {}
+    server = runner.get("server")
+    tool = runner.get("tool")
+    args = runner.get("args") or {}
+    subs = runner.get("args_substitutions") or {}
+    expected_rc = int(runner.get("expected_returncode", 0))
+    expected_rx = runner.get("expected_stdout_regex")
+    timeout_s = int(runner.get("timeout_s", 300))
+
+    missing = [k for k, v in [("server", server), ("tool", tool)] if not v]
+    if missing:
+        print(f"[falsify] mcp_call runner missing: {missing}", file=sys.stderr)
+        return 2
+
+    # Apply substitutions to args (string-format on JSON serialization).
+    try:
+        args_json = json.dumps(args, ensure_ascii=False)
+        if subs:
+            args_json = args_json.format(**subs)
+        args_final = json.loads(args_json)
+    except (TypeError, ValueError, KeyError) as e:
+        print(f"[falsify] args_substitutions failed: {e}", file=sys.stderr)
+        return 2
+
+    cli = REPO_ROOT / ".codex" / "tools" / "mcp_call.py"
+    if not cli.exists():
+        print(f"[falsify] mcp-call CLI missing: {cli}. Re-run setup.py update.",
+              file=sys.stderr)
+        return 2
+
+    cmd_parts = [
+        sys.executable, str(cli),
+        server, tool,
+        "--args", json.dumps(args_final, ensure_ascii=False),
+        "--timeout", str(timeout_s),
+    ]
+    print(f"[falsify] DRY-RUN MCP CALL:" if dry_run else f"[falsify] LIVE MCP CALL:")
+    print(f"          server: {server}")
+    print(f"          tool:   {tool}")
+    print(f"          args:   {json.dumps(args_final, ensure_ascii=False)[:200]}")
+    print(f"          expected_rc: {expected_rc}")
+    if expected_rx:
+        print(f"          expected_stdout_regex: {expected_rx}")
+
+    if dry_run:
+        return 0
+
+    try:
+        proc = subprocess.run(
+            cmd_parts,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_s + 30,
+        )
+    except subprocess.TimeoutExpired:
+        print(f"[falsify] mcp_call timed out after {timeout_s}s", file=sys.stderr)
+        return 1
+    except (OSError, FileNotFoundError) as e:
+        print(f"[falsify] mcp_call invocation failed: {e}", file=sys.stderr)
+        return 2
+
+    print(f"[falsify] returncode={proc.returncode}")
+    if proc.returncode != expected_rc:
+        print(f"[falsify] REFUTED: returncode {proc.returncode} != "
+              f"expected {expected_rc}", file=sys.stderr)
+        if proc.stderr:
+            print(f"[falsify] stderr:\n{proc.stderr[:500]}", file=sys.stderr)
+        return 1
+
+    if expected_rx:
+        try:
+            if not re.search(expected_rx, proc.stdout or "",
+                             re.MULTILINE | re.DOTALL):
+                print(f"[falsify] REFUTED: stdout did not match "
+                      f"'{expected_rx}'", file=sys.stderr)
+                if proc.stdout:
+                    print(f"[falsify] stdout sample:\n{proc.stdout[:500]}",
+                          file=sys.stderr)
+                return 1
+        except re.error as e:
+            print(f"[falsify] regex compile error: {e}", file=sys.stderr)
+            return 2
+
+    print(f"[falsify] PROVEN: mcp_call returncode={proc.returncode}"
+          + (f" + stdout matches regex" if expected_rx else ""))
+    return 0
+
+
 def main() -> int:
     _force_utf8_streams()
     parser = argparse.ArgumentParser(description="Empirical timing_perturb falsifier")
@@ -546,10 +663,13 @@ def main() -> int:
 
     falsi = probe.get("falsification") or {}
     ftype = (falsi.get("type") or "").lower()
-    if ftype not in ("timing_perturb", "side_effect_inject", "log_assertion", "playwright"):
+    if ftype not in (
+        "timing_perturb", "side_effect_inject", "log_assertion",
+        "playwright", "mcp_call",
+    ):
         print(f"[falsify] probe '{args.probe}' is type "
               f"'{falsi.get('type')}' — supported: timing_perturb, "
-              f"side_effect_inject, log_assertion, playwright",
+              f"side_effect_inject, log_assertion, playwright, mcp_call",
               file=sys.stderr)
         return 2
 
@@ -559,6 +679,8 @@ def main() -> int:
         return _run_log_assertion(probe, args.dry_run)
     if ftype == "playwright":
         return _run_playwright(probe, args.dry_run)
+    if ftype == "mcp_call":
+        return _run_mcp_call(probe, args.dry_run)
 
     # Fall through to timing_perturb (original implementation below).
     runner = falsi.get("runner") or {}

@@ -28,3 +28,9 @@ build/
 .cursor/mcp.json
 agent-toolkit.config.json
 .agent-toolkit-install.json
+
+# Private preset overlays — author + team-specific defaults. Public toolkit
+# stays clean; these stay local. Strip the `.template` from
+# `presets/_example_private_overlay.json.template` to seed your own.
+presets/odoo-12-nakivo.json
+presets/*-private.json

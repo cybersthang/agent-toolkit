@@ -1,0 +1,23 @@
+{
+  "_doc": "Patterns for assertion phrases — 'assert X within Y ms', 'count delta == N', 'p99 delta <= Nms'.",
+  "patterns": [
+    {
+      "id": "assert-delta-within-ms",
+      "match_regex": "(?i)delta\\s*==?\\s*(?P<delta>\\d+)\\s+within\\s+(?P<ms>\\d+)\\s*ms",
+      "template": "        # Assert delta={delta} within {ms}ms.\n        before = fetch_indexeddb_count(page)\n        page.wait_for_timeout({ms})\n        after = fetch_indexeddb_count(page)\n        EVIDENCE['checks']['delta_within_ms'] = {{\n            'before': before, 'after': after, 'delta': after - before,\n            'expected_delta': {delta}, 'window_ms': {ms},\n            'pass': (after - before) >= {delta}\n        }}\n",
+      "vars": {"delta": "from_match", "ms": "from_match"}
+    },
+    {
+      "id": "assert-p99-delta-le",
+      "match_regex": "(?i)p99\\s*(?:\\(\\s*ON\\s*\\)\\s*-\\s*p99\\s*\\(\\s*OFF\\s*\\)\\s*)?(?:delta\\s*)?(?:<=|≤)\\s*(?P<ms>[\\d.]+)\\s*ms",
+      "template": "        # Microbench p99 delta <= {ms}ms.\n        # Implemented in helper — see scripts/microbench_helper.py.\n        EVIDENCE['checks']['p99_delta'] = run_microbench(page, threshold_ms={ms})\n",
+      "vars": {"ms": "from_match"}
+    },
+    {
+      "id": "assert-sum-within-pct",
+      "match_regex": "(?i)\\(?net_up\\s*\\+\\s*net_down\\s*\\+\\s*server\\)?\\s+is\\s+within\\s+(?:±|\\+/-)?(?P<pct>\\d+)\\s*%",
+      "template": "        # Assert sum identity within ±{pct}%.\n        sample = (fetch_indexeddb_entries(page, limit=1) or [None])[0]\n        if sample:\n            s = (sample.get('server_ms') or 0) + (sample.get('net_up_ms') or 0) + (sample.get('net_down_ms') or 0)\n            t = sample.get('total_ms') or 0\n            diff_pct = abs(s - t) / t if t else 1.0\n            EVIDENCE['checks']['sum_within_pct'] = {{\n                'sum': s, 'total': t, 'diff_pct': diff_pct,\n                'threshold': {pct}/100.0, 'pass': diff_pct <= {pct}/100.0\n            }}\n",
+      "vars": {"pct": "from_match"}
+    }
+  ]
+}

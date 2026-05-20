@@ -519,8 +519,11 @@ def build_plan(preset, ctx, target):
         # Skip noise that's machine-local or project-specific
         if '__pycache__' in rel.parts or src.suffix == '.pyc':
             continue
-        if rel.name.startswith('_') and src.suffix == '.py':
-            # Toolkit ships no per-project ad-hoc probe scripts
+        if rel.name.startswith('_') and src.suffix == '.py' and len(rel.parts) <= 1:
+            # Skip top-level `.codex/_foo.py` ad-hoc probe scripts (toolkit
+            # ships none today; defensive guard). DON'T skip nested
+            # `tests/hooks/_helpers.py` or `_audit/_*.py` — those are
+            # shared test infrastructure that MUST ship.
             continue
         # canonical_decisions handling: only ship the chosen variant, never
         # the others. Output filename is always `canonical_decisions.json`.

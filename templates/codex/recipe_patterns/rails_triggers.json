@@ -1,0 +1,24 @@
+{
+  "_doc": "Patterns for Rails stack — RSpec output, Devise login, Rails CSRF-token endpoints. Detection: presence of `config/application.rb`. Same plug-in rules as the Django pattern file.",
+  "stack": "rails",
+  "patterns": [
+    {
+      "id": "devise-login",
+      "match_regex": "(?i)devise\\s+login|/users/sign_in",
+      "template": "        # Devise login via /users/sign_in.\n        page.goto(BASE + '/users/sign_in')\n        page.fill('input[name=\"user[email]\"]', LOGIN)\n        page.fill('input[name=\"user[password]\"]', PASSWORD)\n        page.click('input[type=submit]')\n        page.wait_for_load_state('networkidle', timeout=15000)\n",
+      "vars": {}
+    },
+    {
+      "id": "rails-authenticity-token-rpc",
+      "match_regex": "(?i)trigger\\s+(?P<count>\\d+)\\s+(?:Rails|rails)\\s+(?:RPC|controller|endpoint)",
+      "template": "        # {count} Rails POST calls (authenticity_token from meta tag).\n        for _i in range({count}):\n            page.evaluate('''async () => {{\n                const meta = document.querySelector('meta[name=csrf-token]');\n                const token = meta ? meta.getAttribute('content') : '';\n                await fetch('/api/test_endpoint', {{\n                    method: 'POST',\n                    headers: {{'Content-Type':'application/json',\n                              'X-CSRF-Token': token}},\n                    credentials: 'same-origin',\n                    body: JSON.stringify({{}})\n                }});\n            }}''')\n",
+      "vars": {"count": "from_match"}
+    },
+    {
+      "id": "rspec-run",
+      "match_regex": "(?i)run\\s+rspec\\s+(?P<spec_path>[\\w./_-]+)",
+      "template": "        # Run RSpec subprocess + assert exit code 0.\n        import subprocess\n        proc = subprocess.run(['bin/rspec', '{spec_path}'],\n                              capture_output=True, text=True, timeout=300)\n        EVIDENCE['checks']['rspec_{spec_path}'] = {{\n            'returncode': proc.returncode,\n            'stdout_tail': (proc.stdout or '')[-400:],\n            'pass': proc.returncode == 0\n        }}\n",
+      "vars": {"spec_path": "from_match"}
+    }
+  ]
+}

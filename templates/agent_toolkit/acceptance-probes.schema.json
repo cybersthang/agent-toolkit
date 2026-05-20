@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agent-toolkit/acceptance-probes.schema.json",
+  "title": "agent-toolkit acceptance-probes (v2)",
+  "type": "object",
+  "description": "Probe registry consumed by evidence_audit, auto_falsify, auto_run_probes, gap-fix-cycle, spec-vs-evidence-diff. v2 adds explicit `runner` block so AGENT can execute probes without manual-browser PENDING + adds auto_run + recipe_drift_tolerance.",
+  "required": ["probes"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 2
+    },
+    "_doc": {"type": "string"},
+    "_schema": {"type": "object"},
+    "_workflow": {"type": ["array", "object"]},
+    "_defaults": {"type": "object"},
+    "version": {"type": "integer"},
+    "probes": {
+      "type": "array",
+      "items": {"$ref": "#/definitions/probe"}
+    }
+  },
+  "definitions": {
+    "probe": {
+      "type": "object",
+      "required": ["id", "description"],
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "description": "Kebab-case unique probe id."
+        },
+        "description": {"type": "string"},
+        "applies_when": {
+          "type": "object",
+          "properties": {
+            "claim_regex": {"type": "string"},
+            "path_globs": {"type": "array", "items": {"type": "string"}},
+            "task_tags": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "evidence": {
+          "type": "object",
+          "properties": {
+            "required_tools": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "Tool names that count as evidence for this probe. Built-ins: real-data-proof, manual-browser, code-grader. Custom: mcp__<server>__<tool>. evidence_audit also recognizes patterns from .agent-toolkit/evidence_audit_config.json.additional_evidence_patterns."
+            },
+            "min_calls": {"type": "integer", "default": 1},
+            "must_include_call": {"type": "string"},
+            "required_result_fingerprint": {"type": "string"}
+          }
+        },
+        "falsification": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "timing_perturb",
+                "side_effect_inject",
+                "log_assertion",
+                "playwright",
+                "playwright_python",
+                "mcp_call",
+                null
+              ],
+              "description": "Runner type used by .codex/tools/falsify.py. `playwright` requires Node; `playwright_python` uses Python playwright (no Node); `mcp_call` invokes an MCP tool and asserts output."
+            },
+            "description": {
+              "type": "string",
+              "description": "Human-readable falsification recipe. Used by spec-vs-evidence-diff to detect drift between recipe and script."
+            },
+            "runner": {
+              "type": "object",
+              "description": "Type-specific runner config. See templates/codex/tools/falsify.py.",
+              "additionalProperties": true
+            }
+          }
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["blocker", "warn"]
+        },
+        "rationale": {"type": "string"},
+        "added": {"type": "string", "format": "date"},
+        "added_by": {"type": "string"},
+        "related_adr": {"type": ["string", "null"]},
+        "auto_run": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, auto_run_probes PostToolUse hook fires this probe whenever an Edit on a matching path_glob lands. If false, probe only runs via /run-probes or auto_falsify precommit."
+        },
+        "recipe_drift_tolerance": {
+          "type": "string",
+          "enum": ["strict", "medium", "loose"],
+          "default": "medium",
+          "description": "spec-vs-evidence-diff sensitivity. strict = warn on any token mismatch; loose = warn only on critical token mismatch (server actions, RPC names, freeze methods)."
+        }
+      }
+    }
+  }
+}

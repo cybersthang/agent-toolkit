@@ -12,6 +12,13 @@ from .strip import strip_inert_text
 
 PROBES_REL = ".agent-toolkit/acceptance-probes.json"
 
+# AI-Code: C1 — non-MCP evidence patterns loaded from project config.
+# Lets per-project teams declare additional evidence recognizers (e.g.
+# Playwright stdout markers, custom CLI verdict markers) without forking
+# the hook. Public projects can ship a recommended set via
+# templates/agent_toolkit/evidence_audit_config.example.json.
+EVIDENCE_CONFIG_REL = ".agent-toolkit/evidence_audit_config.json"
+
 DEFAULT_PASS_CLAIM_REGEX = (
     r"\b(passed|tests?\s*pass(ed)?|all\s*pass|verified|"
     r"đã\s*verify|đã\s*test(\s*xong)?|đã\s*chạy\s*xong|hoàn\s*thành|"
@@ -210,6 +217,98 @@ def probe_evidence_satisfied(
                 if actual_fp == expected_fp:
                     fingerprint_satisfied = True
     return (hits >= min_calls) and fingerprint_satisfied
+
+
+def load_additional_evidence_patterns(workspace: Path) -> List[Dict[str, Any]]:
+    """Load project-defined extra evidence recognizers.
+
+    Schema (templates/agent_toolkit/evidence_audit_config.example.json):
+
+      {
+        "additional_evidence_patterns": [
+          {
+            "name": "playwright-python-stdout",
+            "claim_regex": "PASS|verified",
+            "match_tool_results": "===.+_BEGIN===[\\s\\S]*?\\\"all_pass\\\":\\s*true[\\s\\S]*?===.+_END===",
+            "counts_as": "manual-browser"
+          },
+          ...
+        ]
+      }
+
+    The hook considers a probe satisfied when:
+      - its `evidence.required_tools` is satisfied (MCP tool matching), OR
+      - a registered `additional_evidence_pattern` whose `counts_as` is
+        listed in the probe's `required_tools` matches at least one
+        tool_result text in the current turn.
+
+    Fails open: missing/malformed config returns empty list.
+    """
+    path = workspace / EVIDENCE_CONFIG_REL
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    patterns = data.get("additional_evidence_patterns") or []
+    return [p for p in patterns if isinstance(p, dict) and p.get("match_tool_results")]
+
+
+def _tool_result_text(result: Dict[str, Any]) -> str:
+    """Concatenate text content of a tool_result block."""
+    content = result.get("content") if isinstance(result, dict) else None
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        chunks: List[str] = []
+        for b in content:
+            if isinstance(b, dict) and b.get("type") == "text":
+                t = b.get("text") or ""
+                if t:
+                    chunks.append(t)
+        return "\n".join(chunks)
+    return ""
+
+
+def additional_evidence_satisfied(
+    probe: Dict[str, Any],
+    tool_results_by_id: Dict[str, Dict[str, Any]],
+    patterns: List[Dict[str, Any]],
+) -> bool:
+    """Check whether a project-defined evidence pattern matches.
+
+    A probe is satisfied through this path when at least one configured
+    pattern's `counts_as` value is in the probe's evidence.required_tools
+    AND its `match_tool_results` regex matches the text of at least one
+    tool_result observed in the current turn.
+    """
+    if not patterns or not tool_results_by_id:
+        return False
+    required = set((probe.get("evidence") or {}).get("required_tools") or [])
+    if not required:
+        return False
+    # Pre-compile patterns for this call.
+    compiled: List[Tuple[Dict[str, Any], re.Pattern]] = []
+    for p in patterns:
+        counts_as = p.get("counts_as") or ""
+        if counts_as and counts_as not in required:
+            continue
+        try:
+            rx = re.compile(p["match_tool_results"], re.IGNORECASE | re.UNICODE)
+        except re.error:
+            continue
+        compiled.append((p, rx))
+    if not compiled:
+        return False
+    for _tid, result in tool_results_by_id.items():
+        text = _tool_result_text(result)
+        if not text:
+            continue
+        for _p, rx in compiled:
+            if rx.search(text):
+                return True
+    return False
 
 
 def default_pass_evidence_satisfied(tool_calls: List[Dict[str, Any]], prefixes: Tuple[str, ...]) -> bool:

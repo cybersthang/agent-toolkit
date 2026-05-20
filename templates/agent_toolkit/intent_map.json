@@ -132,6 +132,31 @@
       "note": "Jira / ticket",
       "pattern": "\\b(jira|nkv[-\\s]?\\d+|ticket|sprint)\\b",
       "skills": ["odoo-jira-workflow"]
+    },
+    {
+      "note": "Toolkit-meta: /gap-status — concise probe-status table for current spec",
+      "pattern": "\\b(/gap[-\\s]*status\\b|gap\\s*status|còn\\s*(blocker|gap)|có\\s*(blocker|gap)\\s*gì|outstanding\\s*probes?|probe\\s*verdict|status.*probe)\\b",
+      "skills": ["gap-status"]
+    },
+    {
+      "note": "Toolkit-meta: /gap-fix — diagnose-patch-rerun loop for REFUTED probe",
+      "pattern": "\\b(/gap[-\\s]*fix\\b|gap\\s*fix|fix\\s*đi|fix\\s*hết\\s*đi|sửa.*probe|tự\\s*sửa)\\b",
+      "skills": ["gap-fix-cycle"]
+    },
+    {
+      "note": "Toolkit-meta: /test-env-bootstrap — auto-discover URL/creds/process_manager",
+      "pattern": "\\b(/test[-\\s]*env[-\\s]*bootstrap|bootstrap.*test\\s*env|discover.*test\\s*env|auto.*test\\s*env|setup.*test\\s*env)\\b",
+      "skills": ["test-env-bootstrap"]
+    },
+    {
+      "note": "Toolkit-meta: /recipe-to-script — generate Playwright script from probe recipe text",
+      "pattern": "\\b(/recipe[-\\s]*to[-\\s]*script|recipe\\s*to\\s*script|generate.*probe\\s*script|prose.*to.*script|probe.*recipe)\\b",
+      "skills": ["recipe-to-probe-script"]
+    },
+    {
+      "note": "Toolkit-meta: /spec-drift — advisory diff between probe recipe and script",
+      "pattern": "\\b(/spec[-\\s]*drift|spec\\s*drift|recipe\\s*drift|drift.*probe|recipe\\s*vs.*script)\\b",
+      "skills": ["spec-vs-evidence-diff"]
     }
   ]
 }

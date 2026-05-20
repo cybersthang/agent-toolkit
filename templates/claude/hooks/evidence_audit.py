@@ -28,9 +28,11 @@ from _audit.claim_audit import (
 )
 from _audit.pass_contract import (
     DEFAULT_PASS_CLAIM_REGEX, DEFAULT_PASS_EXEMPT_MARKERS, DEFAULT_REQUIRED_TOOL_PREFIXES,
-    default_pass_evidence_satisfied, discover_required_prefixes, edited_paths_in_turn,
-    load_probes_registry, matching_probes, meta_review_mode, pass_claim_present,
-    probe_evidence_satisfied, probe_skip_requested,
+    additional_evidence_satisfied, default_pass_evidence_satisfied,
+    discover_required_prefixes, edited_paths_in_turn,
+    load_additional_evidence_patterns, load_probes_registry, matching_probes,
+    meta_review_mode, pass_claim_present, probe_evidence_satisfied,
+    probe_skip_requested,
 )
 from _audit.progress_checks import (
     ALL_PROGRESS_CHECKS, progress_skip_requested, run_progress_checks,
@@ -136,8 +138,15 @@ def main() -> int:
             _exit_allow(workspace, bypass=["probe-skip"])
 
         all_probes_ok = True
+        # C1 — load project-defined additional evidence recognizers
+        # (e.g. Playwright stdout markers). When a probe's standard
+        # required_tools check fails, fall back to text-pattern match
+        # against tool_results before declaring the probe unsatisfied.
+        extra_patterns = load_additional_evidence_patterns(workspace)
         for p in matched:
             if not probe_evidence_satisfied(p, tool_calls, results_by_id):
+                if additional_evidence_satisfied(p, results_by_id, extra_patterns):
+                    continue
                 if (p.get("severity") or "blocker").lower() == "blocker":
                     all_probes_ok = False
                     break

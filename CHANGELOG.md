@@ -3,6 +3,135 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
+## [0.6.0] — 2026-05-20 — Autonomy chain: AGENT covers DEV's manual interventions
+
+Closes the loop on 9 recurring DEV interventions (auto-run tests after
+edit, drive browser probes, kill+restart daemon on code change, recognize
+non-MCP evidence, etc.) so a single `/implement <slug>` invocation can
+take a spec from `clarified` to `verified` without DEV touching anything
+between Plan and PR review. Eleven patches landed across 4 sprints +
+~17 unit tests covering the new tools.
+
+### Added — schemas + bootstrap (S1)
+
+- `templates/agent_toolkit/test_env.schema.json` (v2) — declares
+  `creds_ref` (env-var refs + fallback chain + `spawn_test_user_via_mcp`
+  toggle) and `process_manager` (start_cmd template, health_check_url,
+  pid_track_file, shutdown_signal) so daemon_manager/creds_resolver
+  hooks can drive the daemon and resolve secrets without DEV input.
+  Sibling: `test_env.example.json`.
+- `templates/agent_toolkit/acceptance-probes.schema.json` (v2) — adds
+  `runner` block, `auto_run: bool` (opt-in PostToolUse fire),
+  `recipe_drift_tolerance` (loose/medium/strict).
+- `templates/codex/tools/migrate_probes_v2.py` — idempotent v1→v2
+  migration with `.v1.bak` safety copy + sensible defaults.
+- `templates/cursor/skills/_common/test-env-bootstrap/SKILL.md` — per-
+  stack discovery of URL/DB/creds/process_manager from project config.
+
+### Added — evidence + falsifier runners (S1 + S2)
+
+- `templates/agent_toolkit/evidence_audit_config.example.json` — config-
+  driven recognizers for non-MCP evidence (Playwright stdout markers,
+  falsify-CLI verdicts, pytest summaries, realdata_test outputs).
+- `templates/claude/hooks/_audit/pass_contract.py` —
+  `load_additional_evidence_patterns()` +
+  `additional_evidence_satisfied()` helpers; `evidence_audit.py` wired
+  to consult them before declaring a probe unsatisfied. Removes the
+  repeating `probe-skip:` boilerplate for `manual-browser` probes whose
+  evidence shows up via Playwright/falsify stdout.
+- `templates/codex/tools/falsify.py` — new `mcp_call` runner type with
+  `args_substitutions` template-reuse, expected_returncode +
+  expected_stdout_regex assertions.
+- `templates/codex/tools/mcp_call.py` — CLI bridge invoking MCP tools
+  from hook context. Prefers `claude --print --mcp-call <server>:<tool>`
+  when available, falls back to direct JSON-RPC spawn driven by
+  `.mcp.json`.
+
+### Added — orchestration hooks (S3)
+
+- `templates/claude/hooks/auto_run_probes.py` — PostToolUse Edit hook
+  fires `falsify.py --probe <id>` for every probe with `auto_run: true`
+  whose `path_globs` match the edited file. Debounce 30s per probe via
+  `.agent-toolkit/.auto_probes_state.json`.
+- `templates/claude/hooks/auto_test_runner.py` — PostToolUse Edit hook
+  invokes the configured MCP test tool (default
+  `realdata_test:run_module_test`) for source/test pairs matching
+  per-stack regex mappings. Debounce 10s. Configurable via
+  `.agent-toolkit/auto_test.json`.
+- `templates/claude/hooks/daemon_manager.py` — kill + restart the test
+  daemon via `test_env.process_manager` after Edits in feature-scope
+  files. Skips edits in `tests/`, `.agent-toolkit/`, etc.
+- `templates/codex/tools/creds_resolver.py` — resolve `creds_ref` env
+  vars from `.codex/mcp.local.env` (fallback chain). Never prints
+  passwords to stderr; output goes straight to subprocess env.
+- Wired into `templates/claude/settings.json` PostToolUse + Stop arrays
+  so they fire automatically after `setup.py update`.
+
+### Added — autonomy skills + slash commands (S4)
+
+- `/gap-status [<spec-slug>]` slash command + skill (`templates/cursor/
+  skills/_common/gap-status/`) + engine `templates/codex/tools/
+  gap_status.py`. Markdown table cross-referencing spec acceptance_evals
+  + probe registry + auto_run_probes verdicts + verify_report cells.
+  Replaces the DEV-driven recap loop ("có blocker hay GAP gì không").
+- `gap-fix-cycle` skill (`templates/cursor/skills/_common/gap-fix-cycle/`)
+  + engine `templates/codex/tools/gap_fix_cycle.py` + 3 seed diagnose
+  strategies (`templates/codex/gap_fix_diagnose/`): Python assertion
+  mismatch, log_assertion regex relaxer, Playwright zero-selector
+  annotation. Diagnose-patch-rerun loop, max 3 iterations, scoped to
+  probe.path_globs, append to `decision-log.md`.
+- `recipe-to-probe-script` skill + engine `templates/codex/tools/
+  recipe_to_probe_script.py` + 3 pattern files (`templates/codex/
+  recipe_patterns/`: rpc_triggers, assertions, freeze_scenarios). Free-
+  text recipe → executable Playwright Python script.
+- `spec-vs-evidence-diff` skill + Stop hook `templates/claude/hooks/
+  spec_drift_advisory.py`. Advisory warns when a probe's prose recipe
+  references a load-bearing token that the generated script doesn't
+  implement. Configurable tolerance per probe.
+
+### Added — intent routing + docs
+
+- `templates/agent_toolkit/intent_map.json` — 5 new entries (gap-status,
+  gap-fix, test-env-bootstrap, recipe-to-script, spec-drift) so
+  intent_router auto-suggests the matching skill.
+- `tests/test_new_tools.py` — 17 unit tests covering the 5 new tool
+  CLIs, the C1 `additional_evidence_satisfied` helper, the
+  pass_contract relative-import path, and migrate_probes_v2 idempotency.
+
+### Operating model
+
+DEV-active gates remain: `/plan`, `/clarify`, PR review, commit, push.
+Everything between (analyze → tasks → implement → run probes →
+gap-fix-cycle → verify → emit report) is autonomous when the hooks +
+skills land. ADR-002 hard-stops still apply (no prod_db_write, no
+git_push_force, no credentials_write, no main-branch push).
+
+### Migration (existing toolkit users)
+
+```
+cd <your-toolkit-clone>
+git pull
+python setup.py update <your-project> --apply
+python <project>/.codex/tools/migrate_probes_v2.py <project>
+cp <project>/.agent-toolkit/evidence_audit_config{.example,}.json
+npm install -g playwright && npx playwright install chromium    # if you want browser probes
+```
+
+Sensible defaults: `migrate_probes_v2` sets `auto_run: false` on every
+probe — explicitly opt in on probes you want PostToolUse-fired.
+
+### Known gaps left for follow-up
+
+- `gap-fix-cycle` ships 3 diagnose strategies — common Python/Playwright
+  signatures only. PR new strategies under `templates/codex/
+  gap_fix_diagnose/`.
+- `recipe-to-probe-script` pattern library is Odoo-flavor (web.framework,
+  blockUI, longpolling). Django/Rails projects need to PR new pattern
+  files under `templates/codex/recipe_patterns/`.
+- Browser-side falsifier still requires Node + `npm i -g playwright` per
+  decision Q5 ("require Node"). No bundled `playwright_python` runner —
+  use `playwright` type via existing npx path.
+
 ## [0.5.1] — 2026-05-19 — Public-ready cleanup
 
 ### Removed (BREAKING for anyone who still used the in-toolkit overlay)

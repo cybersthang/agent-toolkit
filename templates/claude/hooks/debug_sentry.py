@@ -69,6 +69,37 @@ DEFAULT_PATTERNS = [
     r"werkzeug\.exceptions\.",
 ]
 
+# v0.6.1 split — bare exception names are WEAK and only count when
+# wrapped in traceback context (File "...", line N | Traceback caret).
+# Reading a Python source file containing `raise ValueError(...)`
+# previously false-triggered → duplicate clarification-gate output.
+STRONG_PATTERNS = [
+    r"Traceback \(most recent call last\)",
+    r"psycopg2\.errors\.[A-Z]\w*",
+    r"odoo\.exceptions\.[A-Z]\w*",
+    r"werkzeug\.exceptions\.[A-Z]\w*",
+    r'^\s*File "[^"]+", line \d+',
+    r"\bUnhandledPromiseRejection\b",
+]
+
+WEAK_PATTERNS = [
+    r"\bAssertionError\b",
+    r"\bAttributeError\b",
+    r"\bIntegrityError\b",
+    r"\bAccessError\b",
+    r"\bKeyError\b",
+    r"\bTypeError\b",
+    r"\bValueError\b",
+    r"\bImportError\b",
+    r"\bRuntimeError\b",
+]
+
+CONTEXT_WINDOW_CHARS = 200
+TRACEBACK_CONTEXT = re.compile(
+    r'File "[^"]+", line \d+|Traceback|^\s*\^+\s*$',
+    re.MULTILINE,
+)
+
 # If response contains any of these markers, the agent already self-disclaimed
 # or is actively debugging — skip the sentry.
 SKIP_MARKERS = (
@@ -155,7 +186,39 @@ def _extract_text_and_results(turn: List[Dict[str, Any]]) -> Tuple[str, str]:
 
 
 def _matches(text: str, patterns: List[str]) -> List[str]:
+    """Return pattern hits.
+
+    v0.6.1 logic:
+      - STRONG_PATTERNS match → count immediately (clear runtime shape).
+      - WEAK_PATTERNS only count when a TRACEBACK_CONTEXT signal
+        (File "...", line N | Traceback | caret) appears within
+        ±CONTEXT_WINDOW_CHARS of the match.
+
+    Custom `patterns` arg (project debug.json override) are treated as
+    STRONG (no context check) — DEV explicitly opted in.
+    """
     seen: List[str] = []
+    is_default = patterns is DEFAULT_PATTERNS or patterns == DEFAULT_PATTERNS
+    if is_default:
+        for pat in STRONG_PATTERNS:
+            try:
+                if re.search(pat, text, re.MULTILINE):
+                    seen.append(pat)
+            except re.error:
+                continue
+        for pat in WEAK_PATTERNS:
+            try:
+                rx = re.compile(pat, re.MULTILINE)
+            except re.error:
+                continue
+            for m in rx.finditer(text):
+                start = max(0, m.start() - CONTEXT_WINDOW_CHARS)
+                end = min(len(text), m.end() + CONTEXT_WINDOW_CHARS)
+                if TRACEBACK_CONTEXT.search(text[start:end]):
+                    seen.append(pat)
+                    break
+        return seen
+    # Legacy / project-customized patterns.
     for pat in patterns:
         try:
             if re.search(pat, text, re.MULTILINE):

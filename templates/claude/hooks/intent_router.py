@@ -396,6 +396,10 @@ def _format_reminder(skills: List[str]) -> str:
 
 
 def main() -> int:
+    # Kill-switch: env var disables all enforcement (emergency).
+    if os.environ.get("AGENT_TOOLKIT_DISABLE") == "1":
+        return 0
+
     raw = sys.stdin.read()
     if not raw.strip():
         return 0

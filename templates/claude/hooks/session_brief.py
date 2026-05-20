@@ -359,6 +359,10 @@ def _build_brief(workspace: Path) -> str:
 
 
 def main() -> int:
+    # Kill-switch: env var disables all enforcement (emergency).
+    if os.environ.get("AGENT_TOOLKIT_DISABLE") == "1":
+        return 0
+
     raw = sys.stdin.read()
     envelope: Dict[str, Any] = {}
     if raw.strip():

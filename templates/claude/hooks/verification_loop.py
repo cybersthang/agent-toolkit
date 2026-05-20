@@ -75,7 +75,7 @@ wrap_utf8_stdio()
 
 CONFIG_REL = ".agent-toolkit/verification.json"
 STATE_REL = ".agent-toolkit/.verification_loop_last.json"
-SUPPORTED_TOOLS = {"Edit", "Write", "MultiEdit"}
+SUPPORTED_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 NUDGE_TTL_SECONDS = 30
 
 
@@ -238,6 +238,10 @@ def _build_message(file_path: str, rel_path: str, kinds: List[str], mcp_prefix: 
 
 
 def main() -> int:
+    # Kill-switch: env var disables all enforcement (emergency).
+    if os.environ.get("AGENT_TOOLKIT_DISABLE") == "1":
+        _exit_silent()
+
     raw = sys.stdin.read()
     if not raw.strip():
         _exit_silent()
@@ -252,7 +256,7 @@ def main() -> int:
         _exit_silent()
 
     tool_input = envelope.get("tool_input") or {}
-    file_path = tool_input.get("file_path") or ""
+    file_path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
     if not file_path:
         _exit_silent()
 

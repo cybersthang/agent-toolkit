@@ -255,6 +255,10 @@ def _format_reason(asst_text: str, tool_text: str, matched: List[str]) -> str:
 
 
 def main() -> int:
+    # Kill-switch: env var disables all enforcement (emergency).
+    if os.environ.get("AGENT_TOOLKIT_DISABLE") == "1":
+        _exit_allow()
+
     raw = sys.stdin.read()
     if not raw.strip():
         _exit_allow()

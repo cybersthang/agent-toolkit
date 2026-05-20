@@ -44,7 +44,7 @@ from _patterns import (  # noqa: E402
 wrap_utf8_stdio()
 
 
-SUPPORTED_TOOLS = {"Edit", "Write", "MultiEdit"}
+SUPPORTED_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 STATE_REL = ".agent-toolkit/.verify_nudge_last.json"
 CACHE_REL = ".agent-toolkit/.verify_nudge_cache.json"
 TTL_SECONDS = 60
@@ -171,6 +171,10 @@ def _is_duplicate(workspace: Path, key: str) -> bool:
 
 
 def main() -> int:
+    # Kill-switch: env var disables all enforcement (emergency).
+    if os.environ.get("AGENT_TOOLKIT_DISABLE") == "1":
+        _exit_silent()
+
     raw = sys.stdin.read()
     if not raw.strip():
         _exit_silent()
@@ -184,7 +188,7 @@ def main() -> int:
         _exit_silent()
 
     tool_input = envelope.get("tool_input") or {}
-    file_path = tool_input.get("file_path") or ""
+    file_path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
     if not file_path:
         _exit_silent()
 

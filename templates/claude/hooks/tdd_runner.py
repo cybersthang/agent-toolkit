@@ -49,7 +49,7 @@ wrap_utf8_stdio()
 
 
 CONFIG_REL = ".agent-toolkit/tdd.json"
-SUPPORTED_TOOLS = {"Edit", "Write", "MultiEdit"}
+SUPPORTED_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 NUDGE_STATE_REL = ".agent-toolkit/.tdd_runner_last.json"
 NUDGE_TTL_SECONDS = 30  # don't repeat the same nudge within this window
 RUN_TIMEOUT_SECONDS = 30
@@ -263,6 +263,10 @@ def _guess_test_for_source(source_path: str) -> Optional[str]:
 
 
 def main() -> int:
+    # Kill-switch: env var disables all enforcement (emergency).
+    if os.environ.get("AGENT_TOOLKIT_DISABLE") == "1":
+        _exit_silent()
+
     raw = sys.stdin.read()
     if not raw.strip():
         _exit_silent()
@@ -277,7 +281,7 @@ def main() -> int:
         _exit_silent()
 
     tool_input = envelope.get("tool_input") or {}
-    file_path = tool_input.get("file_path") or ""
+    file_path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
     if not file_path:
         _exit_silent()
 

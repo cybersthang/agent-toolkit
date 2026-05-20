@@ -147,7 +147,11 @@ def _file_in_implementing_spec(workspace: Path, file_path: str) -> Optional[str]
     except (ValueError, OSError):
         rel = file_path
     basename = Path(file_path).name
-    for path in specs_dir.glob("*.md"):
+    # rglob picks up both branch-scoped (`<branch>/<slug>.md`) and legacy
+    # flat (`<slug>.md`) layouts — consistent with verify_nudge / verify_lint /
+    # analyze_halt_gate which all rglob. Previously glob("*.md") meant
+    # branch-scoped specs slipped past this gate.
+    for path in specs_dir.rglob("*.md"):
         try:
             text = path.read_text(encoding="utf-8")
         except OSError:
@@ -168,6 +172,10 @@ def _file_in_implementing_spec(workspace: Path, file_path: str) -> Optional[str]
 
 
 def main() -> int:
+    # Kill-switch: env var disables all enforcement (emergency).
+    if os.environ.get("AGENT_TOOLKIT_DISABLE") == "1":
+        _exit_allow()
+
     raw = sys.stdin.read()
     if not raw.strip():
         _exit_allow()

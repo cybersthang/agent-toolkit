@@ -3,6 +3,288 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
+## [0.11.0] — 2026-05-21 — HE improvements: close R3 + G3 + G5 + G6 + G7 + G8 + G9
+
+Per Q1+Q2 grill: accept recommended scope (defer G1 hook consolidation
+until empirical signal; ship G8 with backward-compat fallback). Closes
+7 of remaining HE gaps in one batch, projected score 8.3 → ~8.9/10.
+
+### Added — G3: AST-aware invariant rule (`must_keep_call_ast`)
+
+`templates/claude/hooks/invariant_guard.py` gained `_find_call_names_via_ast`
++ `_ast_call_removals` helpers using stdlib `ast` (no new dependency).
+New rule type `rules.must_keep_call_ast: [...]` works alongside the
+regex-based `must_keep_call`. AST checks Call/Attribute nodes by name
+— immune to whitespace reformat and `from x import y as z` alias rename
+that bypass regex. Distinguishes parse-failure (inconclusive → no
+false-positive) from parse-success-with-no-calls (definitive miss for
+Write tool).
+
+Applies only to `.py` files; non-Python files transparently skip the AST
+check. Returns from `_find_call_names_via_ast`:
+- `None` → parse failed → AST inconclusive, fall back to regex signal
+- empty set → parse OK but no Call nodes → definitive (Write context)
+- non-empty set → call names found
+
+### Added — G5: `/decide` atomic slash command
+
+`templates/claude/commands/decide.md` ships a one-stop command that
+writes ADR + invariant in a single approval gate, replacing the
+fragile sequence "`/adr-add` … (forget) … `/inv-add`" that left ~30%
+of recorded ADRs unenforced. Includes:
+- Cross-link contract: `invariant.related_adr` ↔ `ADR.enforcement`
+- Mandatory smoke-test step against the actual hook
+- Optional update to `.codex/canonical_decisions.json` enforcement
+  block when severity=blocker (closes 3-way SOT drift)
+
+### Added — G6: telemetry export tool
+
+`templates/codex/tools/hook_telemetry_export.py` reads the local ring
+buffers (`.hook_fire_log.json` + `.hook_crash_log.json`) and appends
+new events to a date-partitioned JSONL file
+(`.agent-toolkit/telemetry/hooks-YYYY-MM-DD.jsonl`). Append-only +
+high-water dedup means cross-machine aggregation works via shared
+storage (NFS / S3 / git-lfs) without merge conflicts. Each event is
+enriched with `_host`, `_workspace`, `_source` so 5 devs × 5 projects
+remain distinguishable in one bucket. OTLP HTTP/JSON adapter shipped
+as stub (real impl deferred — install `requests` to wire).
+
+CLI:
+```bash
+python ~/agent-toolkit/templates/codex/tools/hook_telemetry_export.py \
+    --workspace /path/to/project --since 1d
+```
+
+### Added — G7: recursion guard backup in `evidence_audit`
+
+`evidence_audit.py` previously relied solely on envelope field
+`stop_hook_active` to break re-prompt loops. If Anthropic renames that
+field, the hook could loop indefinitely. G7 adds an independent
+counter (`.agent-toolkit/.stop_audit_count.json`, 60s rolling window,
+hard-cap 3). After 3 consecutive blocks within the window, the hook
+auto-allows + emits a warning to alert DEV that primary recursion
+guard may be broken. Allow-path clears the counter so normal flow
+isn't impacted.
+
+### Added — G8: preset-driven `verify_extensions` (backward-compat)
+
+`templates/claude/hooks/verification_loop.py` was hard-coded to nudge
+Odoo-flavoured probes for `.py` / `.xml` files. G8 reads optional
+`probe_rules` + `probe_metadata` from `.agent-toolkit/verification.json`
+to make classification declarative. Django/Rails/FastAPI projects can
+now ship their own config without forking the hook.
+
+Backward compat: when neither field is set, the original Odoo behaviour
+is preserved verbatim. NAKIVO + every existing project keeps working
+after `setup.py update` with zero migration burden. New stacks:
+```json
+{
+  "probe_rules": [
+    {"match": {"suffix": ".py"}, "kinds": ["django_check"]}
+  ],
+  "probe_metadata": {
+    "django_check": {"mcp": "django_system_check", "desc": "..."}
+  }
+}
+```
+
+### Added — G9: canonical `make_invariant()` fixture
+
+`tests/_invariant_fixtures.py` exposes `make_invariant()` + `write_invariants()`
+that enforce the canonical schema shape (`rules.must_keep_regex` /
+`rules.must_keep_call`, never top-level). Catches the schema drift
+discovered during v0.10.0 G2 work: `_make_invariants` in test_hooks.py
+had been writing `must_keep_regex` at the top of the invariant dict,
+silently bypassing invariant_guard while tests PASS-ed.
+
+Legacy `_make_invariants` helper kept for the 1 pre-G9 test that
+depends on it; new tests use `make_invariant()` to make schema drift
+impossible at build time.
+
+### Fixed — R3: coverage scope documentation
+
+`.coveragerc` now carries a clear header explaining the metric measures
+import-coverage only (`lib/installer.py` 97% etc.). Hook templates are
+exercised via subprocess and don't appear in the % — that's not a bug,
+it's a limitation of import-based coverage. Proper subprocess
+instrumentation deferred to a future patch (sitecustomize.py + parallel
+data file combine had pytest-cov interaction issues; ROI vs effort
+didn't justify in this batch).
+
+### Changed
+
+- `lib/installer.py` — `__version__` 0.10.0 → 0.11.0.
+- `templates/claude/hooks/invariant_guard.py` — `_load_invariants()`
+  returns tuple `(invariants, load_error)` (unchanged from v0.10.0);
+  added `_find_call_names_via_ast` + `_ast_call_removals`; rules dict
+  now reads `must_keep_call_ast` alongside existing keys.
+- `templates/claude/hooks/verification_loop.py` — `_classify(file_path)`
+  → `_classify(file_path, cfg)`; new helpers `_classify_default_odoo`
+  and `_classify_from_rules`; `_build_message` reads `probe_metadata`
+  from cfg with hardcoded Odoo defaults as fallback.
+- `templates/claude/hooks/evidence_audit.py` — new recursion guard
+  helpers (`_read_recursion_state` / `_bump_recursion_state` /
+  `_clear_recursion_state`); `_emit_block` consults the counter.
+- `tests/conftest.py` re-exports `make_invariant` / `write_invariants`
+  from `_invariant_fixtures.py` for fixture-style consumers.
+
+### Added — tests (44 new, all pass)
+
+- `tests/test_canonical_invariant_fixture.py` (9 tests) — G9
+- `tests/test_recursion_guard.py` (5 tests) — G7
+- `tests/test_decide_command.py` (8 tests) — G5
+- `tests/test_verification_loop_g8.py` (6 tests) — G8
+- `tests/test_ast_invariant.py` (7 tests) — G3
+- `tests/test_telemetry_export.py` (9 tests) — G6
+
+Total: 444 → 488 tests. All pass on Python 3.8.
+
+### Not changed (still deferred)
+
+- **G1** — Hook consolidation Stop 8 → 4. Need ≥ 200 events from
+  `/hook-health` aggregator across multiple sessions before deciding
+  which hooks are 0-fire / consolidatable. Current empirical signal
+  insufficient. Will revisit in v0.12.0+ once Cursor_NAKIVO has logged
+  enough activity.
+
+### Migration
+
+- **G3**: opt-in. Existing invariants unaffected. Add
+  `rules.must_keep_call_ast: ["name"]` to any invariant for shadow AST
+  check on `.py` files.
+- **G5**: new command available immediately after `setup.py update`. No
+  effect until DEV runs `/decide`.
+- **G6**: new tool installed; no automatic schedule. Wire to cron /
+  pre-push hook if desired.
+- **G7**: zero migration. Counter file is local + cleaned automatically.
+- **G8**: zero migration for Odoo projects. Non-Odoo stacks now have a
+  config path that didn't exist before.
+- **G9**: only affects test authors. Existing tests unaffected; new
+  tests should prefer `make_invariant()` over raw dicts.
+- **R3**: no behaviour change; docstring only.
+
+### Score impact (post-v0.11.0 projection)
+
+| Dim | Before | After | Δ | Driver |
+|---|---:|---:|---:|---|
+| D1 Mechanical enforcement | 9 | 10 | +1 | G3 AST + G7 recursion backup |
+| D8 Single source of truth | 7 | 9 | +2 | G5 atomic /decide |
+| D10 Observability | 8 | 9 | +1 | G6 telemetry export |
+| D11 Modularity | 7 | 8 | +1 | G8 preset-driven probes |
+| D12 Testability | 10 | 10 | — | maintained (G9 hardens fixture) |
+| D14 Failure modes | 8 | 9 | +1 | G7 recursion backup |
+
+Overall: 8.3 → ~8.9/10.
+
+---
+
+## [0.10.0] — 2026-05-21 — HE improvements: G2 bypass redesign + G4 fail-closed
+
+Closes 2 of 8 HE gaps surfaced by external HE evaluation (rating 8.0/10).
+Selected P0 scope per Q1+Q3 grill: ship G2 + G4 first, defer G1 (hook
+consolidation Phase B) until `/hook-health` accumulates more empirical
+data than the 27 events observed at evaluation time.
+
+### Fixed — G2: bypass marker was dead code in production
+
+`invariant_guard._bypass_requested()` read `envelope.get("user_prompt")`,
+but Claude Code's PreToolUse envelope does **not** carry the user prompt
+(only `tool_name` / `tool_input` / `cwd` / `session_id` / `transcript_path`
+/ `permission_mode`). The bypass token `bypass-invariant: <id>` was
+documented + tested via mocked envelopes, but never reachable in actual
+sessions → DEV believed they had an escape hatch they did not.
+
+Fix: detect the marker in `intent_router.py` (UserPromptSubmit hook,
+which DOES receive the prompt) and write a session-local file
+`.agent-toolkit/.bypass_next_edit.json`. `invariant_guard.py` reads +
+**consumes** (deletes) the file on next matching Edit. Single-use
+semantics — one token covers one Edit. TTL 5 min prevents stale tokens
+leaking across sessions.
+
+- `templates/claude/hooks/intent_router.py` — added
+  `_capture_bypass_invariant(workspace, prompt)`, called on every
+  UserPromptSubmit BEFORE the short-prompt early-out (a bare
+  `bypass-invariant: INV-1` is short but load-bearing).
+- `templates/claude/hooks/invariant_guard.py` — rewrote
+  `_bypass_requested()` to check ephemeral file first, then fall back
+  to envelope-key path (backward compat for test fixtures + any future
+  Claude Code revision that adds prompt context).
+
+### Fixed — G4: corrupt config silently bypassed every blocker
+
+Previously, any JSON parse failure in `invariant_guard` (envelope or
+invariants.json) hit `_allow()` → all enforcement disappeared. A garbage
+envelope or a single misplaced comma in `invariants.json` would silently
+deactivate every blocker invariant. Violates HE principle: fail-closed
+when blocker rules are configured.
+
+Fix: per-severity conservative deny. New `_has_blocker_text_scan()`
+runs a cheap raw-text regex (`"severity": "blocker"`) on
+`invariants.json`. If it hits + JSON parse fails → deny with a clear
+reason. If only warn-level invariants exist (no blocker text), or no
+invariants file at all → still fail-open. `enforce_mode.json`
+per-hook=block and `AGENT_TOOLKIT_STRICT=1` continue to force deny
+globally.
+
+- `_load_invariants()` now returns `(invariants, load_error)` tuple so
+  callers can distinguish "file missing" from "file unreadable".
+- New `_fail_closed_for_corrupt_state(workspace, reason_tag)` helper
+  centralises the conservative-deny decision (text scan + enforce_mode
+  + strict mode).
+
+### Added — tests (10 new, all pass)
+
+- `tests/test_hooks.py::TestBypassEphemeral` (5 tests):
+  router writes file on marker, no file when no marker, guard consumes
+  on hit, guard cleans expired file, legacy envelope-key path still
+  works for fixtures.
+- `tests/test_hooks.py::TestFailClosedOnCorruptState` (5 tests):
+  corrupt JSON + blocker text → deny, corrupt JSON without blocker
+  text → allow, corrupt envelope + blocker configured → deny, no
+  invariants + corrupt envelope → allow, STRICT mode forces deny.
+
+### Changed
+
+- `lib/installer.py` — `__version__` 0.9.1 → 0.10.0 (minor bump:
+  no API breakage; bypass behaviour change is closer to "was already
+  broken in prod, now works as documented").
+- Total tests: 434 → 444.
+
+### Not changed (deferred)
+
+- **G1** — Hook consolidation Stop 8 → 4. Phase B still deferred. Need
+  `/hook-health` to accumulate ≥ 200 events across multiple sessions
+  before deciding which hooks are pulling weight.
+- **G3** — AST-based invariant via libcst. Adds dependency, deferred.
+- **G5** — Atomic `/decide` command. Doc-only ergonomics, deferred.
+- **G6** — Telemetry export schema (cross-machine aggregate). Needed
+  for teams > 1 dev, deferred.
+- **G7** — Recursion guard alternative. Current `stop_hook_active` field
+  still works in observed Claude Code versions.
+- **G8** — De-couple Odoo from `verification_loop`. Touches preset
+  shape, deferred to v0.11.0.
+
+### Migration
+
+No action required. The bypass marker syntax (`bypass-invariant: <id>`)
+is unchanged from a DEV perspective — it just actually works now. If
+any project had `enforce_mode.json` set to `warn` for `invariant_guard`,
+behaviour on corrupt config is unchanged (still allow). To opt into
+strictest behaviour:
+
+```json
+// .agent-toolkit/enforce_mode.json
+{
+  "per_hook": {
+    "invariant_guard": "block"
+  }
+}
+```
+
+…or set `AGENT_TOOLKIT_STRICT=1` in CI.
+
+---
+
 ## [0.9.1] — 2026-05-21 — Close Phase C c3 instrumentation gap
 
 Patch release closes single broken commit from v0.9.0: Phase C

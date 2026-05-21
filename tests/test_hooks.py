@@ -58,7 +58,13 @@ def _render_hook(hook_name: str, tmp_path: Path) -> Path:
 
 def _run_hook(hook_path: Path, envelope: dict, cwd: Path = None,
               extra_env: dict = None, timeout: int = 10):
-    """Spawn hook script, pipe JSON envelope on stdin, return CompletedProcess."""
+    """Spawn hook script, pipe JSON envelope on stdin, return CompletedProcess.
+
+    Note R3 v0.11.0: hooks run as subprocesses → import-coverage tracker
+    can't see them. The % in .coveragerc covers `lib/` + `setup.py` only;
+    hook behaviour coverage lives in this file's test count. Proper
+    subprocess coverage instrumentation deferred — see .coveragerc header.
+    """
     env = dict(os.environ, PYTHONIOENCODING='utf-8')
     if extra_env:
         env.update(extra_env)
@@ -260,7 +266,15 @@ class TestEvidenceAudit:
 class TestInvariantGuard:
 
     def _make_invariants(self, tmp_path: Path, patterns: list):
-        """Create .agent-toolkit/invariants.json in tmp_path."""
+        """Create .agent-toolkit/invariants.json in tmp_path.
+
+        DEPRECATED v0.11.0: this helper accepts raw dicts and can produce
+        schema-drifted fixtures (e.g. `must_keep_regex` at top level
+        instead of `rules.must_keep_regex`) that silently bypass
+        invariant_guard. New tests should use `make_invariant()` from
+        `tests/conftest.py` which validates the shape. Kept here only
+        for backward compat with the 1 pre-G9 test below.
+        """
         d = tmp_path / '.agent-toolkit'
         d.mkdir(parents=True, exist_ok=True)
         (d / 'invariants.json').write_text(json.dumps({
@@ -614,3 +628,252 @@ class TestAnalyzeHaltGate:
         )
         assert result.returncode == 0
         assert result.stdout.strip() == ''
+
+
+# ============================================================
+# G2 v0.10.0 — bypass marker via ephemeral file
+#   intent_router writes .agent-toolkit/.bypass_next_edit.json on
+#   UserPromptSubmit; invariant_guard reads + consumes on next Edit.
+#   Production path (Claude Code PreToolUse envelope does NOT carry
+#   the user prompt, so the legacy envelope-key check was dead).
+# ============================================================
+class TestBypassEphemeral:
+
+    def _make_blocker(self, tmp_path: Path) -> None:
+        """Write a real blocker invariant in the canonical schema shape:
+        patterns live under `rules.must_keep_regex` (not top-level)."""
+        (tmp_path / '.agent-toolkit').mkdir(parents=True, exist_ok=True)
+        (tmp_path / '.agent-toolkit' / 'invariants.json').write_text(json.dumps({
+            'invariants': [{
+                'id': 'INV-1',
+                'severity': 'blocker',
+                'description': 'keep forever',
+                'applies_to': ['**/*.txt'],
+                'rules': {
+                    'must_keep_regex': ['forever'],
+                },
+                'rationale': 'test',
+                'source': 'test',
+            }]
+        }), encoding='utf-8')
+
+    def test_router_writes_bypass_file_on_marker(self, tmp_path):
+        """UserPromptSubmit hook captures `bypass-invariant: <id>` into
+        .agent-toolkit/.bypass_next_edit.json so PreToolUse can read it."""
+        hook = _render_hook('intent_router.py', tmp_path)
+        _run_hook(hook, {
+            'prompt': 'bypass-invariant: INV-1 — chỉ lần này',
+            'cwd': str(tmp_path),
+        }, cwd=tmp_path)
+        bypass_file = tmp_path / '.agent-toolkit' / '.bypass_next_edit.json'
+        assert bypass_file.exists(), 'router must write ephemeral bypass file'
+        data = json.loads(bypass_file.read_text(encoding='utf-8'))
+        assert 'INV-1' in data['ids']
+        assert data['ttl_seconds'] > 0
+
+    def test_router_no_file_when_no_marker(self, tmp_path):
+        hook = _render_hook('intent_router.py', tmp_path)
+        _run_hook(hook, {
+            'prompt': 'just a regular prompt without bypass marker',
+            'cwd': str(tmp_path),
+        }, cwd=tmp_path)
+        assert not (tmp_path / '.agent-toolkit' / '.bypass_next_edit.json').exists()
+
+    def test_guard_consumes_bypass_file_and_allows(self, tmp_path):
+        """invariant_guard with a fresh bypass file → allow + delete file."""
+        import time
+        hook = _render_hook('invariant_guard.py', tmp_path)
+        self._make_blocker(tmp_path)
+        bypass_dir = tmp_path / '.agent-toolkit'
+        bypass_file = bypass_dir / '.bypass_next_edit.json'
+        bypass_file.write_text(json.dumps({
+            'ids': ['INV-1'],
+            'ts': int(time.time()),
+            'ttl_seconds': 300,
+        }), encoding='utf-8')
+        result = _run_hook(hook, {
+            'tool_name': 'Edit',
+            'tool_input': {
+                'file_path': str(tmp_path / 'forever.txt'),
+                'old_string': 'forever exists',
+                'new_string': 'gone',
+            },
+            'cwd': str(tmp_path),
+        }, cwd=tmp_path)
+        assert result.returncode == 0
+        # File must be consumed (single-use).
+        assert not bypass_file.exists(), 'bypass file must be consumed'
+
+    def test_guard_ignores_expired_bypass_file(self, tmp_path):
+        """Expired bypass file → no bypass; cleaned up; blocker denies."""
+        import time
+        hook = _render_hook('invariant_guard.py', tmp_path)
+        self._make_blocker(tmp_path)
+        bypass_file = tmp_path / '.agent-toolkit' / '.bypass_next_edit.json'
+        bypass_file.write_text(json.dumps({
+            'ids': ['INV-1'],
+            'ts': int(time.time()) - 999,  # way past TTL
+            'ttl_seconds': 300,
+        }), encoding='utf-8')
+        result = _run_hook(hook, {
+            'tool_name': 'Edit',
+            'tool_input': {
+                'file_path': str(tmp_path / 'forever.txt'),
+                'old_string': 'forever exists',
+                'new_string': 'gone',
+            },
+            'cwd': str(tmp_path),
+        }, cwd=tmp_path)
+        assert result.returncode == 0  # hook always exits 0
+        # Decision must be deny since bypass was expired.
+        decision = json.loads(result.stdout) if result.stdout.strip() else {}
+        out_block = decision.get('hookSpecificOutput', {})
+        assert out_block.get('permissionDecision') == 'deny'
+        # Expired file should have been cleaned up.
+        assert not bypass_file.exists(), 'expired file must be cleaned'
+
+    def test_guard_envelope_user_prompt_still_works_for_fixtures(self, tmp_path):
+        """Backward compat: legacy envelope-key path still works (test
+        fixtures rely on it; older Claude Code versions may add it back)."""
+        hook = _render_hook('invariant_guard.py', tmp_path)
+        self._make_blocker(tmp_path)
+        result = _run_hook(hook, {
+            'tool_name': 'Edit',
+            'tool_input': {
+                'file_path': str(tmp_path / 'forever.txt'),
+                'old_string': 'forever exists',
+                'new_string': 'gone',
+            },
+            'user_prompt': 'bypass-invariant: INV-1 — legacy path',
+            'cwd': str(tmp_path),
+        }, cwd=tmp_path)
+        assert result.returncode == 0
+        decision = json.loads(result.stdout) if result.stdout.strip() else {}
+        out_block = decision.get('hookSpecificOutput', {})
+        # Legacy envelope-key bypass → should still allow.
+        assert out_block.get('permissionDecision') == 'allow', (
+            f'Expected allow via legacy envelope key, got: {decision}'
+        )
+
+
+# ============================================================
+# G4 v0.10.0 — per-severity fail-closed for invariant_guard
+#   Corrupt invariants.json with blocker text → deny (conservative).
+#   Corrupt envelope + blocker configured → deny.
+#   Corrupt state with only warn-level (no blocker text) → still allow.
+# ============================================================
+class TestFailClosedOnCorruptState:
+
+    def test_corrupt_json_fails_closed_when_blocker_text_present(self, tmp_path):
+        hook = _render_hook('invariant_guard.py', tmp_path)
+        d = tmp_path / '.agent-toolkit'
+        d.mkdir(parents=True, exist_ok=True)
+        # Malformed JSON but contains literal `"severity": "blocker"` text.
+        (d / 'invariants.json').write_text(
+            '{this is not valid json but "severity": "blocker" appears here',
+            encoding='utf-8',
+        )
+        result = _run_hook(hook, {
+            'tool_name': 'Edit',
+            'tool_input': {
+                'file_path': str(tmp_path / 'x.py'),
+                'old_string': 'a', 'new_string': 'b',
+            },
+            'cwd': str(tmp_path),
+        }, cwd=tmp_path)
+        assert result.returncode == 0
+        decision = json.loads(result.stdout) if result.stdout.strip() else {}
+        out_block = decision.get('hookSpecificOutput', {})
+        assert out_block.get('permissionDecision') == 'deny', (
+            f'Expected conservative deny on corrupt blocker config, got: {decision}'
+        )
+        reason = out_block.get('permissionDecisionReason', '')
+        assert 'invariants.json' in reason or 'could not be parsed' in reason
+
+    def test_corrupt_json_fails_open_when_no_blocker_text(self, tmp_path):
+        hook = _render_hook('invariant_guard.py', tmp_path)
+        d = tmp_path / '.agent-toolkit'
+        d.mkdir(parents=True, exist_ok=True)
+        # Malformed but contains only `"severity": "warn"`.
+        (d / 'invariants.json').write_text(
+            '{broken json "severity": "warn" only',
+            encoding='utf-8',
+        )
+        result = _run_hook(hook, {
+            'tool_name': 'Edit',
+            'tool_input': {
+                'file_path': str(tmp_path / 'x.py'),
+                'old_string': 'a', 'new_string': 'b',
+            },
+            'cwd': str(tmp_path),
+        }, cwd=tmp_path)
+        assert result.returncode == 0
+        decision = json.loads(result.stdout) if result.stdout.strip() else {}
+        out_block = decision.get('hookSpecificOutput', {})
+        # No blocker text → still fail-open (allow).
+        assert out_block.get('permissionDecision') == 'allow'
+
+    def test_corrupt_envelope_fails_closed_when_blocker_configured(self, tmp_path):
+        hook = _render_hook('invariant_guard.py', tmp_path)
+        d = tmp_path / '.agent-toolkit'
+        d.mkdir(parents=True, exist_ok=True)
+        (d / 'invariants.json').write_text(json.dumps({
+            'invariants': [{
+                'id': 'INV-X', 'severity': 'blocker',
+                'description': 'always present',
+                'must_keep_regex': 'sentinel',
+                'rationale': 'test', 'source': 'test',
+            }]
+        }), encoding='utf-8')
+        result = subprocess.run(
+            [PYTHON, str(hook)],
+            input='{not valid json at all',
+            capture_output=True, text=True, timeout=10,
+            cwd=str(tmp_path),
+            env=dict(os.environ, PYTHONIOENCODING='utf-8',
+                     CLAUDE_PROJECT_DIR=str(tmp_path)),
+        )
+        assert result.returncode == 0
+        decision = json.loads(result.stdout) if result.stdout.strip() else {}
+        out_block = decision.get('hookSpecificOutput', {})
+        assert out_block.get('permissionDecision') == 'deny', (
+            f'Expected conservative deny on corrupt envelope + blocker, got: {decision}'
+        )
+
+    def test_corrupt_envelope_fails_open_when_no_invariants(self, tmp_path):
+        """No invariants.json at all → corrupt envelope still allows (greenfield
+        project, nothing to guard)."""
+        hook = _render_hook('invariant_guard.py', tmp_path)
+        result = subprocess.run(
+            [PYTHON, str(hook)],
+            input='{not valid json',
+            capture_output=True, text=True, timeout=10,
+            cwd=str(tmp_path),
+            env=dict(os.environ, PYTHONIOENCODING='utf-8',
+                     CLAUDE_PROJECT_DIR=str(tmp_path)),
+        )
+        assert result.returncode == 0
+        # Allow (no blocker text scan hit).
+        if result.stdout.strip():
+            decision = json.loads(result.stdout)
+            out_block = decision.get('hookSpecificOutput', {})
+            assert out_block.get('permissionDecision') == 'allow'
+
+    def test_strict_mode_forces_deny_on_corrupt_envelope_even_without_blocker(self, tmp_path):
+        """AGENT_TOOLKIT_STRICT=1 → always conservative deny on corrupt state."""
+        hook = _render_hook('invariant_guard.py', tmp_path)
+        result = subprocess.run(
+            [PYTHON, str(hook)],
+            input='{not valid json',
+            capture_output=True, text=True, timeout=10,
+            cwd=str(tmp_path),
+            env=dict(os.environ, PYTHONIOENCODING='utf-8',
+                     CLAUDE_PROJECT_DIR=str(tmp_path),
+                     AGENT_TOOLKIT_STRICT='1'),
+        )
+        assert result.returncode == 0
+        decision = json.loads(result.stdout) if result.stdout.strip() else {}
+        out_block = decision.get('hookSpecificOutput', {})
+        assert out_block.get('permissionDecision') == 'deny', (
+            f'STRICT mode must deny on corrupt envelope, got: {decision}'
+        )

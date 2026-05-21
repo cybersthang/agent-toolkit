@@ -26,6 +26,21 @@ from _common import run_main_safe, emit_fire_event
 # Make `_audit` package importable when invoked as a standalone script.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+
+# G7 v0.11.0 — recursion guard backup.
+#
+# Primary recursion break: Claude Code sets `stop_hook_active=True` on
+# the envelope when re-invoking us after a block, so we exit cleanly.
+# If Anthropic ever renames that field (or strips it from the envelope),
+# evidence_audit could loop indefinitely — block → re-prompt → block.
+#
+# Backup: count Stop events within a short window (`.stop_audit_count.json`,
+# 60s rolling) and bail out after `_RECURSION_HARD_CAP` consecutive blocks.
+# Independent of envelope shape; trades a bit of clarity for safety.
+_RECURSION_STATE_REL = ".agent-toolkit/.stop_audit_count.json"
+_RECURSION_WINDOW_SECS = 60
+_RECURSION_HARD_CAP = 3
+
 from _audit.claim_audit import (
     find_claims, has_disclaimer, has_evidence,
 )
@@ -57,6 +72,53 @@ if hasattr(sys.stdout, "buffer"):
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 
+def _read_recursion_state(workspace: Path) -> Dict[str, Any]:
+    """Return {'count': N, 'first_ts': epoch}. Empty dict if missing or stale."""
+    import time
+    path = workspace / _RECURSION_STATE_REL
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    first_ts = int(data.get("first_ts") or 0)
+    if int(time.time()) - first_ts > _RECURSION_WINDOW_SECS:
+        # Window expired — fresh slate.
+        return {}
+    return data
+
+
+def _bump_recursion_state(workspace: Path, current: Dict[str, Any]) -> int:
+    """Increment block counter; return the new count. Resets when window
+    expires. Silent on filesystem failure (best-effort safety net)."""
+    import time
+    now = int(time.time())
+    count = int(current.get("count") or 0) + 1
+    first_ts = int(current.get("first_ts") or now)
+    path = workspace / _RECURSION_STATE_REL
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "count": count, "first_ts": first_ts, "last_ts": now,
+        }, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+    return count
+
+
+def _clear_recursion_state(workspace: Path) -> None:
+    """Clear counter — called when we emit allow (loop broken naturally)."""
+    path = workspace / _RECURSION_STATE_REL
+    try:
+        if path.exists():
+            path.unlink()
+    except OSError:
+        pass
+
+
 def _exit_allow(workspace: Path, reason_categories: List[str] = None, bypass: List[str] = None) -> None:
     log_event(workspace, hook="evidence_audit", decision="allow",
               categories=reason_categories or [], bypass=bypass or [])
@@ -65,10 +127,42 @@ def _exit_allow(workspace: Path, reason_categories: List[str] = None, bypass: Li
         emit_fire_event("evidence_audit.py", verdict="allow")
     except Exception:
         pass
+    # G7 v0.11.0: allow path breaks any potential block-loop → clear counter.
+    _clear_recursion_state(workspace)
     sys.exit(0)
 
 
 def _emit_block(workspace: Path, reason: str, categories: List[str]) -> None:
+    # G7 v0.11.0: bump recursion counter BEFORE emitting block. If we've
+    # hit the hard cap within the rolling window, bail out (allow) and
+    # surface a warning so DEV sees the runaway.
+    state = _read_recursion_state(workspace)
+    count = _bump_recursion_state(workspace, state)
+    if count > _RECURSION_HARD_CAP:
+        warn_reason = (
+            f"[evidence-audit] recursion hard-cap hit ({count} blocks in "
+            f"≤ {_RECURSION_WINDOW_SECS}s) — primary `stop_hook_active` signal "
+            f"may be missing from envelope. Allowing this Stop to break the "
+            f"loop. Original block reason was: {reason[:300]}"
+        )
+        log_event(workspace, hook="evidence_audit", decision="allow",
+                  categories=["recursion_cap"])
+        try:
+            emit_fire_event("evidence_audit.py", verdict="allow",
+                            detail="recursion_cap_hit")
+        except Exception:
+            pass
+        _clear_recursion_state(workspace)
+        # Use additionalContext envelope (non-blocking) so DEV still sees
+        # the warning in transcript.
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "Stop",
+                "additionalContext": warn_reason,
+            }
+        }, ensure_ascii=False))
+        sys.exit(0)
+
     log_event(workspace, hook="evidence_audit", decision="block",
               categories=categories)
     try:

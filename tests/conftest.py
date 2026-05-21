@@ -62,3 +62,34 @@ def sample_ctx() -> dict:
         'MCP_SERVERS': ['codebase', 'postgres'],
         'TODAY_ISO_DATE': '2026-05-15',
     }
+
+
+# ============================================================
+# G9 v0.11.0 — canonical invariant fixture
+#
+# Found during v0.10.0 G2 work: `_make_invariants` in test_hooks.py was
+# writing `must_keep_regex` at the top of the invariant dict (wrong),
+# while production code reads `inv["rules"]["must_keep_regex"]`. Result:
+# any test using that fixture exercised the "no violation found" path,
+# not the violation path — `test_bypass_token_in_prompt_overrides` PASS-ed
+# without ever triggering the bypass logic it claimed to test.
+#
+# The actual builders live in `_invariant_fixtures.py` (importable). The
+# fixtures below wrap them for tests that prefer DI over `from
+# _invariant_fixtures import make_invariant`.
+# ============================================================
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _invariant_fixtures import make_invariant, write_invariants  # noqa: E402,F401
+
+
+@pytest.fixture
+def make_invariant_fixture():
+    """Pytest fixture wrapping `make_invariant` for tests that prefer
+    fixture injection over module-level import."""
+    return make_invariant
+
+
+@pytest.fixture
+def write_invariants_fixture():
+    """Pytest fixture wrapping `write_invariants`."""
+    return write_invariants

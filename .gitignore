@@ -34,3 +34,10 @@ agent-toolkit.config.json
 # `presets/_example_private_overlay.json.template` to seed your own.
 presets/odoo-12-nakivo.json
 presets/*-private.json
+
+# Runtime ring-buffer / ephemeral state written by hooks during a session.
+# These are PER-MACHINE telemetry and should not bleed across commits.
+.agent-toolkit/.hook_fire_log.json
+.agent-toolkit/.hook_crash_log.json
+.agent-toolkit/.bypass_next_edit.json
+.agent-toolkit/.autonomy_active.json

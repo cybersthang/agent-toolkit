@@ -24,6 +24,7 @@ edit invariants there, not here.
 """
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
@@ -32,14 +33,26 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import wrap_utf8_stdio, match_glob, run_main_safe, emit_fire_event  # noqa: E402
+from _common import (  # noqa: E402
+    wrap_utf8_stdio, match_glob, run_main_safe, emit_fire_event,
+    is_strict_mode, get_enforce_mode,
+)
 from _patterns import BYPASS_INVARIANT_RE  # noqa: E402
 
 wrap_utf8_stdio()
 
 
 INVARIANTS_REL = ".agent-toolkit/invariants.json"
+BYPASS_FILE_REL = ".agent-toolkit/.bypass_next_edit.json"
 SUPPORTED_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
+
+# G4 v0.10.0 — text scan regex used when invariants.json fails to parse.
+# Detects presence of any blocker invariant so we can fail-closed
+# conservatively even when JSON is corrupt.
+_BLOCKER_TEXT_SCAN_RE = re.compile(
+    r'["\']severity["\']\s*:\s*["\']blocker["\']',
+    re.IGNORECASE,
+)
 
 
 def _emit(decision: str, reason: str = "") -> None:
@@ -65,7 +78,26 @@ def _allow() -> None:
     _emit("allow")
 
 
-def _load_invariants(workspace: Path) -> List[Dict[str, Any]]:
+def _has_blocker_text_scan(workspace: Path) -> bool:
+    """G4 v0.10.0 — cheap raw-text scan of invariants.json + external sources
+    to detect whether ANY blocker invariant is configured.
+
+    Used as conservative-deny signal when JSON parse fails: if the file
+    exists and contains the literal `"severity": "blocker"` pattern, we
+    know enforcement was intended even if the structure is now corrupt,
+    so we should fail-closed rather than silently allow.
+    """
+    path = workspace / INVARIANTS_REL
+    if not path.exists():
+        return False
+    try:
+        text = path.read_text(encoding="utf-8-sig", errors="replace")
+    except OSError:
+        return False
+    return bool(_BLOCKER_TEXT_SCAN_RE.search(text))
+
+
+def _load_invariants(workspace: Path) -> Tuple[List[Dict[str, Any]], bool]:
     """Load invariants from `.agent-toolkit/invariants.json` + any
     `external_sources` declared there (e.g. `.codex/canonical_decisions.json`).
 
@@ -75,9 +107,14 @@ def _load_invariants(workspace: Path) -> List[Dict[str, Any]]:
     feature regressions live in a project-local registry while still being
     mechanically enforced, without coupling the toolkit framework to any
     specific project path.
+
+    Returns (invariants, load_error). G4 v0.10.0: load_error=True signals
+    that invariants.json exists but failed to parse — callers should
+    consult `_has_blocker_text_scan()` to decide fail-open vs fail-closed.
     """
     invariants: List[Dict[str, Any]] = []
     external_sources: List[str] = []
+    load_error = False
     path = workspace / INVARIANTS_REL
     if path.exists():
         try:
@@ -88,10 +125,13 @@ def _load_invariants(workspace: Path) -> List[Dict[str, Any]]:
                 ext = data.get("external_sources") or []
                 if isinstance(ext, list):
                     external_sources = [s for s in ext if isinstance(s, str) and s.strip()]
+            else:
+                # File parsed but shape wrong — treat as load error.
+                load_error = True
         except (json.JSONDecodeError, OSError):
-            pass
+            load_error = True
     invariants.extend(_load_external_enforcements(workspace, external_sources))
-    return invariants
+    return invariants, load_error
 
 
 def _load_external_enforcements(workspace: Path, sources: List[str]) -> List[Dict[str, Any]]:
@@ -167,6 +207,71 @@ def _compile_patterns(rules: Dict[str, Any]) -> List[Tuple[str, re.Pattern]]:
     return out
 
 
+def _find_call_names_via_ast(code: str):
+    """G3 v0.11.0 — extract set of called function/method names from a
+    Python snippet via stdlib `ast`. Returns:
+
+    - `None` if the snippet failed to parse (partial code, syntax error,
+      indented chunk). Caller treats as "AST inconclusive".
+    - `set()` (empty) if parse succeeded but no Call nodes found
+      (e.g. `def foo(): pass`). Caller treats as "definitive: no calls".
+    - non-empty set otherwise.
+
+    Distinguishing the two empty cases matters for Write tool: a new
+    file with no calls is a definitive miss for must_keep_call_ast,
+    NOT an inconclusive parse.
+
+    Handles:
+    - `foo()` → {"foo"}
+    - `obj.method()` → {"method"} (Attribute callee)
+    - `obj.attr.method()` → {"method"}
+    - `getattr(obj, 'foo')()` is NOT caught — getattr-bypass is a known
+      blind spot of static AST; pair with regex for stronger coverage.
+    """
+    if not code or not code.strip():
+        return None
+    try:
+        import textwrap
+        # textwrap.dedent handles common indent so a `def foo(): ...` block
+        # extracted mid-file still parses.
+        tree = ast.parse(textwrap.dedent(code))
+    except (SyntaxError, ValueError, IndentationError, TypeError):
+        return None
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name):
+                names.add(func.id)
+            elif isinstance(func, ast.Attribute):
+                names.add(func.attr)
+    return names
+
+
+def _ast_call_removals(old_code: str, new_code: str,
+                       required_names: List[str]) -> List[str]:
+    """For each name in required_names, return those that disappeared
+    between old_code and new_code per AST analysis.
+
+    Returns [] if EITHER snippet failed to parse (AST inconclusive —
+    caller falls back to regex-only signal). Returns the removed names
+    when both parsed and a name appears in old but not new.
+    """
+    old_names = _find_call_names_via_ast(old_code)
+    new_names = _find_call_names_via_ast(new_code)
+    if old_names is None or new_names is None:
+        # Inconclusive parse — let regex be the authoritative signal.
+        return []
+    removed = []
+    for name in required_names:
+        if not isinstance(name, str) or not name.strip():
+            continue
+        n = name.strip()
+        if n in old_names and n not in new_names:
+            removed.append(f"ast-call:{n}")
+    return removed
+
+
 def _check_edit_pair(old_string: str, new_string: str, patterns: List[Tuple[str, re.Pattern]]) -> List[str]:
     """Return labels of patterns that existed in old but disappeared in new."""
     removed: List[str] = []
@@ -200,30 +305,53 @@ def _collect_violations(
     blockers: List[Dict[str, Any]] = []
     warns: List[Dict[str, Any]] = []
 
+    is_python_file = file_path.lower().endswith(".py")
+
     for inv in invariants:
         applies = inv.get("applies_to") or []
         if not _matches_path(file_path, applies, workspace):
             continue
         rules = inv.get("rules") or {}
         patterns = _compile_patterns(rules)
-        if not patterns:
+        ast_call_names = rules.get("must_keep_call_ast") or []
+        if not patterns and not ast_call_names:
             continue
 
         removed: List[str] = []
         if tool_name in ("Edit", "NotebookEdit"):
             old_s = tool_input.get("old_string") or ""
             new_s = tool_input.get("new_string") or ""
-            removed = _check_edit_pair(old_s, new_s, patterns)
+            if patterns:
+                removed = _check_edit_pair(old_s, new_s, patterns)
+            # G3 v0.11.0: AST-based shadow check for .py files. AST is more
+            # robust than regex against whitespace reformat / import-alias
+            # rename — pairs with regex for stronger coverage.
+            if is_python_file and ast_call_names:
+                removed.extend(_ast_call_removals(old_s, new_s, ast_call_names))
         elif tool_name == "MultiEdit":
             for edit in tool_input.get("edits") or []:
                 old_s = edit.get("old_string") or ""
                 new_s = edit.get("new_string") or ""
-                removed.extend(_check_edit_pair(old_s, new_s, patterns))
+                if patterns:
+                    removed.extend(_check_edit_pair(old_s, new_s, patterns))
+                if is_python_file and ast_call_names:
+                    removed.extend(_ast_call_removals(old_s, new_s, ast_call_names))
         elif tool_name == "Write":
             content = tool_input.get("content") or ""
             # For Write we only care if the FINAL file lacks the pattern.
             # If file didn't exist before, "missing" is still a violation.
-            removed = _check_write(content, patterns)
+            if patterns:
+                removed = _check_write(content, patterns)
+            # G3: AST check on full new content. If parse succeeds AND
+            # any required call name is absent → flag missing. Parse
+            # failure (None) → inconclusive, don't add false-positive.
+            if is_python_file and ast_call_names:
+                new_names = _find_call_names_via_ast(content)
+                if new_names is not None:  # parse succeeded (set possibly empty)
+                    for name in ast_call_names:
+                        if isinstance(name, str) and name.strip() and \
+                                name.strip() not in new_names:
+                            removed.append(f"ast-call:{name.strip()}")
 
         if not removed:
             continue
@@ -269,9 +397,53 @@ def _format_reason(blockers: List[Dict[str, Any]], warns: List[Dict[str, Any]]) 
     return "\n".join(lines)
 
 
-def _bypass_requested(envelope: Dict[str, Any], blocker_ids: List[str]) -> bool:
-    """Look for `bypass-invariant: <id>` in the recent user prompt (passed via
-    envelope, when available) so the user can intentionally override."""
+def _bypass_requested(envelope: Dict[str, Any], blocker_ids: List[str],
+                      workspace: Path) -> bool:
+    """Detect a single-use `bypass-invariant: <id>` token.
+
+    G2 v0.10.0 — two sources, in order:
+
+    1. **Ephemeral file** `.agent-toolkit/.bypass_next_edit.json`, written
+       by `intent_router.py` (UserPromptSubmit hook) when the user types
+       a bypass marker. This is the production path because Claude Code's
+       PreToolUse envelope does NOT contain the user prompt.
+
+    2. **Envelope fields** (`user_prompt`, `prompt`, `last_user_message`)
+       — kept as fallback for: (a) test fixtures that mock the envelope,
+       (b) any future Claude Code version that adds prompt context,
+       (c) third-party harnesses that wrap our hooks differently.
+
+    A hit on the ephemeral file is **consumed** (file deleted) so the
+    bypass covers exactly one Edit. Expired files are also cleaned up.
+    """
+    import time
+    # --- Source 1: ephemeral file (G2 production path) ---
+    bypass_path = workspace / BYPASS_FILE_REL
+    if bypass_path.exists():
+        try:
+            data = json.loads(bypass_path.read_text(encoding="utf-8-sig"))
+        except (OSError, json.JSONDecodeError):
+            data = None
+        if isinstance(data, dict):
+            ts = int(data.get("ts") or 0)
+            ttl = int(data.get("ttl_seconds") or 300)
+            requested = data.get("ids") or []
+            expired = (int(time.time()) - ts) > ttl
+            if expired:
+                try:
+                    bypass_path.unlink()
+                except OSError:
+                    pass
+            elif isinstance(requested, list) and any(
+                bid in requested or "all" in requested for bid in blocker_ids
+            ):
+                try:
+                    bypass_path.unlink()  # single-use; consume.
+                except OSError:
+                    pass
+                return True
+
+    # --- Source 2: envelope fields (legacy / test fixture fallback) ---
     prompt = ""
     for key in ("user_prompt", "prompt", "last_user_message"):
         if envelope.get(key):
@@ -282,10 +454,41 @@ def _bypass_requested(envelope: Dict[str, Any], blocker_ids: List[str]) -> bool:
     matches = BYPASS_INVARIANT_RE.findall(prompt)
     if not matches:
         return False
-    requested: List[str] = []
+    requested = []
     for chunk in matches:
         requested.extend(item.strip() for item in chunk.replace(",", " ").split())
     return any(bid in requested or "all" in requested for bid in blocker_ids)
+
+
+def _fail_closed_for_corrupt_state(workspace: Path, reason_tag: str) -> None:
+    """G4 v0.10.0 — emit deny when we cannot read the invariant config but
+    a blocker invariant *was* configured (per cheap text scan). Conservative
+    over silently allowing.
+
+    Fail-open is preserved when:
+    - No invariants.json exists at all (greenfield project, nothing to guard).
+    - File exists but the text scan finds no `blocker` severity (only warns).
+    - `AGENT_TOOLKIT_DISABLE=1` was set (kill-switch already handled earlier).
+
+    Fail-closed kicks in when:
+    - File exists + text scan finds blocker + JSON is corrupt OR envelope is
+      corrupt OR tool_input is malformed.
+    - `enforce_mode.json` per-hook=block or AGENT_TOOLKIT_STRICT=1 globally.
+    """
+    has_blocker = _has_blocker_text_scan(workspace)
+    mode = get_enforce_mode(workspace, "invariant_guard", default="warn")
+    strict = is_strict_mode()
+    # Conservative-deny if a blocker was clearly configured, OR if operator
+    # opted into strict/block mode.
+    if has_blocker or mode == "block" or strict:
+        _emit(
+            "deny",
+            f"[invariant-guard] {reason_tag}. Invariants config is unreadable "
+            f"but blocker rules are configured — denying conservatively. "
+            f"Fix `.agent-toolkit/invariants.json` (or set "
+            f"AGENT_TOOLKIT_DISABLE=1 as emergency override).",
+        )
+    _allow()
 
 
 def main() -> int:
@@ -294,23 +497,44 @@ def main() -> int:
         _allow()
 
     raw = sys.stdin.read()
+
+    # Workspace discovery — needed even on envelope parse failure so we
+    # can run the conservative-deny text scan.
+    workspace_str = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+
     if not raw.strip():
+        # Empty envelope: legitimate when Claude Code probes the hook. No
+        # tool to evaluate; allow.
         _allow()
 
     try:
         envelope = json.loads(raw)
     except json.JSONDecodeError:
-        _allow()
+        # G4: envelope corrupt — can't tell what's being edited. If any
+        # blocker invariant is configured, fail-closed.
+        _fail_closed_for_corrupt_state(
+            Path(workspace_str).resolve(),
+            "envelope JSON could not be parsed",
+        )
 
     tool_name = envelope.get("tool_name") or ""
     if tool_name not in SUPPORTED_TOOLS:
         _allow()
 
     tool_input = envelope.get("tool_input") or {}
-    workspace_str = envelope.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    workspace_str = envelope.get("cwd") or workspace_str
     workspace = Path(workspace_str).resolve()
 
-    invariants = _load_invariants(workspace)
+    invariants, load_error = _load_invariants(workspace)
+
+    if load_error:
+        # G4: invariants.json exists but didn't parse cleanly. Conservative
+        # deny if blocker rules are configured per text scan.
+        _fail_closed_for_corrupt_state(
+            workspace,
+            "invariants.json exists but could not be parsed",
+        )
+
     if not invariants:
         _allow()
 
@@ -319,9 +543,9 @@ def main() -> int:
     if not blockers and not warns:
         _allow()
 
-    if blockers and _bypass_requested(envelope, [b["invariant_id"] for b in blockers]):
+    if blockers and _bypass_requested(envelope, [b["invariant_id"] for b in blockers], workspace):
         reason = (
-            "[invariant-guard] bypass-invariant detected in prompt; "
+            "[invariant-guard] bypass-invariant token consumed; "
             "allowing edit. Violations were: "
             + ", ".join(b["invariant_id"] for b in blockers)
         )

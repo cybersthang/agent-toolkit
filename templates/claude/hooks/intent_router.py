@@ -35,10 +35,14 @@ from typing import List, Tuple
 # streams as UTF-8 before any read/print.
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import wrap_utf8_stdio, run_main_safe  # noqa: E402
+from _patterns import BYPASS_INVARIANT_RE  # noqa: E402
 
 wrap_utf8_stdio()
 
 INTENT_MAP_REL = ".agent-toolkit/intent_map.json"
+BYPASS_FILE_REL = ".agent-toolkit/.bypass_next_edit.json"
+BYPASS_TTL_SECONDS = 300  # 5 min — long enough for agent to reach Edit, short
+                          # enough to avoid leaking into a later session.
 
 
 def _load_intent_map(workspace: Path) -> Tuple[str, str, List[Tuple[str, List[str]]]]:
@@ -395,6 +399,45 @@ def _format_reminder(skills: List[str]) -> str:
     )
 
 
+def _capture_bypass_invariant(workspace: Path, prompt: str) -> None:
+    """G2 v0.10.0 — write ephemeral bypass file when user typed
+    `bypass-invariant: <id>` in their prompt.
+
+    Why this exists: Claude Code's PreToolUse envelope does NOT contain
+    the user prompt (only tool_name / tool_input / cwd / session_id).
+    The legacy `invariant_guard._bypass_requested()` read
+    `envelope.get("user_prompt")` which was always None → bypass marker
+    never fired in production. UserPromptSubmit fires BEFORE PreToolUse
+    and DOES have the prompt, so we write a session-local file that
+    invariant_guard reads + consumes on next Edit.
+
+    Single-use semantics: invariant_guard deletes the file on hit, so
+    one `bypass-invariant: INV-1` token covers exactly one matching Edit.
+    TTL prevents stale tokens leaking into a later session.
+    """
+    import time
+    matches = BYPASS_INVARIANT_RE.findall(prompt)
+    if not matches:
+        return
+    ids: list = []
+    for chunk in matches:
+        ids.extend(item.strip() for item in chunk.replace(",", " ").split() if item.strip())
+    if not ids:
+        return
+    path = workspace / BYPASS_FILE_REL
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "ids": ids,
+            "ts": int(time.time()),
+            "ttl_seconds": BYPASS_TTL_SECONDS,
+        }
+        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        # Best-effort: silent on failure (don't break UserPromptSubmit flow).
+        pass
+
+
 def main() -> int:
     # Kill-switch: env var disables all enforcement (emergency).
     if os.environ.get("AGENT_TOOLKIT_DISABLE") == "1":
@@ -413,13 +456,19 @@ def main() -> int:
     prompt = envelope.get("prompt") or envelope.get("user_prompt") or ""
     prompt = prompt.strip()
 
+    cwd = envelope.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    workspace = Path(cwd).resolve()
+
+    # G2: capture bypass-invariant marker BEFORE the short-prompt early-out,
+    # because a bare `bypass-invariant: INV-1` is short but load-bearing.
+    if prompt:
+        _capture_bypass_invariant(workspace, prompt)
+
     # Heuristic skip for very short replies (yes/no/ok), questions about
     # earlier output, or empty prompts.
     if len(prompt) < 12:
         return 0
 
-    cwd = envelope.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
-    workspace = Path(cwd).resolve()
     _stack, _stack_bare, intent_map = _load_intent_map(workspace)
 
     skills = _matched_skills(prompt, intent_map)

@@ -104,19 +104,35 @@ def _load_config(workspace: Path) -> Optional[Dict[str, Any]]:
     return cfg if isinstance(cfg, dict) else None
 
 
-def _classify(file_path: str) -> List[str]:
+def _classify(file_path: str, cfg: Optional[Dict[str, Any]] = None) -> List[str]:
     """Return list of probe kinds applicable to this file.
+
+    Two modes:
+
+    - **Config-driven** (G8 v0.11.0): when `cfg["probe_rules"]` is present,
+      iterate rules and emit each matching probe `kind`. Rules are evaluated
+      in order; first match-per-kind wins to avoid duplicate nudges. This
+      is the stack-agnostic path — Django/Rails/FastAPI projects can ship a
+      `verification.json` with their own probe_rules and the hook works.
+
+    - **Default Odoo** (legacy / fallback): when `cfg` is None or
+      `probe_rules` is missing/empty, run the hardcoded Odoo-12-flavoured
+      classification. Preserves behaviour for every project that hasn't
+      migrated their `verification.json` yet — zero migration burden.
 
     Note: `import` probe is NOT applicable to Odoo addon code — the MCP
     `python_import_check` runs in a bare subprocess without the Odoo
     registry, so any module under `odoo.addons.*` will always raise
-    ModuleNotFoundError. Similarly `run_python_tests` MCP does NOT load
-    the Odoo registry — HttpCase/TransactionCase tests fail to import
-    `from odoo.tests.common`. The right path for Odoo addon tests is
-    `odoo-bin -d <db> -i <addon> --test-enable --stop-after-init`. The
-    hook detects when a sibling `tests/` folder exists and nudges that
-    command instead.
+    ModuleNotFoundError. The right path for Odoo addon tests is
+    `odoo-bin -d <db> -i <addon> --test-enable --stop-after-init`.
     """
+    if cfg and isinstance(cfg.get("probe_rules"), list) and cfg["probe_rules"]:
+        return _classify_from_rules(file_path, cfg["probe_rules"])
+    return _classify_default_odoo(file_path)
+
+
+def _classify_default_odoo(file_path: str) -> List[str]:
+    """Original Odoo-specific classification (Odoo 12 / 17 shape)."""
     p = Path(file_path)
     name = p.name
     suffix = p.suffix.lower()
@@ -130,6 +146,50 @@ def _classify(file_path: str) -> List[str]:
     elif suffix == ".xml":
         kinds.append("xml")
     return kinds
+
+
+def _classify_from_rules(file_path: str, probe_rules: List[Dict[str, Any]]) -> List[str]:
+    """G8 v0.11.0 — declarative classification from cfg.probe_rules.
+
+    Each rule: {"match": {"suffix": ".py", "basename": "foo.py", ...},
+                "kinds": ["syntax", ...]}
+
+    Match criteria (all that are present must match):
+    - `suffix`: file extension incl. dot, case-insensitive. E.g. `.py`.
+    - `basename`: exact filename match, case-sensitive. E.g. `__manifest__.py`.
+    - `requires_sibling_tests`: True → file's addon must have `tests/__init__.py`.
+    - `glob`: fnmatch pattern on file path (workspace-relative ok).
+
+    Kinds: arbitrary strings — passed to `_build_message` which looks up
+    probe metadata via `cfg["probe_metadata"]` or falls back to Odoo
+    defaults. Unknown kinds emit a generic "run probe <kind>" line.
+    """
+    p = Path(file_path)
+    suffix = p.suffix.lower()
+    basename = p.name
+    out: List[str] = []
+    seen_kinds = set()
+    for rule in probe_rules:
+        if not isinstance(rule, dict):
+            continue
+        match = rule.get("match") or {}
+        if not isinstance(match, dict):
+            continue
+        if "suffix" in match and match["suffix"].lower() != suffix:
+            continue
+        if "basename" in match and match["basename"] != basename:
+            continue
+        if match.get("requires_sibling_tests") and not _has_sibling_tests(p):
+            continue
+        if "glob" in match:
+            import fnmatch
+            if not fnmatch.fnmatch(file_path, match["glob"]):
+                continue
+        for kind in rule.get("kinds") or []:
+            if isinstance(kind, str) and kind not in seen_kinds:
+                out.append(kind)
+                seen_kinds.add(kind)
+    return out
 
 
 def _has_sibling_tests(file_path: Path) -> bool:
@@ -186,7 +246,42 @@ def _is_duplicate(workspace: Path, file_path: str) -> bool:
     return False
 
 
-def _build_message(file_path: str, rel_path: str, kinds: List[str], mcp_prefix: str) -> str:
+# G8 v0.11.0 — default probe metadata for Odoo. Stays the implicit
+# fallback when verification.json has no `probe_metadata` block. New
+# stacks override this by shipping their own probe_metadata.
+_DEFAULT_PROBE_METADATA: Dict[str, Dict[str, str]] = {
+    "syntax": {
+        "mcp": "python_syntax_check",
+        "desc": "bắt SyntaxError / IndentationError ngay tại edit-time.",
+    },
+    "manifest": {
+        "mcp": "odoo_manifest_validate",
+        "desc": "depends/data/version structure phải hợp lệ trước khi install.",
+    },
+    "xml": {
+        "mcp": "xml_validate",
+        "desc": "bắt malformed XML / unknown view inherit_id / arch sai.",
+    },
+    # `addon_test` is special-cased in _build_message (shell command, not MCP).
+}
+
+
+def _build_message(file_path: str, rel_path: str, kinds: List[str],
+                   mcp_prefix: str, cfg: Optional[Dict[str, Any]] = None) -> str:
+    """Compose the nudge message.
+
+    Probe metadata source (G8 v0.11.0): `cfg["probe_metadata"]` (per-kind
+    `{mcp, desc}` dict) overrides defaults if present. Unknown kinds get
+    a generic "run <kind> probe" line so stack-specific kinds don't
+    silently disappear.
+    """
+    probe_metadata = dict(_DEFAULT_PROBE_METADATA)
+    if cfg and isinstance(cfg.get("probe_metadata"), dict):
+        # Merge: project override wins per-key.
+        for kind, meta in cfg["probe_metadata"].items():
+            if isinstance(meta, dict):
+                probe_metadata[kind] = meta
+
     lines = [
         f"[verification-loop] Vừa Edit/Write `{rel_path}` — TRƯỚC khi trả lời "
         "\"đã xong / ready / verified\", phải chạy các probe sau và đưa output "
@@ -194,39 +289,39 @@ def _build_message(file_path: str, rel_path: str, kinds: List[str], mcp_prefix: 
         "",
     ]
     step = 1
-    if "syntax" in kinds:
-        lines.append(
-            f"  {step}. `{mcp_prefix}python_syntax_check` với path `{rel_path}` "
-            "→ bắt SyntaxError / IndentationError ngay tại edit-time."
-        )
-        step += 1
-    if "manifest" in kinds:
-        lines.append(
-            f"  {step}. `{mcp_prefix}odoo_manifest_validate` với path `{rel_path}` "
-            "→ depends/data/version structure phải hợp lệ trước khi install."
-        )
-        step += 1
-    if "addon_test" in kinds:
-        addon = _addon_name(Path(file_path)) or "<addon>"
-        lines.append(
-            f"  {step}. Chạy test addon `{addon}` qua `odoo-bin --test-enable`:\n"
-            f"     ```\n"
-            f"     <venv-python> <odoo-bin-path> -d <dev_db> "
-            f"-i {addon} --test-enable --stop-after-init --log-level=test\n"
-            f"     ```\n"
-            f"     (Thay `<odoo-bin-path>` bằng `odoo-bin` thực tế của "
-            f"project — discover qua `agent-toolkit.config.json` "
-            f"`stack.odoo_bin_rel`, hoặc `find . -name odoo-bin`.)\n"
-            f"     KHÔNG dùng MCP `python_import_check` hoặc `run_python_tests` "
-            f"cho Odoo addon — cả hai chạy subprocess KHÔNG load Odoo registry "
-            f"→ HttpCase/TransactionCase fail import `from odoo.tests.common`."
-        )
-        step += 1
-    if "xml" in kinds:
-        lines.append(
-            f"  {step}. `{mcp_prefix}xml_validate` với path `{rel_path}` "
-            "→ bắt malformed XML / unknown view inherit_id / arch sai."
-        )
+    for kind in kinds:
+        if kind == "addon_test":
+            addon = _addon_name(Path(file_path)) or "<addon>"
+            lines.append(
+                f"  {step}. Chạy test addon `{addon}` qua `odoo-bin --test-enable`:\n"
+                f"     ```\n"
+                f"     <venv-python> <odoo-bin-path> -d <dev_db> "
+                f"-i {addon} --test-enable --stop-after-init --log-level=test\n"
+                f"     ```\n"
+                f"     (Thay `<odoo-bin-path>` bằng `odoo-bin` thực tế của "
+                f"project — discover qua `agent-toolkit.config.json` "
+                f"`stack.odoo_bin_rel`, hoặc `find . -name odoo-bin`.)\n"
+                f"     KHÔNG dùng MCP `python_import_check` hoặc `run_python_tests` "
+                f"cho Odoo addon — cả hai chạy subprocess KHÔNG load Odoo registry "
+                f"→ HttpCase/TransactionCase fail import `from odoo.tests.common`."
+            )
+            step += 1
+            continue
+        meta = probe_metadata.get(kind)
+        if meta and meta.get("mcp"):
+            desc = meta.get("desc", "")
+            lines.append(
+                f"  {step}. `{mcp_prefix}{meta['mcp']}` với path `{rel_path}`"
+                + (f" → {desc}" if desc else "")
+            )
+        else:
+            # Unknown kind — emit generic line so stack-specific probes
+            # still appear in the nudge.
+            lines.append(
+                f"  {step}. Chạy probe `{kind}` với path `{rel_path}` "
+                f"(probe_metadata cho `{kind}` chưa được khai báo trong "
+                f"`.agent-toolkit/verification.json`)."
+            )
         step += 1
     lines.extend([
         "",
@@ -270,7 +365,7 @@ def main() -> int:
     if not match_glob(file_path, addon_globs, workspace, empty_returns=False):
         _exit_silent()
 
-    kinds = _classify(file_path)
+    kinds = _classify(file_path, cfg)
     if not kinds:
         _exit_silent()
 
@@ -284,7 +379,7 @@ def main() -> int:
     except (ValueError, OSError):
         rel_path = file_path
 
-    _emit(_build_message(file_path, rel_path, kinds, mcp_prefix))
+    _emit(_build_message(file_path, rel_path, kinds, mcp_prefix, cfg))
     return 0
 
 

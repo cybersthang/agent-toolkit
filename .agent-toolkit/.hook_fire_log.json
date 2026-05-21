@@ -1,9 +1,0 @@
-{
-  "events": [
-    {
-      "ts": 1779354391,
-      "hook": "invariant_guard.py",
-      "verdict": "allow"
-    }
-  ]
-}

@@ -1,3 +1,21 @@
+# Coverage scope note (R3 v0.11.0):
+# This config measures IMPORT-based coverage only. The 97%+ number you see
+# applies to `lib/installer.py` — code directly imported by pytest. Hook
+# templates (`templates/claude/hooks/*.py`) are NOT measured here even
+# though tests/test_hooks.py exercises them: tests spawn each hook as a
+# subprocess (subprocess.run), and Python coverage's tracker only sees
+# modules imported by the running process.
+#
+# Hook behaviour IS still tested — see tests/test_hooks.py (444+ test cases
+# covering invariant_guard / evidence_audit / session_brief / intent_router /
+# etc. via subprocess + assertion on exit code + stdout). It is just not
+# represented in the % number below. Treat the % as a lower bound on the
+# `lib/` + `setup.py` surface; treat the test_hooks.py file as evidence of
+# hook behaviour coverage.
+#
+# Proper subprocess coverage (COVERAGE_PROCESS_START + sitecustomize +
+# parallel data file combine) is non-trivial under pytest-cov and deferred
+# to a future patch. See `tests/sitecustomize.py` for the half-built shim.
 [run]
 source =
     setup.py

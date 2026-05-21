@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import wrap_utf8_stdio, atomic_write_json  # noqa: E402
+from _common import wrap_utf8_stdio, atomic_write_json, run_main_safe  # noqa: E402
 from _patterns import (  # noqa: E402
     SPEC_STATUS_RE as _STATUS_RE,
     SPEC_SLUG_RE as _SPEC_SLUG_RE,
@@ -238,4 +238,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_main_safe(main))

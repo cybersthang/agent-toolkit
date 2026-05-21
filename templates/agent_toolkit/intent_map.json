@@ -157,6 +157,11 @@
       "note": "Toolkit-meta: /spec-drift — advisory diff between probe recipe and script",
       "pattern": "\\b(/spec[-\\s]*drift|spec\\s*drift|recipe\\s*drift|drift.*probe|recipe\\s*vs.*script)\\b",
       "skills": ["spec-vs-evidence-diff"]
+    },
+    {
+      "note": "Toolkit-meta: /implement-notes — emit per-spec sidecar capturing scope deviations + trade-offs + follow-ups + confidence",
+      "pattern": "\\b(/implement[-\\s]*notes?|implement[-\\s]*noted|ghi\\s*quyết\\s*định\\s*ngoài\\s*spec|note\\s*quyết\\s*định\\s*ngoài\\s*spec|capture\\s*decisions?\\s*outside\\s*spec|scope\\s*deviation|trade[-\\s]*off\\s*considered)\\b",
+      "skills": ["implement-notes"]
     }
   ]
 }

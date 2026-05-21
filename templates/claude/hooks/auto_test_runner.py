@@ -31,6 +31,9 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+sys.path.insert(0, str(Path(__file__).parent))
+from _common import run_main_safe
+
 
 if hasattr(sys.stdin, "buffer"):
     sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace")
@@ -62,7 +65,7 @@ _DEFAULT_CONFIG = {
         "**/__pycache__/**", "**/migrations/**"
     ],
     "state_file": ".agent-toolkit/.auto_test_state.json",
-    "timeout_s": 600
+    "timeout_s": 120
 }
 
 
@@ -244,4 +247,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_main_safe(main))

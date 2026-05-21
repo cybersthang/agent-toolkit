@@ -34,6 +34,9 @@ import urllib.error
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+sys.path.insert(0, str(Path(__file__).parent))
+from _common import run_main_safe
+
 
 if hasattr(sys.stdin, "buffer"):
     sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace")
@@ -111,9 +114,67 @@ def _is_alive(pid: int) -> bool:
         return False
 
 
-def _terminate(pid: int, signal_name: str) -> bool:
+def _proc_cmdline(pid: int) -> str:
+    """P6 v0.8.0: read process command-line for PID safety check.
+    Returns empty string on failure (fail-safe = refuse kill)."""
+    if platform.system() == "Windows":
+        try:
+            proc = subprocess.run(
+                ["powershell", "-NoProfile", "-Command",
+                 f"(Get-CimInstance Win32_Process -Filter \"ProcessId={pid}\""
+                 ").CommandLine"],
+                capture_output=True, text=True,
+                encoding="utf-8", errors="replace", timeout=5,
+            )
+            return (proc.stdout or "").strip()
+        except (subprocess.SubprocessError, OSError):
+            return ""
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as fh:
+            return fh.read().replace(b"\x00", b" ").decode(
+                "utf-8", errors="replace").strip()
+    except OSError:
+        return ""
+
+
+def _verify_pid_matches_start_cmd(pid: int, start_cmd: List[str]) -> bool:
+    """P6 v0.8.0: confirm process at PID was launched by expected start_cmd.
+    Compares first non-trivial token of start_cmd (binary name) with
+    proc cmdline. Returns True if matches OR cmdline unavailable
+    (lenient default to avoid breaking legitimate kills when proc info
+    not readable). Set strict mode via env STRICT_DAEMON_PID_MATCH=1."""
+    if not start_cmd:
+        return True  # can't verify; allow
+    expected = ""
+    for tok in start_cmd:
+        if tok and not tok.startswith("-") and tok != "--":
+            expected = str(tok)
+            break
+    if not expected:
+        return True
+    cmdline = _proc_cmdline(pid)
+    if not cmdline:
+        # Strict mode: refuse if can't verify
+        if os.environ.get("STRICT_DAEMON_PID_MATCH") == "1":
+            return False
+        return True
+    expected_basename = Path(expected).name.lower()
+    return expected_basename in cmdline.lower()
+
+
+def _terminate(pid: int, signal_name: str,
+               start_cmd: Optional[List[str]] = None) -> bool:
     if not _is_alive(pid):
         return True
+    # P6 v0.8.0: PID safety check
+    if start_cmd and not _verify_pid_matches_start_cmd(pid, start_cmd):
+        print(
+            f"[daemon-manager] PID {pid} cmdline does not match expected "
+            f"start_cmd {start_cmd!r} — refusing kill (set "
+            f"STRICT_DAEMON_PID_MATCH=0 to disable verification).",
+            file=sys.stderr,
+        )
+        return False
     try:
         if signal_name == "Stop-Process" or platform.system() == "Windows":
             subprocess.run(
@@ -257,7 +318,8 @@ def main() -> int:
             return 0
 
     if pid and _is_alive(pid):
-        ok_kill = _terminate(pid, shutdown_signal)
+        # P6 v0.8.0: pass start_cmd for PID-safety verification
+        ok_kill = _terminate(pid, shutdown_signal, start_cmd=cmd)
         if not ok_kill:
             print(f"[daemon_manager] could not kill PID {pid} — skipping restart",
                   file=sys.stderr)
@@ -285,4 +347,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_main_safe(main))

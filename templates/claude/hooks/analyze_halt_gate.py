@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import wrap_utf8_stdio, find_workspace_root  # noqa: E402
+from _common import wrap_utf8_stdio, find_workspace_root, run_main_safe  # noqa: E402
 
 wrap_utf8_stdio()
 
@@ -242,4 +242,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_main_safe(main))

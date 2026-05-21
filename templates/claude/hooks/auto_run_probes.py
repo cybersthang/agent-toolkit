@@ -30,6 +30,9 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List
 
+sys.path.insert(0, str(Path(__file__).parent))
+from _common import run_main_safe
+
 
 if hasattr(sys.stdin, "buffer"):
     sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace")
@@ -102,7 +105,7 @@ def _save_state(workspace: Path, config: Dict[str, Any],
         pass
 
 
-def _run_probe(workspace: Path, probe_id: str, timeout_s: int = 300) -> Dict[str, Any]:
+def _run_probe(workspace: Path, probe_id: str, timeout_s: int = 90) -> Dict[str, Any]:
     falsify = workspace / ".codex" / "tools" / "falsify.py"
     if not falsify.exists():
         return {"status": "no-falsify", "id": probe_id}
@@ -219,4 +222,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_main_safe(main))

@@ -204,6 +204,189 @@ def emit_stop_block(reason: str) -> None:
     sys.exit(0)
 
 
+# ============================================================
+# P9 v0.8.0 — hook crash policy wrapper
+#
+# Each hook's main() can be wrapped via `run_main_safe(main)` so any
+# uncaught exception is logged to `.agent-toolkit/.hook_crash_log.json`
+# (ring buffer last 50 events) and the hook exits 0 (fail-open). DEV
+# can grep the log to find hooks misbehaving.
+# ============================================================
+import traceback as _traceback  # noqa: E402
+
+_CRASH_LOG_REL = ".agent-toolkit/.hook_crash_log.json"
+_CRASH_LOG_MAX = 50
+
+
+def _resolve_crash_workspace() -> "Path":
+    """Best-effort workspace root resolution for crash logging.
+    Falls back to cwd if .agent-toolkit/ not found."""
+    cursor = Path.cwd().resolve()
+    while True:
+        if (cursor / ".agent-toolkit").is_dir():
+            return cursor
+        if cursor.parent == cursor:
+            return Path.cwd()
+        cursor = cursor.parent
+
+
+def _log_hook_crash(hook_name: str, exc: BaseException) -> None:
+    """Append crash event to ring buffer. Silent on failure."""
+    import time
+    try:
+        workspace = _resolve_crash_workspace()
+        log_path = workspace / _CRASH_LOG_REL
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        existing: List[Dict[str, Any]] = []
+        if log_path.exists():
+            try:
+                data = json.loads(log_path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    existing = data.get("events") or []
+                elif isinstance(data, list):
+                    existing = data
+            except (json.JSONDecodeError, OSError):
+                existing = []
+        existing.append({
+            "ts": int(time.time()),
+            "hook": hook_name,
+            "exc_type": type(exc).__name__,
+            "exc_msg": str(exc)[:500],
+            "traceback_tail": _traceback.format_exc()[-1500:],
+        })
+        existing = existing[-_CRASH_LOG_MAX:]
+        log_path.write_text(
+            json.dumps({"events": existing}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except (OSError, Exception):  # noqa: BLE001
+        pass  # crash logger crashed — give up silently
+
+
+def is_strict_mode() -> bool:
+    """Phase E v0.9.0 — return True if AGENT_TOOLKIT_STRICT=1 env var set.
+    Strict mode flips fail-open hooks → fail-closed. Default unset
+    preserves dev-friendly fail-open continuity. CI / production
+    pipelines should opt-in via env var."""
+    return os.environ.get("AGENT_TOOLKIT_STRICT") == "1"
+
+
+def get_enforce_mode(workspace: Path, hook_name: str,
+                     default: str = "warn") -> str:
+    """Phase D v0.9.0 — return per-hook enforce mode from
+    `.agent-toolkit/enforce_mode.json`. Falls back to `default`.
+
+    Schema:
+        {
+          "default": "warn",
+          "per_hook": {
+            "spec_first_guard": "warn",
+            "implement_notes_gate": "block",
+            ...
+          }
+        }
+
+    STRICT mode (AGENT_TOOLKIT_STRICT=1) globally overrides → "block"
+    regardless of config (CI safety).
+    """
+    if is_strict_mode():
+        return "block"
+    config_path = workspace / ".agent-toolkit" / "enforce_mode.json"
+    if not config_path.exists():
+        return default
+    try:
+        cfg = json.loads(config_path.read_text(encoding="utf-8-sig"))
+    except (json.JSONDecodeError, OSError):
+        return default
+    if not isinstance(cfg, dict):
+        return default
+    per_hook = cfg.get("per_hook") or {}
+    if isinstance(per_hook, dict) and hook_name in per_hook:
+        mode = per_hook[hook_name]
+        if mode in ("warn", "block"):
+            return mode
+    fallback = cfg.get("default")
+    if fallback in ("warn", "block"):
+        return fallback
+    return default
+
+
+_FIRE_LOG_REL = ".agent-toolkit/.hook_fire_log.json"
+_FIRE_LOG_MAX = 1000
+
+
+def emit_fire_event(hook_name: str, verdict: str = "ok",
+                    duration_ms: Optional[int] = None,
+                    detail: Optional[str] = None) -> None:
+    """Phase C v0.9.0 — log a hook fire event to ring buffer.
+
+    Called by hooks to record that they fired + what verdict + how long.
+    Aggregator `hook_health.py` reads this buffer to surface health
+    metrics. Silent on failure (logging is best-effort).
+    """
+    import time
+    try:
+        workspace = _resolve_crash_workspace()
+        log_path = workspace / _FIRE_LOG_REL
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        existing: List[Dict[str, Any]] = []
+        if log_path.exists():
+            try:
+                data = json.loads(log_path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    existing = data.get("events") or []
+                elif isinstance(data, list):
+                    existing = data
+            except (json.JSONDecodeError, OSError):
+                existing = []
+        event = {"ts": int(time.time()), "hook": hook_name, "verdict": verdict}
+        if duration_ms is not None:
+            event["duration_ms"] = duration_ms
+        if detail:
+            event["detail"] = detail[:200]
+        existing.append(event)
+        existing = existing[-_FIRE_LOG_MAX:]
+        log_path.write_text(
+            json.dumps({"events": existing}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except (OSError, Exception):  # noqa: BLE001
+        pass
+
+
+def run_main_safe(main_fn) -> int:
+    """Wrap a hook's main() with try/except.
+
+    Usage at the bottom of each hook:
+        if __name__ == "__main__":
+            sys.exit(run_main_safe(main))
+
+    Default (fail-open): uncaught exception → log to .hook_crash_log.json + exit 0.
+    STRICT mode (Phase E v0.9.0): if AGENT_TOOLKIT_STRICT=1 env var set,
+    exception bubbles → exit 1 (CI catches). Crash still logged.
+    """
+    import inspect
+    try:
+        rv = main_fn()
+        return int(rv) if isinstance(rv, int) else 0
+    except SystemExit as exit_exc:
+        # honor explicit sys.exit() calls from inside main
+        code = exit_exc.code
+        return int(code) if isinstance(code, int) else 0
+    except BaseException as exc:  # noqa: BLE001
+        hook_name = "unknown"
+        try:
+            src = inspect.getsourcefile(main_fn) or ""
+            hook_name = Path(src).name
+        except (TypeError, OSError):
+            pass
+        _log_hook_crash(hook_name, exc)
+        # Phase E: STRICT mode → propagate exit 1; default fail-open → exit 0
+        if is_strict_mode():
+            return 1
+        return 0
+
+
 def read_jsonl_transcript(path: Path) -> List[Dict[str, Any]]:
     """Parse a JSONL transcript file. Lines that fail JSON parse are
     silently skipped (Claude Code occasionally writes partial lines)."""

@@ -36,6 +36,16 @@
             "type": "command",
             "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/analyze_halt_gate.py",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/spec_first_guard.py",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/implement_snapshot_hook.py",
+            "timeout": 8
           }
         ]
       }
@@ -65,14 +75,16 @@
             "timeout": 5
           },
           {
+            "_comment": "P5 v0.8.0: timeout reduced 600→120 to prevent 10-minute blocks on hanging MCP",
             "type": "command",
             "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/auto_test_runner.py",
-            "timeout": 600
+            "timeout": 150
           },
           {
+            "_comment": "P5 v0.8.0: timeout reduced 300→90",
             "type": "command",
             "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/auto_run_probes.py",
-            "timeout": 300
+            "timeout": 120
           },
           {
             "type": "command",
@@ -85,6 +97,12 @@
     "Stop": [
       {
         "hooks": [
+          {
+            "_comment": "P1 v0.8.0: orchestrator moved to position 1 so audit fires before blocking hooks (closes F1 cascade)",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/implement_orchestrator.py",
+            "timeout": 30
+          },
           {
             "type": "command",
             "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/evidence_audit.py",
@@ -109,6 +127,16 @@
             "type": "command",
             "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/spec_drift_advisory.py",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/implement_notes_gate.py",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/verify_lint_scope.py",
+            "timeout": 15
           }
         ]
       }

@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agent-toolkit/spec-frontmatter.schema.json",
+  "title": "agent-toolkit spec frontmatter (v0.7.2)",
+  "description": "YAML frontmatter contract for .agent-toolkit/specs/<branch>/<slug>.md files. Adds affected_modules (required from v0.7.2) and affected_symbols (optional, finer grain) so Layer 5 scope check can mechanically detect file-level scope creep at /verify time.",
+  "type": "object",
+  "required": ["slug", "module", "status", "feature_kind", "acceptance_evals"],
+  "properties": {
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9.\\-]*$",
+      "description": "Kebab/dot-case spec slug; matches filename stem."
+    },
+    "branch": {"type": "string"},
+    "module": {"type": "string"},
+    "status": {
+      "type": "string",
+      "enum": ["draft", "clarifying", "implementing", "verified", "gaps-found", "archived"]
+    },
+    "feature_kind": {
+      "type": "string",
+      "enum": ["orchestration", "classification", "regression", "maintenance", "infrastructure"]
+    },
+    "retrospective": {"type": "boolean", "default": false},
+    "created": {"type": "string"},
+    "last_updated": {"type": "string"},
+    "related_changelog": {"type": "string"},
+    "eval_status": {
+      "type": "string",
+      "enum": ["defined", "verified", "skipped"]
+    },
+    "e2e_evidence": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "affected_modules": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "List of file path PREFIXES (relative to workspace) that this spec is allowed to modify. Layer 5 scope check (verify_lint) compares actual modified files vs this list; out-of-scope edits trigger advisory warning (warn-only initial, upgradable to block via .agent-toolkit/scope_audit.json). Required for new specs from v0.7.2; legacy specs without this field are grandfathered (skip Layer 5). Globs supported via fnmatch (e.g. 'templates/**/*.py'). Public-project safe: no hardcoded stack names; use generic patterns."
+    },
+    "affected_symbols": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Optional finer-grain scope declaration: list of fully-qualified symbol names (e.g. 'module.ClassName.method'). Reserved for future AST-level scope check; not enforced in v0.7.2 (schema slot only)."
+    },
+    "acceptance_evals": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "story", "grader", "probe", "expected", "target_pass_rate"]
+      }
+    }
+  },
+  "additionalProperties": true
+}

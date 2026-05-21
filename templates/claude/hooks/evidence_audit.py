@@ -20,6 +20,9 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
+sys.path.insert(0, str(Path(__file__).parent))
+from _common import run_main_safe, emit_fire_event
+
 # Make `_audit` package importable when invoked as a standalone script.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -57,12 +60,22 @@ if hasattr(sys.stdout, "buffer"):
 def _exit_allow(workspace: Path, reason_categories: List[str] = None, bypass: List[str] = None) -> None:
     log_event(workspace, hook="evidence_audit", decision="allow",
               categories=reason_categories or [], bypass=bypass or [])
+    # Phase C v0.9.1: fire event capture
+    try:
+        emit_fire_event("evidence_audit.py", verdict="allow")
+    except Exception:
+        pass
     sys.exit(0)
 
 
 def _emit_block(workspace: Path, reason: str, categories: List[str]) -> None:
     log_event(workspace, hook="evidence_audit", decision="block",
               categories=categories)
+    try:
+        emit_fire_event("evidence_audit.py", verdict="block",
+                        detail=",".join(categories)[:200])
+    except Exception:
+        pass
     print(json.dumps({"decision": "block", "reason": reason}, ensure_ascii=False))
     sys.exit(0)
 
@@ -213,4 +226,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_main_safe(main))

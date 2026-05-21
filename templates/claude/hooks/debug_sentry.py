@@ -46,8 +46,7 @@ from typing import Any, Dict, List, Tuple
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
-    wrap_utf8_stdio, read_jsonl_transcript, split_current_turn,
-)
+    wrap_utf8_stdio, read_jsonl_transcript, split_current_turn, run_main_safe)
 
 wrap_utf8_stdio()
 
@@ -313,4 +312,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_main_safe(main))

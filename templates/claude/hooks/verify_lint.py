@@ -39,8 +39,7 @@ from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
-    wrap_utf8_stdio, read_jsonl_transcript, find_workspace_root,
-)
+    wrap_utf8_stdio, read_jsonl_transcript, find_workspace_root, run_main_safe)
 from _patterns import (  # noqa: E402
     VERIFY_REPORT_HEADER_RE as _VERIFY_REPORT_HEADER_RE,
     SLUG_PATTERNS as _SLUG_PATTERNS,
@@ -199,9 +198,29 @@ def main() -> int:
             "Mỗi tag distinct phải có ≥1 perturb-test row trong bảng "
             "Falsification."
         )
+    # exit_code 0 = lint passed → P11 v0.8.0 auto-cleanup snapshot
+    if result.returncode == 0:
+        _trigger_snapshot_cleanup(workspace, slug)
     # exit_code 0, 2, 3, or other → allow
     _exit_allow()
 
 
+def _trigger_snapshot_cleanup(workspace: Path, slug: str) -> None:
+    """P11 v0.8.0: when verify_lint passes for a slug, snapshot is no
+    longer needed (Layer 5 scope check already ran). Call
+    snapshot_cleanup with force=True. Best-effort, silent on failure."""
+    tool = workspace / ".codex" / "tools" / "implement_snapshot.py"
+    if not tool.exists():
+        return
+    try:
+        subprocess.run(
+            [sys.executable, str(tool), "cleanup",
+             "--slug", slug, "--workspace", str(workspace), "--force"],
+            capture_output=True, timeout=5,
+        )
+    except (subprocess.SubprocessError, OSError):
+        pass
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_main_safe(main))

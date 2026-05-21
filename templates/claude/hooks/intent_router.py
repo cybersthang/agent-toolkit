@@ -34,7 +34,7 @@ from typing import List, Tuple
 # (and any non-Latin) characters in the user's prompt. Re-wrap both
 # streams as UTF-8 before any read/print.
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import wrap_utf8_stdio  # noqa: E402
+from _common import wrap_utf8_stdio, run_main_safe  # noqa: E402
 
 wrap_utf8_stdio()
 
@@ -444,4 +444,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_main_safe(main))

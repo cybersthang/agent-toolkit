@@ -42,8 +42,7 @@ from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
-    wrap_utf8_stdio, atomic_write_json, match_glob,
-)
+    wrap_utf8_stdio, atomic_write_json, match_glob, run_main_safe)
 
 wrap_utf8_stdio()
 
@@ -310,4 +309,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_main_safe(main))

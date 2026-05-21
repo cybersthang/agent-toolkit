@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import wrap_utf8_stdio, match_glob  # noqa: E402
+from _common import wrap_utf8_stdio, match_glob, run_main_safe, emit_fire_event  # noqa: E402
 from _patterns import BYPASS_INVARIANT_RE  # noqa: E402
 
 wrap_utf8_stdio()
@@ -44,6 +44,11 @@ SUPPORTED_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 
 def _emit(decision: str, reason: str = "") -> None:
     """Write the Claude Code PreToolUse JSON envelope and exit 0."""
+    # Phase C v0.9.1: record fire event (silent on failure)
+    try:
+        emit_fire_event("invariant_guard.py", verdict=decision)
+    except Exception:
+        pass
     payload = {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -331,4 +336,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_main_safe(main))

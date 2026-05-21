@@ -1,0 +1,17 @@
+{
+  "_doc": "Phase D v0.9.0 — config-driven enforce mode for hooks that support warn/block toggle. Strict mode env var AGENT_TOOLKIT_STRICT=1 globally overrides → block.",
+  "_schema": {
+    "default": "warn|block — applied when per_hook entry not present",
+    "per_hook": {
+      "<hook_name>": "warn|block"
+    }
+  },
+  "default": "warn",
+  "per_hook": {
+    "spec_first_guard": "warn",
+    "implement_notes_gate": "warn",
+    "verify_lint_scope": "warn",
+    "spec_drift_advisory": "warn",
+    "implement_orchestrator": "warn"
+  }
+}

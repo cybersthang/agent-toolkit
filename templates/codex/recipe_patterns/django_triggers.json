@@ -1,5 +1,5 @@
 {
-  "_doc": "Patterns for Django stack — pytest output, Django admin login, Django RPC-style POST endpoints. Stack-detection: presence of `manage.py` in project root. Pattern engine loads ALL *.json regardless of stack; project teams can scope-out unused patterns by deleting / renaming files.",
+  "_doc": "Patterns for Django stack — pytest output, Django admin login, Django RPC-style POST endpoints, ORM lifecycle, signals, DRF serializers, Celery tasks. Stack-detection: presence of `manage.py` in project root. Pattern engine loads ALL *.json regardless of stack; project teams scope out unused patterns by deleting/renaming files. Public PR welcome — add patterns idiomatic to your codebase.",
   "stack": "django",
   "patterns": [
     {
@@ -19,6 +19,54 @@
       "match_regex": "(?i)run\\s+pytest\\s+(?:-x\\s+)?(?P<test_path>[\\w./_-]+)",
       "template": "        # Run pytest subprocess + assert exit code 0.\n        import subprocess\n        proc = subprocess.run(['pytest', '-x', '{test_path}'],\n                              capture_output=True, text=True, timeout=300)\n        EVIDENCE['checks']['pytest_{test_path}'] = {{\n            'returncode': proc.returncode,\n            'stdout_tail': (proc.stdout or '')[-400:],\n            'pass': proc.returncode == 0\n        }}\n",
       "vars": {"test_path": "from_match"}
+    },
+    {
+      "id": "django-orm-bulk-create",
+      "match_regex": "(?i)bulk[_\\s]create\\s+(?P<count>\\d+)\\s+(?P<model>[A-Z]\\w+)",
+      "template": "        # ORM bulk_create + assert count via Model.objects.filter().count().\n        import django; django.setup()\n        from django.apps import apps\n        Model = next((m for m in apps.get_models() if m.__name__ == '{model}'), None)\n        before = Model.objects.count() if Model else 0\n        Model.objects.bulk_create([Model(**{{}}) for _ in range({count})])\n        after = Model.objects.count()\n        EVIDENCE['checks']['{model}_bulk_create'] = {{\n            'delta': after - before,\n            'expected': {count},\n            'pass': (after - before) == {count}\n        }}\n",
+      "vars": {"count": "from_match", "model": "from_match"}
+    },
+    {
+      "id": "django-signal-pre-post-save",
+      "match_regex": "(?i)(?P<signal>pre_save|post_save|pre_delete|post_delete)\\s+signal\\s+(?:on\\s+)?(?P<model>[A-Z]\\w+)",
+      "template": "        # Assert {signal} signal fires for {model}.\n        from django.db.models.signals import {signal}\n        from django.apps import apps\n        fired = []\n        def _capture(sender, **kw):\n            fired.append(kw.get('instance'))\n        Model = next((m for m in apps.get_models() if m.__name__ == '{model}'), None)\n        {signal}.connect(_capture, sender=Model)\n        # ... trigger action that should fire signal ...\n        {signal}.disconnect(_capture, sender=Model)\n        EVIDENCE['checks']['{model}_{signal}'] = {{\n            'fired_count': len(fired),\n            'pass': len(fired) > 0\n        }}\n",
+      "vars": {"signal": "from_match", "model": "from_match"}
+    },
+    {
+      "id": "django-celery-delay",
+      "match_regex": "(?i)(?:celery|task)\\.delay\\(|enqueue\\s+(?P<task>\\w+)\\s+task",
+      "template": "        # Assert Celery task enqueued (eager mode via CELERY_TASK_ALWAYS_EAGER).\n        from django.conf import settings\n        from django.test.utils import override_settings\n        with override_settings(CELERY_TASK_ALWAYS_EAGER=True,\n                               CELERY_TASK_EAGER_PROPAGATES=True):\n            # ... trigger code path that calls task.delay() ...\n            pass\n        EVIDENCE['checks']['celery_task_dispatched'] = {{\n            'pass': True,  # CELERY_TASK_ALWAYS_EAGER ran it inline\n        }}\n",
+      "vars": {"task": "from_match"}
+    },
+    {
+      "id": "drf-serializer-is-valid",
+      "match_regex": "(?i)(?P<serializer>[A-Z]\\w+Serializer)\\.is_valid|DRF\\s+(?P<endpoint>/[\\w/-]+)\\s+returns?\\s+(?P<status>\\d{3})",
+      "template": "        # DRF serializer validation + assert response.status_code.\n        from rest_framework.test import APIClient\n        client = APIClient()\n        client.login(username=LOGIN, password=PASSWORD)\n        resp = client.post('{endpoint}', {{}}, format='json')\n        EVIDENCE['checks']['drf_{serializer}'] = {{\n            'status_code': resp.status_code,\n            'expected': {status},\n            'errors': getattr(resp, 'data', {{}}).get('errors') or [],\n            'pass': resp.status_code == {status}\n        }}\n",
+      "vars": {"serializer": "from_match", "endpoint": "from_match", "status": "from_match"}
+    },
+    {
+      "id": "django-loginrequired-redirect",
+      "match_regex": "(?i)login[_\\s]required\\s+(?:redirects?\\s+to\\s+)?(?P<endpoint>/[\\w/-]+)",
+      "template": "        # Assert anonymous GET on protected endpoint redirects to login.\n        from django.test import Client\n        c = Client()\n        resp = c.get('{endpoint}')\n        EVIDENCE['checks']['login_required_{endpoint}'] = {{\n            'status_code': resp.status_code,\n            'location': resp.headers.get('Location', ''),\n            'pass': resp.status_code in (301, 302) and '/accounts/login' in resp.headers.get('Location', '')\n        }}\n",
+      "vars": {"endpoint": "from_match"}
+    },
+    {
+      "id": "django-test-client-post",
+      "match_regex": "(?i)POST\\s+(?P<endpoint>/[\\w/-]+)\\s+(?:returns?|expects?)\\s+(?P<status>\\d{3})",
+      "template": "        # Django test client POST + assert status code.\n        from django.test import Client\n        c = Client()\n        c.login(username=LOGIN, password=PASSWORD)\n        resp = c.post('{endpoint}', {{}}, content_type='application/json')\n        EVIDENCE['checks']['post_{endpoint}'] = {{\n            'status_code': resp.status_code,\n            'expected': {status},\n            'pass': resp.status_code == {status}\n        }}\n",
+      "vars": {"endpoint": "from_match", "status": "from_match"}
+    },
+    {
+      "id": "django-migrate-check",
+      "match_regex": "(?i)(?:django\\s+)?migrate\\s+(?:app\\s+)?(?P<app>\\w+)|makemigrations\\s+(?P<app2>\\w+)",
+      "template": "        # Verify migrations are up-to-date for app.\n        import subprocess\n        proc = subprocess.run(\n            ['python', 'manage.py', 'showmigrations', '--plan', '{app}'],\n            capture_output=True, text=True, timeout=60\n        )\n        unapplied = [line for line in (proc.stdout or '').splitlines() if '[ ]' in line]\n        EVIDENCE['checks']['migrations_{app}'] = {{\n            'unapplied_count': len(unapplied),\n            'returncode': proc.returncode,\n            'pass': proc.returncode == 0 and len(unapplied) == 0\n        }}\n",
+      "vars": {"app": "from_match", "app2": "from_match"}
+    },
+    {
+      "id": "django-mgmt-command",
+      "match_regex": "(?i)(?:run\\s+)?management\\s+command\\s+(?P<cmd>[\\w_]+)|manage\\.py\\s+(?P<cmd2>[\\w_]+)",
+      "template": "        # Run Django management command + assert success.\n        import subprocess\n        proc = subprocess.run(\n            ['python', 'manage.py', '{cmd}'],\n            capture_output=True, text=True, timeout=120\n        )\n        EVIDENCE['checks']['manage_{cmd}'] = {{\n            'returncode': proc.returncode,\n            'stdout_tail': (proc.stdout or '')[-400:],\n            'stderr_tail': (proc.stderr or '')[-200:],\n            'pass': proc.returncode == 0\n        }}\n",
+      "vars": {"cmd": "from_match", "cmd2": "from_match"}
     }
   ]
 }

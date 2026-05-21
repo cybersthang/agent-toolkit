@@ -21,6 +21,9 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Set
 
+sys.path.insert(0, str(Path(__file__).parent))
+from _common import run_main_safe
+
 
 if hasattr(sys.stdin, "buffer"):
     sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace")
@@ -166,4 +169,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_main_safe(main))

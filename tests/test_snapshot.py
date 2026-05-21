@@ -56,7 +56,8 @@ def test_dry_run_emits_stable_file_count(tmp_path, preset):
     # Upper bound catches accidental duplication / template fan-out bug.
     # 1.5× the current actual is loose enough for legitimate growth but
     # would catch e.g. an `os.walk` doubling the plan.
-    maximums = {'generic': 160, 'odoo-12': 220, 'odoo-17': 220}
+    # Bumped at v0.8.0: HOOK_CHAIN.md + DEV_LIVE_EXERCISE.md added.
+    maximums = {'generic': 180, 'odoo-12': 240, 'odoo-17': 240}
     assert len(plan_lines) <= maximums[preset], (
         f'{preset}: {len(plan_lines)} files planned, '
         f'unexpectedly above ceiling {maximums[preset]} '

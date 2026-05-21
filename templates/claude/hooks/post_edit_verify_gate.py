@@ -37,8 +37,7 @@ from typing import Any, Dict, List, Optional
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
     wrap_utf8_stdio, read_jsonl_transcript, split_current_turn,
-    find_workspace_root,
-)
+    find_workspace_root, run_main_safe)
 from _patterns import (  # noqa: E402
     COMPLETION_RE as _COMPLETION_RE,
     VERIFY_INVOCATION_RE as _VERIFY_INVOCATION_RE,
@@ -244,4 +243,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_main_safe(main))

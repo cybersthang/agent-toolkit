@@ -283,7 +283,7 @@ def test_validate_preset_accepts_underscore_meta_fields():
         'description': 'meta-fields preset',
         'stack': {},
         '_internal_note': 'this is private, ignore me',
-        '_owner': 'thang.vo',
+        '_owner': 'test-user',
     })
     assert errors == [], f'expected clean, got {errors}'
 

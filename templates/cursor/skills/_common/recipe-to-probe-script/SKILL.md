@@ -55,7 +55,7 @@ DEV completes manually.
       "id": "shadow-true-rpc",
       "match_regex": "(?i)shadow\\s*=\\s*true",
       "imports": [],
-      "template_block": "page.evaluate(\"() => odoo.__DEBUG__.services['nakivo_profiler.HotpotInterceptor']._setPendingShadowForTest(true)\")\n"
+      "template_block": "page.evaluate(\"() => odoo.__DEBUG__.services['<module>.<ServiceName>']._setPendingShadowForTest(true)\")\n"
     },
     {
       "id": "sigstop-server",

@@ -21,6 +21,18 @@ Use these rules for writing, reviewing, and refactoring code in this project.
 - Avoid single-use abstractions unless they remove real complexity.
 - If a solution is much larger than the problem, simplify it before finishing.
 
+## Grep Before Write
+
+Before writing a new function, helper, or utility:
+
+1. Grep the workspace for the identifier (or close variants).
+2. If a hit exists, cite `path:line` in your response and decide: **reuse**, **extend**, or **rewrite** (with reason).
+3. If no hit, state in one line *"Searched: <pattern> → no existing implementation"* before adding.
+
+Goal: prevent silent duplication. Two implementations of the same logic under different names is the single most common AI-coding bloat pattern. The rule applies to functions, classes, type aliases, and constants — anything a `grep -E "^(def|class|TYPE_ALIAS|CONSTANT_NAME)"` would catch.
+
+This rule pairs with `reuse-first-then-write` skill (3-step probe workflow) and the `reuse_targets` frontmatter field in `.agent-toolkit/specs/*.md` (declarative reuse intent).
+
 ## Surgical Changes
 
 - Touch only files and lines tied to the user request.

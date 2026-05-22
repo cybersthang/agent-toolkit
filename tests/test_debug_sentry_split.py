@@ -83,7 +83,7 @@ class TestWeakPatternsRequireContext(unittest.TestCase):
         # ValueError(...)` declaration. No traceback context nearby.
         text = (
             "    43|    if not env_var:\n"
-            "    44|        raise ValueError('CURSOR_NAKIVO_JIRA_BASE_URL must be set')\n"
+            "    44|        raise ValueError('MYAPP_API_URL must be set')\n"
             "    45|    return env_var.rstrip('/')\n"
         )
         seen = self.mod._matches(text, self.mod.DEFAULT_PATTERNS)

@@ -28,6 +28,8 @@ Exit codes
 2 = spec not found / not readable
 3 = no acceptance_evals in spec (lint not applicable)
 4 = classifier spec missing the required Real-Data Proof section
+5 = spec declares `reuse_targets` but report does not cite them
+    (v0.12.0 — closes "reuse hàm có sẵn" gap)
 """
 from __future__ import annotations
 
@@ -98,9 +100,24 @@ def _load_spec_meta(spec_slug: str, workspace: Path) -> dict:
             r"^\s*feature_kind\s*:\s*[\"']?([A-Za-z0-9_-]+)[\"']?\s*$",
             fm_text, re.MULTILINE,
         )
+        reuse_list: list[str] = []
+        if "reuse_targets:" in fm_text:
+            after = fm_text.split("reuse_targets:", 1)[1]
+            # Stop at the next top-level YAML key (line starting with non-space
+            # followed by `:` and end-of-line or value). Tolerant fallback —
+            # full YAML lib path above handles arbitrary nesting.
+            block_end = re.search(r"\n[A-Za-z_][\w-]*:", after)
+            block = after[: block_end.start()] if block_end else after
+            reuse_list = [
+                m.group(1).strip()
+                for m in re.finditer(r"^\s*-\s*['\"]?([^'\"\n]+?)['\"]?\s*$",
+                                     block, re.MULTILINE)
+                if m.group(1).strip()
+            ]
         return {
             "evals": evals_list,
             "feature_kind": kind_m.group(1).lower() if kind_m else None,
+            "reuse_targets": reuse_list,
             "spec_path": spec_path,
         }
     try:
@@ -110,9 +127,11 @@ def _load_spec_meta(spec_slug: str, workspace: Path) -> dict:
         sys.exit(2)
     evals = fm.get("acceptance_evals") or []
     kind = fm.get("feature_kind")
+    reuse = fm.get("reuse_targets") or []
     return {
         "evals": [e for e in evals if isinstance(e, dict) and e.get("id")],
         "feature_kind": (kind.lower() if isinstance(kind, str) else None),
+        "reuse_targets": [r for r in reuse if isinstance(r, str) and r.strip()],
         "spec_path": spec_path,
     }
 
@@ -131,9 +150,29 @@ _REAL_DATA_PROOF_RE = re.compile(
     r"(?im)^\s*(?:#+\s*|\*\*\s*)real[-\s]?data\s*proof\b",
 )
 
+# v0.12.0 — Reuse Metric section header. Accepts both bullet-list and table
+# forms below the heading.
+_REUSE_METRIC_RE = re.compile(
+    r"(?im)^\s*(?:#+\s*|\*\*\s*)reuse\s*(?:metric|targets?)\b",
+)
+
 
 def _has_real_data_proof_section(report_text: str) -> bool:
     return bool(_REAL_DATA_PROOF_RE.search(report_text))
+
+
+def _has_reuse_metric_section(report_text: str) -> bool:
+    return bool(_REUSE_METRIC_RE.search(report_text))
+
+
+def _reuse_targets_cited(report_text: str, targets: list) -> list:
+    """Return the subset of `targets` NOT cited verbatim in report."""
+    missing = []
+    for t in targets:
+        # Treat target as a literal substring (allows path:line and module.fn forms)
+        if t not in report_text:
+            missing.append(t)
+    return missing
 
 
 def _scan_report_for_ids(report_text: str, eval_ids: list[str]) -> dict:
@@ -169,6 +208,7 @@ def main() -> int:
     meta = _load_spec_meta(args.spec_slug, workspace)
     evals = meta["evals"]
     feature_kind = meta["feature_kind"]
+    reuse_targets = meta.get("reuse_targets") or []
     if not evals:
         print(f"info: spec '{args.spec_slug}' has no acceptance_evals — lint skipped.",
               file=sys.stderr)
@@ -210,9 +250,34 @@ def main() -> int:
         )
         return 4
 
+    # v0.12.0 — Reuse Metric check. Spec declares reuse_targets → report
+    # must either include a `## Reuse Metric` section OR cite every target
+    # verbatim (path:fn or module.Class.method). Otherwise exit 5.
+    if reuse_targets:
+        if not _has_reuse_metric_section(report_text):
+            uncited = _reuse_targets_cited(report_text, reuse_targets)
+            if uncited:
+                print(
+                    f"FAIL: spec declares {len(reuse_targets)} reuse_targets "
+                    f"but report has no `Reuse Metric` section and "
+                    f"{len(uncited)} target(s) are not cited:",
+                    file=sys.stderr,
+                )
+                for t in uncited:
+                    print(f"  - {t}", file=sys.stderr)
+                print(
+                    "  Fix: add `## Reuse Metric` section listing which "
+                    "reuse_targets you actually called (or explain why "
+                    "you rewrote instead).",
+                    file=sys.stderr,
+                )
+                return 5
+
     print(f"PASS: all {len(eval_ids)} acceptance_evals referenced in report.")
     if feature_kind == "classification":
         print("PASS: Real-Data Proof section present (classifier spec).")
+    if reuse_targets:
+        print(f"PASS: reuse_targets ({len(reuse_targets)}) covered.")
     return 0
 
 

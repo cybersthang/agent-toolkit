@@ -29,6 +29,18 @@ Minimum code that solves the problem. Nothing speculative.
 
 Self-test: "Would a senior engineer call this overcomplicated?" If yes, simplify.
 
+## 2a. Grep Before Write (anti-duplication probe)
+
+Before adding any new function, class, or non-trivial helper:
+
+```
+1. Grep workspace for the identifier (or 1-2 close variants).
+2. Cite results in response (path:line if hit, "Searched: <pattern> → 0 hits" if not).
+3. Decide one of: reuse / extend / rewrite — with one-line reason.
+```
+
+Duplicate logic under different names is the #1 AI-coding bloat pattern. The 3 lines above cost 5 seconds and eliminate 90% of it. See sibling skill `reuse-first-then-write` for the full 3-step workflow with examples.
+
 ## 3. Surgical Changes
 
 Touch only what you must. Clean up only your own mess.

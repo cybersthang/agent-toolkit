@@ -67,9 +67,9 @@ class TestStopChainOrder(unittest.TestCase):
         self.assertEqual(hooks[-1]["name"], "verify_lint_scope.py")
 
     def test_stop_chain_length(self):
-        """8 hooks in Stop chain."""
+        """9 hooks in Stop chain post-v0.12.0 (added complexity_sentinel)."""
         hooks = _stop_chain_hooks()
-        self.assertEqual(len(hooks), 8)
+        self.assertEqual(len(hooks), 9)
 
 
 class TestPreToolUseChainOrder(unittest.TestCase):

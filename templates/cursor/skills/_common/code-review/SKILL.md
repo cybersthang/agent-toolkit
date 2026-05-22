@@ -69,6 +69,8 @@ silent gap is what lets Mediums and Lows escape between sessions.
 | 14 | Drift formulas | `accounted vs wall` direction, sign convention, tolerance threshold (`<` vs `<=`), AND/OR confusion in compound predicates |
 | 15 | Concurrency / resource leaks | dict that only grows, thread-local that misses a `finally`, lock acquired twice on the same path, file/socket left open |
 | 16 | Internationalisation | `json.dumps(..., ensure_ascii=True)` mangling Vietnamese / non-ASCII identifiers, missing `_()` on user-facing strings |
+| 17 | Function duplication / reuse gap | `def X(...)` whose logic is already implemented at another `path:line` under a different name; two functions that differ only by a parameter; a copy-pasted helper that diverges over time. Probe: for each new function in the diff, grep `^(def\|class) <root_word>` and `^(def\|class) .*<verb>` — flag near-matches. Pair with the `reuse_probe` hook (PreToolUse) for live-detection. |
+| 18 | Algorithmic complexity | function with loop nest ≥ 3 / body ≥ 60 LOC / branch count ≥ 12 that lacks a one-line Big-O / trade-off comment. See `algorithm-complexity-budget` rule + `complexity_sentinel` Stop hook. Probe: AST-scan, then ask "is the cost justified by input bound?" |
 
 If a dimension is N/A for the scope (e.g. no HTTP controllers), state that
 explicitly: *"Dimension 4 N/A — no controller code in scope (verified via

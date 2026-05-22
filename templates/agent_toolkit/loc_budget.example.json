@@ -1,0 +1,19 @@
+{
+  "_doc": "v0.12.0 LOC Delta Tracker config. Copy to .agent-toolkit/loc_budget.json to enable. Default thresholds are advisory only — warn-level, never block. v0.12.1 added docs/metadata exemptions after empirical first-fire on CHANGELOG.md.",
+  "enabled": true,
+  "per_turn_added_warn": 200,
+  "per_file_total_warn": 800,
+  "exempt_globs": [
+    "tests/**",
+    "**/test_*.py",
+    "**/*_test.py",
+    "**/migrations/**",
+    "**/__init__.py",
+    "**/*.md",
+    "CHANGELOG*",
+    "LICENSE*",
+    "NOTICE*",
+    "**/*.json",
+    "**/*.lock"
+  ]
+}

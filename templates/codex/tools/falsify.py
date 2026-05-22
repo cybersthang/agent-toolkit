@@ -543,7 +543,7 @@ def _run_mcp_call(probe: Dict[str, Any], dry_run: bool) -> int:
           "server": "realdata_test",
           "tool": "run_module_test",
           "args": {"module_name": "{MODULE}", "module_action": "update"},
-          "args_substitutions": {"MODULE": "nakivo_profiler"},
+          "args_substitutions": {"MODULE": "<your_module>"},
           "expected_returncode": 0,
           "expected_stdout_regex": "Ran \\d+ tests in .* OK"
         }

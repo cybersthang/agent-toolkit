@@ -32,6 +32,8 @@ CRASH_LOG_REL = ".agent-toolkit/.hook_crash_log.json"
 FIRE_LOG_REL = ".agent-toolkit/.hook_fire_log.json"
 SPEC_FIRST_LOG_REL = ".agent-toolkit/.spec_first_guard_log.json"
 IMPL_NOTES_LOG_REL = ".agent-toolkit/.implement_notes_gate_log.json"
+# v0.12.0 — LOC delta tracker ring buffer
+LOC_LOG_REL = ".agent-toolkit/.hook_loc_log.json"
 
 
 def _load_log(workspace: Path, rel: str) -> List[Dict[str, Any]]:
@@ -80,6 +82,17 @@ def aggregate(workspace: Path, window: int = 50) -> Dict[str, Any]:
     impl_notes_warns = sum(1 for e in impl_notes_events if e.get("kind") == "warn")
     impl_notes_bypass = sum(1 for e in impl_notes_events if e.get("kind") == "bypass")
 
+    # v0.12.0 — LOC delta trend
+    loc_events = _load_log(workspace, LOC_LOG_REL)[-window:]
+    loc_added_total = sum(int(e.get("added") or 0) for e in loc_events)
+    loc_removed_total = sum(int(e.get("removed") or 0) for e in loc_events)
+    loc_files_touched = len({e.get("file") for e in loc_events if e.get("file")})
+    loc_top_files: Counter = Counter()
+    for e in loc_events:
+        f = e.get("file")
+        if f:
+            loc_top_files[f] += int(e.get("added") or 0)
+
     # Recent activity
     recent_crash = any(now - (e.get("ts") or 0) < 86400 for e in crash_events)
 
@@ -110,6 +123,16 @@ def aggregate(workspace: Path, window: int = 50) -> Dict[str, Any]:
         "implement_notes_gate": {
             "warns": impl_notes_warns,
             "bypasses": impl_notes_bypass,
+        },
+        "loc_trend": {
+            "added_total": loc_added_total,
+            "removed_total": loc_removed_total,
+            "files_touched": loc_files_touched,
+            "top_files_by_added": [
+                {"file": f, "added": n}
+                for f, n in loc_top_files.most_common(5)
+            ],
+            "events_in_window": len(loc_events),
         },
         "recent_crash_24h": recent_crash,
     }
@@ -160,6 +183,22 @@ def render_markdown(report: Dict[str, Any]) -> str:
         lines.append("### implement_notes_gate activity")
         lines.append(f"- warns: {ing.get('warns', 0)}")
         lines.append(f"- bypasses: {ing.get('bypasses', 0)}")
+        lines.append("")
+
+    loc = report.get("loc_trend") or {}
+    if loc.get("events_in_window"):
+        lines.append("### LOC trend (v0.12.0)")
+        lines.append("")
+        lines.append(f"- events in window: {loc['events_in_window']}")
+        lines.append(f"- total added: {loc.get('added_total', 0)} LOC")
+        lines.append(f"- total removed: {loc.get('removed_total', 0)} LOC")
+        lines.append(f"- distinct files touched: {loc.get('files_touched', 0)}")
+        top = loc.get("top_files_by_added") or []
+        if top:
+            lines.append("")
+            lines.append("Top files by LOC added:")
+            for row in top:
+                lines.append(f"  - `{row['file']}` (+{row['added']})")
         lines.append("")
 
     return "\n".join(lines)

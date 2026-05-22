@@ -43,6 +43,12 @@
             "timeout": 5
           },
           {
+            "_comment": "v0.12.0 reuse-probe: soft-warn when new def/class collides with existing workspace symbol. Runs BEFORE implement_snapshot_hook (which must remain last per Stop-chain integration test).",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/reuse_probe.py",
+            "timeout": 6
+          },
+          {
             "type": "command",
             "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/implement_snapshot_hook.py",
             "timeout": 8
@@ -90,6 +96,12 @@
             "type": "command",
             "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/daemon_manager.py",
             "timeout": 90
+          },
+          {
+            "_comment": "v0.12.0 loc-delta-tracker: track LOC growth per turn (observability, soft warn at threshold)",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/loc_delta_tracker.py",
+            "timeout": 5
           }
         ]
       }
@@ -132,6 +144,12 @@
             "type": "command",
             "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/implement_notes_gate.py",
             "timeout": 5
+          },
+          {
+            "_comment": "v0.12.0 complexity-sentinel: AST-scan .py edits for loop nest / function LOC / branch count overflow (warn only). Runs BEFORE verify_lint_scope (Layer 5 final gate).",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/complexity_sentinel.py",
+            "timeout": 8
           },
           {
             "type": "command",

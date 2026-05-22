@@ -28,6 +28,22 @@
       "source": "AGENTS.md"
     },
     {
+      "id": "reuse-first",
+      "topic": "reuse over rewrite",
+      "aliases": ["duplicate function", "same name", "already exists", "rewrite vs reuse", "code already there"],
+      "question": "When writing a new function whose name/logic already exists in the workspace, what do we do?",
+      "answer": "Reuse > Extend > Rewrite. Before adding any new `def`/`class`, grep the workspace for the identifier + the root word. If a hit exists: (1) Reuse — call directly. (2) Extend — add a parameter to the existing function. (3) Rewrite ONLY if the existing is in the wrong layer / wrong contract / dead, AND state the reason in the spec or commit body. Enforced mechanically by `reuse_probe.py` PreToolUse hook + `reuse-first-then-write` skill. Spec frontmatter `reuse_targets:` lists intended targets; `/verify` blocks if declared but uncited.",
+      "source": ".cursor/rules/_common/karpathy-guidelines.mdc (§Grep Before Write)"
+    },
+    {
+      "id": "complexity-budget",
+      "topic": "algorithmic complexity",
+      "aliases": ["nested loops", "big o", "function too long", "cyclomatic", "complexity"],
+      "question": "How complex can one function be before review pushes back?",
+      "answer": "Soft limit: 2 nested loops / 3 nested if / 40 LOC body / 8 branches. Hard limit: 3 / 4 / 60 / 12 (matches `complexity_sentinel.py` Stop hook defaults). Any function with cost worse than O(n log n) MUST carry a one-line `# O(n²) — acceptable because <reason>` annotation. Override per project in `.agent-toolkit/complexity_budget.json`.",
+      "source": ".cursor/rules/_common/algorithm-complexity-budget.mdc"
+    },
+    {
       "id": "api-decorators",
       "topic": "api decorators",
       "aliases": ["api.multi", "api.one", "api.model", "decorator"],

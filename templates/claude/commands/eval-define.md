@@ -117,6 +117,33 @@ status `grilled` and ask the user to pick.
    - [ ] `target_pass_rate` defaults to `1.0` for code/data; ≥ 0.9 for model.
    - [ ] `rationale` references a spec section or ADR.
 
+6a. **v0.12.0 — append a `no-duplicate-api` default probe**. If the spec
+    declares `reuse_targets:` (any non-empty list) OR `feature_kind` is
+    NOT `infrastructure`, add this eval to detect silent duplication of
+    existing workspace symbols:
+
+   ```yaml
+   - id: no-duplicate-api
+     story: "v0.12.0 anti-bloat — no new top-level def/class duplicates an existing workspace symbol."
+     grader: code
+     probe:
+       tool: Bash
+       args:
+         cmd: |
+           # For each new `^def <name>` / `^class <Name>` in the diff,
+           # grep the rest of the workspace. Fail if any match found
+           # without an explicit reuse/extend/rewrite rationale in the
+           # commit body.
+           git diff --unified=0 origin/main...HEAD -- '*.py' | \
+             python -m agent_toolkit.tools.duplicate_api_check
+     expected:
+       assertion: "exit 0"
+     target_pass_rate: 1.0
+     rationale: "Pairs with `reuse_probe` PreToolUse hook + `reuse-first-then-write` skill. Catches duplicates that slipped past the live hook."
+   ```
+
+   Skip ONLY when `feature_kind: infrastructure` (boilerplate / scaffolding).
+
 7. **Smoke-test one representative probe** — run the first probe right now.
    If it errors (MCP timeout / SQL syntax / model missing) → fix the probe
    before writing the spec. This catches what ECC calls *false confidence*.

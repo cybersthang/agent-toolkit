@@ -92,6 +92,13 @@ quản lý `.claude/settings.json`).
 
 - ALWAYS reply in {{RESPONSE_LANGUAGE}} unless user asks otherwise.
 - ALWAYS use `{{PYTHON_BIN}}` when invoking Python — never bare `python`.
+- **NEVER run `git commit` / `git push` / `git add` through the Bash tool
+  unless DEV explicitly authorizes it in the current turn.** "Explicit"
+  means a direct imperative ("commit cái này", "commit this", "push lên
+  đi") — NOT implied by "ship feature", "fix toàn bộ", "/implement", or
+  any task-completion phrase. Push is always a separate explicit step
+  beyond commit. Never `--no-verify` / `--no-gpg-sign` / `--force` unless
+  DEV types those flags themselves. See memory `feedback_no_ai_commit`.
 - Before deep audits, read `.codex/audit_findings_locked.md` if present
   and cite the locked count verbatim.
 - Save discovered preferences as memory under

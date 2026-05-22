@@ -3,6 +3,67 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
+## [0.12.2] — 2026-05-22 — No-AI-commit rule: portable seed + cross-model reinforcement
+
+Patch release reinforcing the "AGENT does not commit on DEV's behalf" rule
+across CLAUDE.md + memory seed + COMMIT_GUIDE. No behavioural change to
+hooks; this is a documentation / policy distribution patch.
+
+### Why this exists
+
+Cross-model drift incident on 2026-05-22: a parallel Claude session
+(Sonnet 4.6) committed a feature branch with `Co-Authored-By: Claude
+Sonnet 4.6` in the body, even though `CLAUDE.md` already documented
+"AGENT ko được commit hay push code. DEV sẽ là người quyết định". Prose
+in `CLAUDE.md` alone was not load-bearing for that model. The fix moves
+the rule into 3 redundant locations (CLAUDE.md + memory + commit guide)
+so any future Claude variant loads it on first turn via `MEMORY.md`.
+
+### Added — portable memory seed
+
+- **`templates/memory/_common/feedback_no_ai_commit.md`** — full rule
+  body with **Why** (drift incident, redacted of project specifics) +
+  **How to apply** (6 numbered steps: read-only default, ask DEV before
+  committing, Co-Authored-By format if authorized, push is separate
+  authorization, never `--no-verify`/`--force`, evidence-based answer to
+  "did AGENT commit?" via JSONL transcript grep).
+- **`templates/memory/_common/MEMORY.md`** — +1 index entry pointing at
+  the new memory file.
+
+### Changed — reinforcement layers
+
+- **`templates/CLAUDE.md`** §"Hard rules (Claude-specific)" gains a
+  3rd bullet: NEVER `git commit` / `git push` / `git add` unless DEV
+  explicit auth in current turn; explicit ≠ implied by task-completion
+  phrases; push is separate from commit; never `--no-verify` /
+  `--force`. Cross-links to memory `feedback_no_ai_commit`.
+- **`templates/agent_toolkit/COMMIT_GUIDE.md`** — header expanded to
+  cover all Claude models + cross-reference the memory + rollback
+  command (`git reset --soft HEAD~1`).
+- `lib/installer.py` — `__version__` 0.12.1 → 0.12.2.
+
+### Migration
+
+Zero for installer / hooks. After `setup.py update`, new consumer
+projects (and existing ones being rebuilt) gain the rule in 3 files
+without any opt-in. Existing memory dirs are NOT overwritten — DEV
+already has the rule from v0.12.1's per-machine memory write.
+
+### Tests
+
+No new tests. Rule is documentation; mechanical enforcement (pre-commit
+hook rejecting `Co-Authored-By: Claude` commits unless an approval
+marker exists) was DESIGNED in this turn but NOT shipped per DEV's
+selection of memory-only path. Available as a future `v0.13.x` if
+documentation alone proves insufficient.
+
+### Known limitation
+
+Documentation cannot mechanically force a model to read it. A
+sufficiently drifty Claude variant could still ignore the rule despite
+seeing it in `MEMORY.md` + `CLAUDE.md` + `COMMIT_GUIDE.md`. The next
+step if drift recurs is the pre-commit hook (designed but unshipped).
+
 ## [0.12.1] — 2026-05-22 — Pre-publish polish: remove hardcoded refs
 
 Patch release preparing the repo for public GitHub publish. No behavioural

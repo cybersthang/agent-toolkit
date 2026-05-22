@@ -1,6 +1,13 @@
 # Commit guide — splitting agent-toolkit work into reviewable PRs
 
-Agents don't commit on your behalf; this doc is for the human reviewer.
+**Agents (any Claude model — Opus / Sonnet / Haiku) do NOT commit on your
+behalf.** This doc is for the human reviewer. See memory
+`feedback_no_ai_commit` for the rule + the cross-model drift incident
+that motivated reinforcing it across (CLAUDE.md + memory seed + this
+guide). If you see a commit body with `Co-Authored-By: Claude <model>`
+that you did NOT explicitly authorize in the same chat turn, that's a
+rule violation — `git reset --soft HEAD~1` to undo, then re-author
+manually.
 
 When a session lands many cross-cutting changes in `agent-toolkit/`, ship
 them as **separate logical commits** so reviewers (and `git bisect`) can

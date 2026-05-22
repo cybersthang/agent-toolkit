@@ -3,6 +3,79 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
+## [0.12.3] — 2026-05-22 — Token optimization: invariant_guard silent-exit on empty registry
+
+Patch release reducing per-session token cost on workspaces with zero
+invariants registered. Driven by empirical fire-log analysis showing
+`invariant_guard` fired 66 times in one session with 0 catches (registry
+loaded 0 invariants per SessionStart brief). Each fire emitted a
+`{"permissionDecision": "allow"}` JSON payload (~30 tokens) that Claude
+Code's transcript captures — pure waste when no rules exist.
+
+### Fixed — invariant_guard silent fast-path
+
+`templates/claude/hooks/invariant_guard.py`:
+
+- New `_silent_exit()` helper exits `0` with NO stdout. Claude Code
+  treats absent output as default allow per the PreToolUse hook spec.
+- `main()` early-exit now uses `_silent_exit()` instead of `_allow()`
+  for the four no-op paths: `AGENT_TOOLKIT_DISABLE=1`, empty stdin,
+  unsupported tool name, missing/empty invariants registry.
+- Fail-closed contract intact: if `invariants.json` exists but doesn't
+  parse cleanly OR contains a `"severity": "blocker"` text-scan hit,
+  the hook still falls through to the conservative-deny path.
+- Empty `invariants` list (registry loaded but contains no entries) now
+  also silent-exits — was previously emitting a permissionDecision=allow
+  JSON.
+
+Token impact (empirical):
+- Before: ~30 tokens × ~66 fires/session = ~2k tokens output per
+  Cursor_NAKIVO session (where DEV has 0 invariants registered).
+- After: 0 tokens output for the same 66 fires.
+
+### Added — tests
+
+`tests/test_invariant_guard_silent.py` (6 tests, all pass):
+- Missing `invariants.json` → empty stdout.
+- Empty `{"invariants": []}` array → empty stdout.
+- Empty `{}` dict (no blocker text) → empty stdout / not deny.
+- Non-Edit tool (Read/Glob/Grep) → empty stdout.
+- `AGENT_TOOLKIT_DISABLE=1` → empty stdout.
+- **Regression guard**: populated invariants with a blocker still emits
+  the deny JSON — silent-exit must NOT swallow real enforcement.
+
+### Changed
+
+- `lib/installer.py` — `__version__` 0.12.2 → 0.12.3.
+
+### Why "only" 2k tokens saved
+
+Honest answer to DEV's "giảm có 3k thì ít quá" feedback (2026-05-22):
+the bigger token levers are off-toolkit:
+1. **Disable unused claude.ai cloud connectors** (Adobe / Canva / Box /
+   Slack / Gmail / Google Drive / Google Calendar / Peec AI / Kiwi) at
+   claude.ai → Settings → Connectors. Saves 5–6k deferred-schema
+   tokens. DEV-side action, 2-minute fix, 0 risk.
+2. **Verify prompt caching active** — Anthropic prompt caching reduces
+   input cost ~90% for the cacheable prefix (system prompt + tools +
+   memory + skills, ~50k tokens). Check the claude.ai billing dashboard
+   for "Cache read tokens" — if it's >50% of input, caching is working.
+   No code change needed; this is the biggest lever.
+3. **This patch (invariant_guard silent-exit)** — small mechanical
+   improvement, but cumulative with #1 + #2 brings effective overhead
+   to ~5–10% of session cost.
+
+Items B/C/E/F (clarification-gate / evidence_audit / SessionStart trim
+/ CLAUDE.md compress) DEFERRED — they save ~3–5k each but are
+[assumption]-backed, not FACT-backed. Will revisit if DEV reports
+noise after running for 1–2 weeks with this patch + the off-toolkit
+levers applied.
+
+### Migration
+
+Zero. Hook behaviour identical for projects with real invariants. Only
+the no-op paths got quieter. No schema change, no config change.
+
 ## [0.12.2] — 2026-05-22 — No-AI-commit rule: portable seed + cross-model reinforcement
 
 Patch release reinforcing the "AGENT does not commit on DEV's behalf" rule

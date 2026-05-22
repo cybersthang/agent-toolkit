@@ -491,10 +491,20 @@ def _fail_closed_for_corrupt_state(workspace: Path, reason_tag: str) -> None:
     _allow()
 
 
+def _silent_exit() -> None:
+    """v0.12.3 — exit 0 without JSON output / fire log. Used by the
+    empty-registry fast path so the hook becomes a true no-op when no
+    invariants are configured (Claude Code treats absent output as
+    default allow). Avoids the ~30 tokens of `{"permissionDecision":
+    "allow"}` JSON per fire — empirically 66 fires/session × 30 tokens
+    = ~2k tokens saved when registry is empty."""
+    sys.exit(0)
+
+
 def main() -> int:
     # Kill-switch: env var disables all enforcement (emergency).
     if os.environ.get("AGENT_TOOLKIT_DISABLE") == "1":
-        _allow()
+        _silent_exit()
 
     raw = sys.stdin.read()
 
@@ -505,7 +515,7 @@ def main() -> int:
     if not raw.strip():
         # Empty envelope: legitimate when Claude Code probes the hook. No
         # tool to evaluate; allow.
-        _allow()
+        _silent_exit()
 
     try:
         envelope = json.loads(raw)
@@ -519,11 +529,20 @@ def main() -> int:
 
     tool_name = envelope.get("tool_name") or ""
     if tool_name not in SUPPORTED_TOOLS:
-        _allow()
+        _silent_exit()
 
     tool_input = envelope.get("tool_input") or {}
     workspace_str = envelope.get("cwd") or workspace_str
     workspace = Path(workspace_str).resolve()
+
+    # v0.12.3 — fast path: if invariants.json missing OR empty AND no
+    # blocker text scan signal → silent no-op exit (saves ~30 tokens
+    # per fire × ~66 fires/session on registries with 0 invariants).
+    # Keeps fail-closed behavior intact: blocker text in file or parse
+    # error still falls through to the conservative-deny path below.
+    invariants_path = workspace / INVARIANTS_REL
+    if not invariants_path.exists() and not _has_blocker_text_scan(workspace):
+        _silent_exit()
 
     invariants, load_error = _load_invariants(workspace)
 
@@ -536,7 +555,8 @@ def main() -> int:
         )
 
     if not invariants:
-        _allow()
+        # File exists but registry is empty — silent exit, no log noise.
+        _silent_exit()
 
     blockers, warns = _collect_violations(tool_name, tool_input, invariants, workspace)
 

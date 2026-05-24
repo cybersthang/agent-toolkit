@@ -158,12 +158,14 @@ class TestCrossCuttingRegressions:
 
     def test_preset_typo_fails_fast_with_did_you_mean(self, tmp_path):
         """Schema validation must catch typos at preset-load time, not
-        downstream during apply. Use `odoo-13` (1-char-off from `odoo-12`)
-        so difflib's 0.6 cutoff finds the suggestion deterministically."""
+        downstream during apply. Use `odo-17` (1-char-off from `odoo-17`)
+        so difflib's 0.6 cutoff finds the suggestion deterministically.
+        Note: odoo-13/14/15/16/18/19/20 are now real presets, so they
+        can no longer serve as typo targets."""
         target = tmp_path / 'proj'
         result = subprocess.run(
             [PYTHON, str(SETUP_PY), 'init', str(target),
-             '--preset', 'odoo-13', '--yes'],  # close typo
+             '--preset', 'odo-17', '--yes'],  # close typo (missing 'o')
             capture_output=True, text=True, timeout=30,
             env=dict(os.environ, PYTHONIOENCODING='utf-8'),
         )

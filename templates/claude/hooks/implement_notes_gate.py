@@ -137,8 +137,39 @@ def _spec_for_branch(workspace: Path, branch_slug: str) -> Optional[Path]:
 
 
 def _implement_notes_path(spec_path: Path) -> Path:
-    """Return expected implement-noted sidecar path next to spec."""
+    """Return expected MD sidecar path next to spec."""
     return spec_path.parent / f"{spec_path.stem}.implement-noted.md"
+
+
+def _implement_notes_html_path(spec_path: Path) -> Path:
+    """Return expected HTML sidecar path next to spec (v0.18+ companion)."""
+    return spec_path.parent / f"{spec_path.stem}.implement-noted.html"
+
+
+def _expected_formats(workspace: Path) -> List[str]:
+    """Read `output_format` from project config; default `md` to preserve
+    pre-v0.18 behavior on legacy installs (no config file = MD only check).
+
+    v0.18+ new installs ship `output_format: "both"` so HTML is checked
+    alongside MD. DEV opt-out by setting `"md"` explicitly.
+
+    Returns list of formats to check: subset of `["md", "html"]`.
+    """
+    cfg_path = workspace / CONFIG_REL
+    if not cfg_path.exists():
+        return ["md"]  # legacy default — don't break pre-v0.18 projects
+    try:
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return ["md"]
+    fmt = (cfg.get("output_format") if isinstance(cfg, dict) else None) or "md"
+    if fmt == "md":
+        return ["md"]
+    if fmt == "html":
+        return ["html"]
+    if fmt == "both":
+        return ["md", "html"]
+    return ["md"]  # unknown value → safe default
 
 
 def _extract_assistant_text(turn: List[Dict[str, Any]]) -> str:
@@ -261,12 +292,22 @@ def main() -> int:
     if not spec_path:
         _exit_silent()
 
-    notes_path = _implement_notes_path(spec_path)
-    if notes_path.exists():
+    # v0.18+: gate checks the formats DEV configured (`md` / `html` / `both`).
+    # Legacy installs without `.agent-toolkit/implement_notes.json` default
+    # to MD-only to preserve pre-v0.18 behavior.
+    expected_formats = _expected_formats(workspace)
+    md_path = _implement_notes_path(spec_path)
+    html_path = _implement_notes_html_path(spec_path)
+    paths_by_fmt = {"md": md_path, "html": html_path}
+    missing: List[Path] = [
+        paths_by_fmt[f] for f in expected_formats if not paths_by_fmt[f].exists()
+    ]
+    if not missing:
         _log_event(workspace, {
             "ts": int(time.time()),
             "kind": "ok",
             "slug": branch_slug,
+            "checked_formats": expected_formats,
         })
         _exit_silent()
 
@@ -274,19 +315,23 @@ def main() -> int:
         "ts": int(time.time()),
         "kind": "warn",
         "slug": branch_slug,
-        "expected_path": str(notes_path),
+        "expected_paths": [str(p) for p in missing],
+        "checked_formats": expected_formats,
     })
 
-    rel = str(notes_path)
-    try:
-        rel = str(notes_path.relative_to(workspace))
-    except (ValueError, OSError):
-        pass
+    rel_list: List[str] = []
+    for p in missing:
+        try:
+            rel_list.append(str(p.relative_to(workspace)))
+        except (ValueError, OSError):
+            rel_list.append(str(p))
 
+    missing_str = ", ".join(f"`{r}`" for r in rel_list)
     message = (
         f"[implement-notes-gate] Turn này claim implement done nhưng "
-        f"`{rel}` chưa có. Chạy `/implement-notes {branch_slug}` để AGENT "
-        f"walk transcript + emit file 4-section (scope deviations + "
+        f"{missing_str} chưa có. Chạy `/implement-notes {branch_slug}` "
+        f"(emit both .md + .html by default per output_format config) để "
+        f"AGENT walk transcript + emit file 4-section (scope deviations + "
         f"in-transcript trade-offs + open follow-ups + confidence summary). "
         f"Bypass single-shot: thêm `implement-notes: skip <reason>` vào "
         f"response."

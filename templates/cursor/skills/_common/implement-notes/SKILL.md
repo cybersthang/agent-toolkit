@@ -82,7 +82,7 @@ Scan transcript for AGENT-emitted markers like:
 
 Convert to `F-N` items with priority + owner.
 
-### Step 5 — Compute confidence + emit file
+### Step 5 — Compute confidence + emit MD file
 
 Self-rate each `SD-N` and `T-N`:
 - **High**: backed by spec eval + test green + standard pattern.
@@ -92,8 +92,80 @@ Self-rate each `SD-N` and `T-N`:
 Aggregate into Section 4 summary. List low-confidence items
 explicitly under "Items DEV should verify next".
 
-Write file via `Write` tool to canonical path. Update frontmatter
-counts. Mark `overall_confidence` as the lowest individual confidence.
+Write `<slug>.implement-noted.md` via `Write` tool to canonical path.
+Update frontmatter counts. Mark `overall_confidence` as the lowest
+individual confidence.
+
+### Step 6 — Emit HTML companion (v0.18+)
+
+Read project config `<workspace>/.agent-toolkit/implement_notes.json`:
+
+```json
+{
+  "auto_emit": true,
+  "output_format": "both"   // "md" | "html" | "both" — default "both"
+}
+```
+
+If `output_format` is `"html"` or `"both"` (default for new installs),
+ALSO emit `<slug>.implement-noted.html` at the same parent path.
+
+**Render mechanism** — `str.replace` substitution on
+`templates/agent_toolkit/implement-noted.example.html`. NO Jinja, NO
+external template engine (matches toolkit's stdlib-only contract). The
+template ships with 8 placeholders that map 1:1 to data extracted in
+Steps 1-5:
+
+| Placeholder | Source | Format |
+|---|---|---|
+| `{{SLUG}}` | spec slug | literal string |
+| `{{IMPLEMENT_RUN_AT}}` | today ISO date | `YYYY-MM-DD` |
+| `{{IMPLEMENT_AGENT}}` | model id from session | `claude-opus-4-7` etc. |
+| `{{IMPLEMENT_SESSION_ID}}` | session id or short ref | string |
+| `{{TOTAL_SD}}` / `{{TOTAL_T}}` / `{{TOTAL_F}}` | counts from Steps 3-4 | integer |
+| `{{OVERALL_CONFIDENCE}}` | lowest individual confidence | `high` / `medium` / `low` (used as CSS badge class) |
+| `{{SD_ITEMS}}` | rendered SD-N blocks | HTML `<div class="item sd">…</div>` per item |
+| `{{T_ITEMS}}` | rendered T-N blocks | HTML `<div class="item t">…</div>` per item |
+| `{{F_ITEMS}}` | rendered F-N blocks | HTML `<div class="item f">…</div>` per item |
+| `{{CONFIDENCE_SUMMARY}}` | table of H/M/L counts | HTML `<table>` |
+| `{{ITEMS_TO_VERIFY}}` | bulleted list of low-confidence ids | HTML `<ul>` |
+
+**Per-item HTML render** — for each `SD-N`, `T-N`, `F-N` from Steps 3-4,
+emit a block like:
+
+```html
+<div class="item sd">
+  <div class="item-title">
+    <span class="item-id">SD-1</span>
+    <Title> (<span class="badge outside">outside-spec</span>)
+  </div>
+  <dl>
+    <dt>Lý do</dt><dd><reason></dd>
+    <dt>Alternatives</dt><dd><alt-list-or-none></dd>
+    <dt>File(s) affected</dt><dd><code>path:line</code></dd>
+    <dt>Spec linkage</dt><dd><eval-id-or-"none"></dd>
+    <dt>Confidence</dt><dd><span class="badge {{conf}}">{{conf}}</span></dd>
+    <dt>DEV urgency</dt><dd><span class="badge {{urg}}">{{urg}}</span></dd>
+  </dl>
+</div>
+```
+
+The HTML template's `<style>` block already defines `.item.sd`, `.item.t`,
+`.item.f`, `.badge.high|medium|low|outside|diverged` — just emit
+matching class names, CSS handles colors.
+
+**HTML safety** — every user/transcript string passed into HTML MUST be
+escaped with `html.escape()` (stdlib) before substitution. Otherwise
+file paths with `<` `>` `&` break the document.
+
+**File write** — single `Write` tool call to
+`<workspace>/.agent-toolkit/specs/<branch>/<slug>.implement-noted.html`.
+Same parent path as the `.md` companion. Both files share the SAME
+data — only rendering differs.
+
+**Skip case** — if `output_format: "md"` (explicit DEV opt-out), skip
+Step 6 entirely. If config file missing, default to `"both"` (emit
+HTML).
 
 ---
 

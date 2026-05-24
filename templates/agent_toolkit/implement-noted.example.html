@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Implement-doc — {{SLUG}}</title>
+<style>
+  body {
+    font-family: -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
+    max-width: 1100px;
+    margin: 2rem auto;
+    padding: 0 1.5rem;
+    color: #1d1d1f;
+    line-height: 1.55;
+    background: #fafafa;
+  }
+  h1 { border-bottom: 2px solid #007aff; padding-bottom: .4rem; }
+  h2 { margin-top: 2.4rem; padding-top: .6rem; border-top: 1px solid #d2d2d7; }
+  h3 { margin-top: 1.6rem; color: #1d1d1f; }
+  .meta {
+    background: #fff;
+    border: 1px solid #d2d2d7;
+    border-radius: 8px;
+    padding: 1rem 1.2rem;
+    font-size: .9rem;
+  }
+  .meta dt { font-weight: 600; float: left; clear: left; width: 220px; color: #6e6e73; }
+  .meta dd { margin-left: 230px; }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: .75rem;
+    font-weight: 600;
+    vertical-align: middle;
+  }
+  .badge.high { background: #ff3b30; color: white; }
+  .badge.medium { background: #ff9500; color: white; }
+  .badge.low { background: #34c759; color: white; }
+  .badge.outside { background: #5856d6; color: white; }
+  .badge.diverged { background: #af52de; color: white; }
+  .item {
+    background: #fff;
+    border: 1px solid #d2d2d7;
+    border-left: 4px solid #007aff;
+    border-radius: 6px;
+    padding: .8rem 1rem;
+    margin: 1rem 0;
+  }
+  .item.sd { border-left-color: #5856d6; }
+  .item.t { border-left-color: #ff9500; }
+  .item.f { border-left-color: #34c759; }
+  .item-title { font-weight: 600; font-size: 1.05rem; margin-bottom: .4rem; }
+  .item-id { color: #6e6e73; font-family: "SF Mono", monospace; font-size: .85rem; margin-right: .5rem; }
+  .item dl { margin: .4rem 0 0; font-size: .9rem; }
+  .item dl dt { font-weight: 600; color: #6e6e73; float: left; clear: left; width: 130px; }
+  .item dl dd { margin-left: 140px; }
+  code, .path {
+    background: #f0f0f5;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: "SF Mono", "Menlo", monospace;
+    font-size: .85em;
+  }
+  .check {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border: 2px solid #6e6e73;
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+  .nav {
+    background: #fff;
+    border: 1px solid #d2d2d7;
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1.4rem 0;
+    font-size: .9rem;
+  }
+  .nav a { display: inline-block; margin-right: 1rem; color: #007aff; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .85rem; }
+  th, td { text-align: left; padding: 6px 10px; border: 1px solid #d2d2d7; }
+  th { background: #f0f0f5; }
+  tr:nth-child(even) { background: #fafafa; }
+  details { margin: .8rem 0; }
+  summary { cursor: pointer; font-weight: 600; padding: .3rem 0; }
+  .warning {
+    background: #fff5e0;
+    border-left: 4px solid #ff9500;
+    padding: .6rem 1rem;
+    margin: 1rem 0;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Implement-doc — {{SLUG}}</h1>
+
+<p><em>Sidecar artifact for spec <code>{{SLUG}}</code> emitted at end of
+<code>/implement</code> as Phase 5.5. Schema mirrors
+<code>templates/agent_toolkit/implement-noted.example.md</code> (4-section
+schema + frontmatter) but rendered as self-contained HTML for browser
+review. Companion file: <code>{{SLUG}}.implement-noted.md</code>
+(machine-parseable, same data).</em></p>
+
+<section class="meta">
+  <dl>
+    <dt>schema_version</dt><dd>1</dd>
+    <dt>spec</dt><dd>{{SLUG}}</dd>
+    <dt>implement_run_at</dt><dd>{{IMPLEMENT_RUN_AT}}</dd>
+    <dt>implement_agent</dt><dd><code>{{IMPLEMENT_AGENT}}</code></dd>
+    <dt>implement_session_id</dt><dd>{{IMPLEMENT_SESSION_ID}}</dd>
+    <dt>total_scope_deviations</dt><dd><strong>{{TOTAL_SD}}</strong></dd>
+    <dt>total_tradeoffs_with_evidence</dt><dd><strong>{{TOTAL_T}}</strong></dd>
+    <dt>total_followups</dt><dd><strong>{{TOTAL_F}}</strong></dd>
+    <dt>overall_confidence</dt><dd><span class="badge {{OVERALL_CONFIDENCE}}">{{OVERALL_CONFIDENCE}}</span></dd>
+  </dl>
+</section>
+
+<nav class="nav">
+  <a href="#sd">§1 Scope deviations</a>
+  <a href="#tradeoffs">§2 Trade-offs</a>
+  <a href="#followups">§3 Follow-ups</a>
+  <a href="#confidence">§4 Confidence</a>
+</nav>
+
+<h2 id="sd">§1 Scope deviations ({{TOTAL_SD}} items)</h2>
+
+<p>Decisions AGENT made that are NOT explicitly covered by an
+acceptance_eval in the spec frontmatter. Two flavors:</p>
+
+<ul>
+  <li><span class="badge outside">outside-spec</span> — choices outside spec's intent (added field X, picked library Y)</li>
+  <li><span class="badge diverged">diverged-from-request</span> — divergences from DEV's literal request that AGENT made on the fly</li>
+</ul>
+
+{{SD_ITEMS}}
+
+<h2 id="tradeoffs">§2 In-transcript trade-offs ({{TOTAL_T}} items)</h2>
+
+<p><strong>STRICT rule</strong>: only list trade-offs that have explicit
+evidence in the conversation transcript. Each item MUST cite turn id /
+timestamp. Reconstruction post-hoc is FORBIDDEN — that's hallucination
+risk, not genuine trade-off.</p>
+
+{{T_ITEMS}}
+
+<h2 id="followups">§3 Open follow-ups ({{TOTAL_F}} items)</h2>
+
+<p>Things AGENT noticed during implementation but deferred. Bugs,
+refactor opportunities, spec-update candidates, future hardening.</p>
+
+{{F_ITEMS}}
+
+<h2 id="confidence">§4 Confidence summary</h2>
+
+{{CONFIDENCE_SUMMARY}}
+
+<h3>Items DEV should verify next</h3>
+
+{{ITEMS_TO_VERIFY}}
+
+<hr style="margin: 2rem 0; border: 0; border-top: 1px solid #d2d2d7;">
+
+<p style="font-size: .85rem; color: #6e6e73; text-align: center;">
+Generated by <code>{{IMPLEMENT_AGENT}}</code> on {{IMPLEMENT_RUN_AT}} ·
+Schema: <code>templates/agent_toolkit/implement-noted.example.md</code> ·
+HTML variant of <code>&lt;slug&gt;.implement-noted.md</code> convention.
+</p>
+
+</body>
+</html>

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -17,7 +18,7 @@ from pathlib import Path
 TOOLKIT_ROOT = Path(__file__).resolve().parent.parent
 HOOK = TOOLKIT_ROOT / "templates" / "claude" / "hooks" / "clarification_gate_enforcer.py"
 INTENT_ROUTER = TOOLKIT_ROOT / "templates" / "claude" / "hooks" / "intent_router.py"
-PY = os.environ.get("PYTHON_BIN", "/home/voducthang/NAKIVO/venv/bin/python")
+PY = os.environ.get("PYTHON_BIN", sys.executable)
 
 REQUIRED_MARKERS = ("UNDERSTANDING", "ASSUMPTIONS", "QUESTIONS", "Searched:")
 SHAPE_COMPLETE = (

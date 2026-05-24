@@ -27,11 +27,12 @@ Other presets: `odoo-13` / `odoo-14` / `odoo-15` / `odoo-16` / `odoo-17` /
 
 ## Why agent-toolkit?
 
-- 🛡️ **Mechanical enforcement, not honor system.** 26 hooks DENY at the
+- 🛡️ **Mechanical enforcement, not honor system.** 28 hooks DENY at the
   Claude Code harness level — invariant strips, claim-without-proof,
   destructive git (`git_guardrails` blocks commit/push/add until DEV
-  explicitly authorizes), hallucinated progress. Not warnings the agent
-  can ignore.
+  explicitly authorizes), hallucinated progress, **unresolved gaps on
+  done-claim** (`gap_completeness_gate` v0.19 — chặn drip-feed). Not
+  warnings the agent can ignore.
 - 🔬 **Real-data verify or it didn't ship.** `/verify` runs MCP probes on
   the live DB; `evidence_audit` Stop hook BLOCKS "tests pass" claims that
   lack an `mcp__realdata_test__*` or `mcp__postgres__*` call in the turn.
@@ -60,13 +61,15 @@ Other presets: `odoo-13` / `odoo-14` / `odoo-15` / `odoo-16` / `odoo-17` /
 | Telemetry + bypass audit         | **✅** | ❌ | ❌ | partial | ❌ |
 | Bilingual docs (EN + VN)         | **✅** | ❌ | ❌ | ❌ | ❌ |
 | Git-state agent guardrail        | **✅** | ❌ | ✅ | ❌ | ❌ |
+| Drip-feed prevention (v0.19)     | **✅** | ❌ | ❌ | ❌ | ❌ |
+| AGENT-side disclosure sidecar (HTML+MD, v0.18) | **✅** | ❌ | ❌ | partial | ❌ |
 
 ## Production status
 
 Toolkit is in **active daily use** on a production Odoo 12 Enterprise
 workspace since 2026-Q1. Hook telemetry shows ~57
 fire-events per session avg, ~26% block rate, ~3.5% bypass rate.
-**26 hooks** active, **560 unit tests** in CI (matrix: Ubuntu / macOS /
+**28 hooks** active, **576 unit tests** in CI (matrix: Ubuntu / macOS /
 Windows × Python 3.8 / 3.10 / 3.12 — all green).
 
 > 🤖 **AI agents installing into a project**: Read
@@ -110,10 +113,15 @@ Windows × Python 3.8 / 3.10 / 3.12 — all green).
               │     │                                  │     │
               │     ▼                                  │MCP  │
               │  Stop ─► [evidence_audit]   ❌BLOCK ◄──┤probe│
-              │       ─► [clarification_gate_enforcer] │     │
-              │       ─► [verify_lint]      ❌BLOCK    │     │
+              │       ─► [clarification_gate_enforcer] ❌BLOCK │
+              │       ─► [gap_completeness_gate]  ❌BLOCK    │
+              │             (chặn drip-feed v0.19)           │
+              │       ─► [verify_lint]      ❌BLOCK          │
               │       ─► [post_edit_verify_gate] ❌BLOCK     │
               │       ─► [debug_sentry]     ❌BLOCK          │
+              │       ─► [implement_notes_gate] ⚠️WARN       │
+              │             (md+html sidecar v0.18)          │
+              │       ─► [verify_lint_scope]  ❌BLOCK        │
               └──────────────────────────────────────────────┘
                                      │ tool call ▼
               ┌──────────────────────────────────────────────┐
@@ -847,7 +855,7 @@ Preset khác: `odoo-17`, `generic`. Thêm preset mới (Django/Rails/Go) chỉ l
 
 ### Tại sao dùng agent-toolkit?
 
-- 🛡️ **Enforce cơ học, không phải honor-system.** 26 hook DENY ở
+- 🛡️ **Enforce cơ học, không phải honor-system.** 28 hook DENY ở
   Claude Code harness — strip invariant, claim không proof, git
   destructive, fake progress đều bị chặn.
 - 🔬 **Verify trên data thật hoặc không ship.** `/verify` chạy MCP probe
@@ -893,7 +901,7 @@ deviation + trade-off + follow-up + confidence để DEV review trước merge.
 
 Toolkit đang **dùng thực tế hằng ngày** trên một production Odoo 12
 Enterprise workspace từ 2026-Q1. Hook telemetry trung bình ~57 fire-event/session,
-~26% block, ~3.5% bypass. **26 hook** active, **560 unit test** trên CI
+~26% block, ~3.5% bypass. **28 hook** active, **576 unit test** trên CI
 (matrix: Ubuntu / macOS / Windows × Python 3.8 / 3.10 / 3.12 — all green).
 
 ### Liên hệ tác giả

@@ -56,7 +56,9 @@ def test_dry_run_emits_stable_file_count(tmp_path, preset):
     # 1.5× the current actual is loose enough for legitimate growth but
     # would catch e.g. an `os.walk` doubling the plan.
     # Bumped at v0.8.0: HOOK_CHAIN.md + DEV_LIVE_EXERCISE.md added.
-    maximums = {'generic': 180, 'odoo-12': 240, 'odoo-17': 240}
+    # Bumped at v0.18.0: +implement_notes.json default config + implement-noted.example.html template.
+    # Bumped at v0.19.0: +gap_completeness_gate.py hook + v0.19 spec.
+    maximums = {'generic': 200, 'odoo-12': 260, 'odoo-17': 260}
     assert len(plan_lines) <= maximums[preset], (
         f'{preset}: {len(plan_lines)} files planned, '
         f'unexpectedly above ceiling {maximums[preset]} '

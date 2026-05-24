@@ -3,6 +3,93 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
+## [0.19.0] — 2026-05-24 — gap-completeness-gate Stop hook (chặn drip-feed)
+
+Closes the **drip-feed anti-pattern** captured in memory
+`feedback_exhaustive_analysis` (DEV complaint 2026-05-08, recurring
+2026-05-24): each "is it done?" check round surfaces new gaps that
+should have been caught the first time.
+
+Spec: [specs/v0.19.0-gap-completeness-gate.md](specs/v0.19.0-gap-completeness-gate.md)
+— 7 US + 7 AE.
+
+**Added**:
+- `templates/claude/hooks/gap_completeness_gate.py` (Stop hook, ~280 LOC,
+  default mode `block`):
+  - Tracks open gaps via `.agent-toolkit/.open_gaps.json` state file
+  - Captures NEW gap emissions (`G<N> — desc` patterns) from response
+    text + appends to state
+  - BLOCKs Stop on done-claim while ≥1 gap `status: open`
+  - 3 resolution tiers in response text:
+      1. Fix gap → re-emit, gap auto-clears
+      2. `gap-defer: G<N> <reason ≥ 8 chars>` — punt to next sprint
+      3. `gap-cant-fix: G<N> <reason>` — escalate to DEV (stderr surface)
+  - Whole-gate single-shot bypass: `bypass-gap-gate: <reason>` in prior
+    prompt (captured by `intent_router.py`, consumed by hook)
+  - Stale TTL 24h — gaps older than that auto-flip to `status: stale`
+  - Skips when `.autonomy_active.json` fresh (auto-chain mid-fix safe)
+- `templates/claude/hooks/_patterns.py` — 5 new regex:
+  `GAP_LIST_EMIT_RE`, `GAP_DEFER_RE`, `GAP_CANT_FIX_RE`,
+  `BYPASS_GAP_GATE_RE`, `DONE_CLAIM_GAP_RE`
+- `tests/test_gap_completeness_gate.py` — 12 tests across 7 US classes +
+  kill-switch. All PASS locally.
+
+**Changed**:
+- `templates/claude/hooks/intent_router.py` — `_capture_bypass_gap_gate()`
+  helper writes `pending_bypass` field into `.open_gaps.json` when prompt
+  matches `bypass-gap-gate: <reason ≥ 8 chars>`.
+- `templates/claude/settings.json` — wire `gap_completeness_gate.py` into
+  Stop chain at position 4 (after `clarification_gate_enforcer`, before
+  `verify_lint`). Stop chain length 10 → 11.
+- `tests/test_stop_chain_interactions.py::test_stop_chain_length` —
+  update expected count 10 → 11.
+
+**Why it matters**: precedent for the fix pattern = `feedback_no_ai_commit`
+memory → `git_guardrails.py` hook. Memory + skill (`gap-fix-cycle`) +
+autonomy (`/verify` keeps autonomy ON for fix) form **advice tier**;
+without a Stop hook BLOCK, agents drift back to drip-feeding. This hook
+is the **mechanical enforcement tier**.
+
+
+## [0.18.0] — 2026-05-24 — Auto-emit HTML implement-doc sidecar after `/implement`
+
+Closes the "Implement-doc 6/10" weakness from session scoring (5/30 spec
+slugs have a sidecar = ~17% adoption). DEV asked HTML for browser review.
+
+Spec: [specs/v0.18.0-implement-doc-uplift.md](specs/v0.18.0-implement-doc-uplift.md)
+— 5 US + 6 AE.
+
+**Added**:
+- `templates/agent_toolkit/implement-noted.example.html` — self-contained
+  HTML template (embedded CSS, badge/checkbox/collapsible visual). 8
+  placeholders mapped 1:1 to data extracted in skill Steps 1-5.
+- `templates/agent_toolkit/implement_notes.json` — default project config
+  shipped at install: `auto_emit: true`, `output_format: both`,
+  `enforce: warn`.
+
+**Changed**:
+- `templates/claude/commands/implement.md` — new Step 10b: inline-call
+  `/implement-notes <slug>` after `/verify` completes, before step 11
+  báo cáo. Reads project `output_format` from config. Failure to emit
+  is WARN-not-block (DEV can retroactively run `/implement-notes`).
+- `templates/claude/commands/implement-notes.md` — accepts
+  `--format md|html|both` (default `both`). Output section documents
+  2-file emit + schema parity.
+- `templates/cursor/skills/_common/implement-notes/SKILL.md` — new Step 6
+  detailing HTML render via `str.replace` substitution on the template +
+  `html.escape()` safety + per-item block format.
+- `templates/claude/hooks/implement_notes_gate.py` — `_expected_formats()`
+  reads `.agent-toolkit/implement_notes.json` `output_format` (default
+  `md` for legacy installs without config). Hook checks `.md` / `.html` /
+  both per setting.
+- 4 new tests in `tests/test_implement_notes_gate.py::TestOutputFormatHtmlBoth`
+  (html-only, both, both-satisfied, legacy default).
+
+**Resolves**: AGENT-side disclosure surface is now DEV-readable in
+browser (collapsible file lists + visual badges) instead of raw Markdown.
+
+---
+
 ## [0.13.x] — 2026-05-24 — "làm hết đi" sprint (Odoo-decouple + adopt + public-readiness)
 
 Multi-track sprint covering 3 user requests across one session:

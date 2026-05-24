@@ -194,5 +194,87 @@ class TestImplementNotesGate(unittest.TestCase):
             self.assertEqual((proc.stdout or "").strip(), "")
 
 
+# ============================================================
+# v0.18 — output_format aware validator
+# ============================================================
+class TestOutputFormatHtmlBoth(unittest.TestCase):
+    """v0.18: hook respects `output_format: html | both` in
+    `.agent-toolkit/implement_notes.json` — checks for `.html` sidecar
+    alongside (or instead of) `.md`."""
+
+    def _write_config(self, project: Path, output_format: str) -> None:
+        cfg = project / ".agent-toolkit" / "implement_notes.json"
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text(json.dumps({
+            "auto_emit": True,
+            "output_format": output_format,
+            "enforce": "warn",
+        }), encoding="utf-8")
+
+    def test_output_format_html_only_checks_html(self):
+        """`output_format: html` → hook expects .html, not .md."""
+        with tempfile.TemporaryDirectory() as td:
+            project = _git_init_repo(Path(td), branch="feature-foo")
+            spec = _make_spec(project, "feature-foo")
+            self._write_config(project, "html")
+            # Create MD only (HTML missing) — hook should still warn.
+            md_sidecar = spec.parent / f"{spec.stem}.implement-noted.md"
+            md_sidecar.write_text("# placeholder", encoding="utf-8")
+            t = _make_transcript(project, "Implement done.")
+            envelope = {"cwd": str(project), "transcript_path": str(t)}
+            proc = _run_hook(envelope, project)
+            self.assertEqual(proc.returncode, 0)
+            self.assertIn(".implement-noted.html", proc.stdout)
+
+    def test_output_format_both_checks_both(self):
+        """`output_format: both` → missing either file triggers warn."""
+        with tempfile.TemporaryDirectory() as td:
+            project = _git_init_repo(Path(td), branch="feature-foo")
+            spec = _make_spec(project, "feature-foo")
+            self._write_config(project, "both")
+            # Create only MD; HTML missing.
+            md_sidecar = spec.parent / f"{spec.stem}.implement-noted.md"
+            md_sidecar.write_text("# placeholder", encoding="utf-8")
+            t = _make_transcript(project, "Implement done.")
+            envelope = {"cwd": str(project), "transcript_path": str(t)}
+            proc = _run_hook(envelope, project)
+            self.assertEqual(proc.returncode, 0)
+            # warn surfaces missing HTML
+            self.assertIn(".implement-noted.html", proc.stdout)
+
+    def test_output_format_both_satisfied_when_all_present(self):
+        """Both files present → no warn."""
+        with tempfile.TemporaryDirectory() as td:
+            project = _git_init_repo(Path(td), branch="feature-foo")
+            spec = _make_spec(project, "feature-foo")
+            self._write_config(project, "both")
+            md_sidecar = spec.parent / f"{spec.stem}.implement-noted.md"
+            html_sidecar = spec.parent / f"{spec.stem}.implement-noted.html"
+            md_sidecar.write_text("# md", encoding="utf-8")
+            html_sidecar.write_text("<html></html>", encoding="utf-8")
+            t = _make_transcript(project, "Implement done.")
+            envelope = {"cwd": str(project), "transcript_path": str(t)}
+            proc = _run_hook(envelope, project)
+            self.assertEqual(proc.returncode, 0)
+            self.assertEqual((proc.stdout or "").strip(), "",
+                             f"expected silent allow, got: {proc.stdout!r}")
+
+    def test_output_format_md_legacy_default(self):
+        """No config file → legacy MD-only check (pre-v0.18 behavior)."""
+        with tempfile.TemporaryDirectory() as td:
+            project = _git_init_repo(Path(td), branch="feature-foo")
+            spec = _make_spec(project, "feature-foo")
+            # No .agent-toolkit/implement_notes.json — default `md` only.
+            md_sidecar = spec.parent / f"{spec.stem}.implement-noted.md"
+            md_sidecar.write_text("# md", encoding="utf-8")
+            # HTML not present, but legacy behavior shouldn't care.
+            t = _make_transcript(project, "Implement done.")
+            envelope = {"cwd": str(project), "transcript_path": str(t)}
+            proc = _run_hook(envelope, project)
+            self.assertEqual(proc.returncode, 0)
+            self.assertEqual((proc.stdout or "").strip(), "",
+                             "legacy default should accept MD-only")
+
+
 if __name__ == "__main__":
     unittest.main()

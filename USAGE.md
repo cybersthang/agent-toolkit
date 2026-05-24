@@ -2,9 +2,15 @@
 
 Toolkit này đóng gói toàn bộ hạ tầng AI agent (Claude Code / Cursor / Codex)
 — **core stack-agnostic, presets opinionated**. Clone về một lần, chạy
-`setup.py init --preset <name>` cho từng project. Hôm nay 3 preset ship
-sẵn (`generic`, `odoo-12`, `odoo-17`); thêm Django/Rails/Go là việc
+`setup.py init --preset <name>` cho từng project. **10 preset ship sẵn**:
+`generic` + Odoo 12-20 (9 phiên bản); thêm Django/Rails/Go là việc
 "contribution-not-fork" — xem [PORTING.md](templates/agent_toolkit/PORTING.md).
+
+**v0.18+v0.19 mới**: (1) `/implement` auto-emit `<slug>.implement-noted.{md,html}`
+sidecar sau `/verify` (DEV review HTML trong browser); (2)
+`gap_completeness_gate` Stop hook chặn drip-feed — không cho agent claim
+"done" khi còn open gap, ép resolve qua `gap-defer:` / `gap-cant-fix:`
+marker hoặc fix thực sự.
 
 Toolkit bundle một quy trình **spec-driven theo chuẩn GitHub Spec Kit**
 (`/plan` → `/clarify` → `/tasks` → `/analyze` → `/implement` → `/verify`)

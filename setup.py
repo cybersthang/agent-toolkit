@@ -2,11 +2,12 @@
 """agent-toolkit — install Claude Code / Cursor / Codex agent infrastructure
 into an Odoo workspace, configured for a specific Odoo version + variant.
 
-Shipped presets (3):
+Shipped presets (10):
 
-    odoo-12   — Odoo 12 (Python 3.8, QWeb + jQuery, @api.multi era)
-    odoo-17   — Odoo 17 (Python 3.10+, OWL, recordset, @api.model_create_multi)
-    generic   — Plain Python fallback (not the primary path for Odoo)
+    odoo-12 .. odoo-20  — Odoo 12 → 20 (9 versions; Python 3.6 → 3.11+)
+                          Legacy era (12-15) reuses odoo-12 rule/memory packs;
+                          modern OWL era (16-20) reuses odoo-17 rule/memory.
+    generic             — Plain Python fallback (stack-agnostic core only)
 
 The toolkit's core (hooks, invariants, Spec Kit workflow) is stack-agnostic,
 but the shipped rules, skills, MCP servers, and canonical decisions are

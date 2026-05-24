@@ -109,3 +109,17 @@ and the skill `.cursor/skills/karpathy-guidelines/`.
 - Do not edit committed config files to add credentials.
 - Do not invent answers for recurring questions; lookup or propose registry update.
 - Do not add features outside the request without asking first.
+- **No drip-feed (v0.19+)**: when surfacing GAP/BLOCKER lists, expect
+  `gap_completeness_gate` Stop hook to track them in
+  `.agent-toolkit/.open_gaps.json`. A subsequent "done" claim is BLOCKED
+  until every open gap is resolved (fix and re-emit; or mark
+  `gap-defer: G<N> <reason>`; or escalate `gap-cant-fix: G<N> <reason>`).
+  Whole-gate single-shot bypass via prior prompt
+  `bypass-gap-gate: <reason>`. Rooted in `feedback_exhaustive_analysis`
+  memory: ONE exhaustive pass, not iterative discovery.
+- **Implement-doc sidecar (v0.18+)**: after `/implement <slug>` +
+  `/verify`, agent auto-emits `<slug>.implement-noted.{md,html}`
+  (Phase 5.5 of `/implement`). DEV opens the HTML in browser to review
+  scope deviations, in-transcript trade-offs (cite required),
+  follow-ups, and confidence summary. Disable via
+  `.agent-toolkit/implement_notes.json` `"auto_emit": false`.

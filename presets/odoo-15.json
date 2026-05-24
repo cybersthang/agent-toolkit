@@ -1,0 +1,32 @@
+{
+  "description": "Odoo 15 Community / Enterprise — Python 3.8+, transitional (QWeb + early OWL 1.x). Reuses odoo-12 rules/memory (legacy ORM still dominant); fork the preset to add OWL-specific rules.",
+  "stack_label": "Odoo 15",
+  "response_language": "Vietnamese",
+  "stack": {
+    "language": "python",
+    "language_version": "3.8",
+    "framework": "odoo",
+    "framework_version": "15",
+    "frontend": "QWeb + OWL 1.x (transitional)",
+    "_doc": "Per-stack optional path overrides — used by realdata_test MCP. Leave empty to let user set <PREFIX>_ODOO_BIN / <PREFIX>_ODOO_CONF env vars at runtime.",
+    "odoo_bin_rel": "",
+    "odoo_conf_rel": "",
+    "smoke_test_rel": ""
+  },
+  "addon_roots": ["addons", "custom_addons", "enterprise"],
+  "mcp_servers": ["codebase", "postgres", "realdata_test"],
+  "external_mcp_servers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--browser=chromium", "--headless", "--isolated"]
+    }
+  },
+  "db": {
+    "default_db": "odoo15_dev",
+    "default_port": 5432,
+    "default_user": "odoo"
+  },
+  "rules": ["_common", "odoo-12"],
+  "skills": ["_common", "odoo"],
+  "memory_packs": ["odoo-12"]
+}

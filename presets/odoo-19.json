@@ -1,0 +1,28 @@
+{
+  "description": "Odoo 19 Community / Enterprise — Python 3.11+, OWL framework. Reuses odoo-17 rules/memory; fork the preset for v19-specific differences.",
+  "stack_label": "Odoo 19",
+  "response_language": "Vietnamese",
+  "stack": {
+    "language": "python",
+    "language_version": "3.11",
+    "framework": "odoo",
+    "framework_version": "19",
+    "frontend": "OWL framework"
+  },
+  "addon_roots": ["addons", "custom_addons", "enterprise"],
+  "mcp_servers": ["codebase", "postgres", "realdata_test"],
+  "external_mcp_servers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--browser=chromium", "--headless", "--isolated"]
+    }
+  },
+  "db": {
+    "default_db": "odoo19_dev",
+    "default_port": 5432,
+    "default_user": "odoo"
+  },
+  "rules": ["_common", "odoo-17"],
+  "skills": ["_common", "odoo"],
+  "memory_packs": ["odoo-17"]
+}

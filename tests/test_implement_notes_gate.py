@@ -109,7 +109,7 @@ class TestImplementNotesGate(unittest.TestCase):
             envelope = {"cwd": str(project), "transcript_path": str(t)}
             proc = _run_hook(envelope, project)
             self.assertEqual(proc.returncode, 0)
-            self.assertEqual(proc.stdout.strip(), "")
+            self.assertEqual((proc.stdout or "").strip(), "")
 
     def test_no_op_when_no_spec_for_branch(self):
         """Branch has no matching spec → silent."""
@@ -119,7 +119,7 @@ class TestImplementNotesGate(unittest.TestCase):
             envelope = {"cwd": str(project), "transcript_path": str(t)}
             proc = _run_hook(envelope, project)
             self.assertEqual(proc.returncode, 0)
-            self.assertEqual(proc.stdout.strip(), "")
+            self.assertEqual((proc.stdout or "").strip(), "")
 
     def test_no_op_when_on_main_branch(self):
         """Trunk branch (main/master) is exempt → silent."""
@@ -130,7 +130,7 @@ class TestImplementNotesGate(unittest.TestCase):
             envelope = {"cwd": str(project), "transcript_path": str(t)}
             proc = _run_hook(envelope, project)
             self.assertEqual(proc.returncode, 0)
-            self.assertEqual(proc.stdout.strip(), "")
+            self.assertEqual((proc.stdout or "").strip(), "")
 
     def test_bypass_marker_honored(self):
         """`implement-notes: skip <reason>` in assistant text → silent."""
@@ -143,7 +143,7 @@ class TestImplementNotesGate(unittest.TestCase):
             envelope = {"cwd": str(project), "transcript_path": str(t)}
             proc = _run_hook(envelope, project)
             self.assertEqual(proc.returncode, 0)
-            self.assertEqual(proc.stdout.strip(), "")
+            self.assertEqual((proc.stdout or "").strip(), "")
 
     def test_no_op_when_file_already_exists(self):
         """Implement-noted file exists alongside spec → silent."""
@@ -159,7 +159,7 @@ class TestImplementNotesGate(unittest.TestCase):
             envelope = {"cwd": str(project), "transcript_path": str(t)}
             proc = _run_hook(envelope, project)
             self.assertEqual(proc.returncode, 0)
-            self.assertEqual(proc.stdout.strip(), "")
+            self.assertEqual((proc.stdout or "").strip(), "")
 
     def test_fail_open_on_empty_stdin(self):
         with tempfile.TemporaryDirectory() as td:
@@ -170,7 +170,7 @@ class TestImplementNotesGate(unittest.TestCase):
                 timeout=15, cwd=str(project),
             )
             self.assertEqual(proc.returncode, 0)
-            self.assertEqual(proc.stdout.strip(), "")
+            self.assertEqual((proc.stdout or "").strip(), "")
 
     def test_fail_open_on_malformed_json(self):
         with tempfile.TemporaryDirectory() as td:
@@ -182,7 +182,7 @@ class TestImplementNotesGate(unittest.TestCase):
                 timeout=15, cwd=str(project),
             )
             self.assertEqual(proc.returncode, 0)
-            self.assertEqual(proc.stdout.strip(), "")
+            self.assertEqual((proc.stdout or "").strip(), "")
 
     def test_fail_open_on_missing_transcript(self):
         with tempfile.TemporaryDirectory() as td:
@@ -191,7 +191,7 @@ class TestImplementNotesGate(unittest.TestCase):
                         "transcript_path": str(project / "does-not-exist.jsonl")}
             proc = _run_hook(envelope, project)
             self.assertEqual(proc.returncode, 0)
-            self.assertEqual(proc.stdout.strip(), "")
+            self.assertEqual((proc.stdout or "").strip(), "")
 
 
 if __name__ == "__main__":

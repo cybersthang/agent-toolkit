@@ -368,7 +368,7 @@ class TestSessionBrief:
         assert result.returncode == 0
         # Brief usually printed to stdout when context exists. Some hook
         # variants emit JSON envelope; accept either.
-        out = result.stdout
+        out = result.stdout or ""
         if out.strip():
             # Either plain text mentioning ADR-001 / invariant, or JSON.
             assert 'ADR' in out or 'invariant' in out.lower() or 'INV' in out

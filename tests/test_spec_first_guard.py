@@ -271,7 +271,7 @@ class TestFailOpen(unittest.TestCase):
                 timeout=10, cwd=str(project),
             )
             self.assertEqual(proc.returncode, 0)
-            self.assertEqual(proc.stderr.strip(), "")
+            self.assertEqual((proc.stderr or "").strip(), "")
 
     def test_malformed_json_silent(self):
         with tempfile.TemporaryDirectory() as td:
@@ -284,7 +284,7 @@ class TestFailOpen(unittest.TestCase):
                 timeout=10, cwd=str(project),
             )
             self.assertEqual(proc.returncode, 0)
-            self.assertEqual(proc.stderr.strip(), "")
+            self.assertEqual((proc.stderr or "").strip(), "")
 
 
 if __name__ == "__main__":

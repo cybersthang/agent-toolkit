@@ -167,7 +167,7 @@ def git_dirty_status(target: Path) -> Optional[str]:
         return None
     if result.returncode != 0:
         return None  # not a git repo, or other error
-    out = result.stdout.strip()
+    out = (result.stdout or "").strip()
     if not out:
         return None  # clean
     lines = out.splitlines()

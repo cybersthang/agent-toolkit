@@ -208,7 +208,7 @@ class TestSpecDriftAdvisory(unittest.TestCase):
             envelope = {"cwd": str(project)}
             proc = _run_hook(self.HOOK, envelope, project)
             self.assertEqual(proc.returncode, 0)
-            self.assertEqual(proc.stdout.strip(), "")
+            self.assertEqual((proc.stdout or "").strip(), "")
 
     def test_no_op_when_no_runner_spec_file(self):
         # Probe without runner.spec_file → drift analysis skipped.

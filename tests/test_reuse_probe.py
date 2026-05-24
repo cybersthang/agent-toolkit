@@ -58,7 +58,7 @@ class TestReuseProbe(unittest.TestCase):
         }
         result = _run_hook(envelope)
         self.assertEqual(result.returncode, 0)
-        self.assertEqual(result.stdout.strip(), "",
+        self.assertEqual((result.stdout or "").strip(), "",
                          "No collision → no output")
 
     def test_collision_emits_citation(self):
@@ -94,7 +94,7 @@ class TestReuseProbe(unittest.TestCase):
             "cwd": str(self.workspace),
         }
         result = _run_hook(envelope)
-        self.assertEqual(result.stdout.strip(), "",
+        self.assertEqual((result.stdout or "").strip(), "",
                          "Test files exempt from reuse probe")
 
     def test_skip_private_function(self):
@@ -110,7 +110,7 @@ class TestReuseProbe(unittest.TestCase):
             "cwd": str(self.workspace),
         }
         result = _run_hook(envelope)
-        self.assertEqual(result.stdout.strip(), "",
+        self.assertEqual((result.stdout or "").strip(), "",
                          "Private functions (leading _) exempt")
 
     def test_disable_env_var(self):
@@ -126,7 +126,7 @@ class TestReuseProbe(unittest.TestCase):
             "cwd": str(self.workspace),
         }
         result = _run_hook(envelope, extra_env={"AGENT_TOOLKIT_DISABLE": "1"})
-        self.assertEqual(result.stdout.strip(), "",
+        self.assertEqual((result.stdout or "").strip(), "",
                          "DISABLE env var silences hook")
 
     def test_non_py_file_skipped(self):
@@ -142,7 +142,7 @@ class TestReuseProbe(unittest.TestCase):
             "cwd": str(self.workspace),
         }
         result = _run_hook(envelope)
-        self.assertEqual(result.stdout.strip(), "", ".md files exempt")
+        self.assertEqual((result.stdout or "").strip(), "", ".md files exempt")
 
     def test_class_collision_detected(self):
         existing = self.workspace / "models.py"

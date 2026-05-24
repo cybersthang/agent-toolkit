@@ -123,7 +123,7 @@ class TestImplementOrchestrator(unittest.TestCase):
             envelope = {"cwd": str(project), "transcript_path": str(t)}
             proc = _run(envelope, project)
             self.assertEqual(proc.returncode, 0)
-            self.assertEqual(proc.stdout.strip(), "")
+            self.assertEqual((proc.stdout or "").strip(), "")
 
     def test_no_op_when_spec_lacks_affected_modules(self):
         with tempfile.TemporaryDirectory() as td:
@@ -143,7 +143,7 @@ class TestImplementOrchestrator(unittest.TestCase):
             envelope = {"cwd": str(project), "transcript_path": str(t)}
             proc = _run(envelope, project)
             self.assertEqual(proc.returncode, 0)
-            self.assertEqual(proc.stdout.strip(), "")
+            self.assertEqual((proc.stdout or "").strip(), "")
 
     def test_no_op_when_impl_noted_missing(self):
         with tempfile.TemporaryDirectory() as td:
@@ -154,7 +154,7 @@ class TestImplementOrchestrator(unittest.TestCase):
             envelope = {"cwd": str(project), "transcript_path": str(t)}
             proc = _run(envelope, project)
             self.assertEqual(proc.returncode, 0)
-            self.assertEqual(proc.stdout.strip(), "")
+            self.assertEqual((proc.stdout or "").strip(), "")
 
     def test_bypass_marker_honored(self):
         with tempfile.TemporaryDirectory() as td:
@@ -166,7 +166,7 @@ class TestImplementOrchestrator(unittest.TestCase):
             envelope = {"cwd": str(project), "transcript_path": str(t)}
             proc = _run(envelope, project)
             self.assertEqual(proc.returncode, 0)
-            self.assertEqual(proc.stdout.strip(), "")
+            self.assertEqual((proc.stdout or "").strip(), "")
 
     def test_idempotent_within_ttl(self):
         with tempfile.TemporaryDirectory() as td:
@@ -181,7 +181,7 @@ class TestImplementOrchestrator(unittest.TestCase):
             # Second invocation immediately — should skip due to cache
             proc2 = _run(envelope, project)
             self.assertEqual(proc2.returncode, 0)
-            self.assertEqual(proc2.stdout.strip(), "")
+            self.assertEqual((proc2.stdout or "").strip(), "")
 
 
 class TestCacheMtimeInvalidation(unittest.TestCase):
@@ -202,7 +202,7 @@ class TestCacheMtimeInvalidation(unittest.TestCase):
 
             # Second immediate — cache HIT (no output)
             proc2 = _run(envelope, project)
-            self.assertEqual(proc2.stdout.strip(), "")
+            self.assertEqual((proc2.stdout or "").strip(), "")
 
             # Edit impl-noted → mtime changes → cache should invalidate
             import time as _t

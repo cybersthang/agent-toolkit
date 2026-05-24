@@ -84,7 +84,7 @@ class TestInvariantGuardSilentExit(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         # Either silent (no invariants) or allow JSON — both are fine.
         # The point: not block.
-        if result.stdout.strip():
+        if (result.stdout or "").strip():
             payload = json.loads(result.stdout)
             self.assertNotEqual(
                 payload.get("hookSpecificOutput", {}).get("permissionDecision"),
@@ -130,7 +130,7 @@ class TestInvariantGuardSilentExit(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         # Edit changes "x = 1" → "x = 2" → removes the must_keep pattern
         # → should DENY. JSON output must be present.
-        self.assertNotEqual(result.stdout.strip(), "",
+        self.assertNotEqual((result.stdout or "").strip(), "",
                             "Populated invariants must emit JSON (not silent)")
         payload = json.loads(result.stdout)
         self.assertEqual(

@@ -61,7 +61,7 @@ def _run_tool(spec_path: Path, workspace: Path) -> dict:
     if proc.returncode != 0:
         return {"_rc": proc.returncode, "stderr": proc.stderr,
                 "stdout": proc.stdout}
-    return json.loads(proc.stdout) if proc.stdout.strip() else {}
+    return json.loads(proc.stdout) if (proc.stdout or "").strip() else {}
 
 
 class TestRetrospectiveDetection(unittest.TestCase):

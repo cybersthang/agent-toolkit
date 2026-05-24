@@ -102,7 +102,7 @@ def _resolve_branch(workspace: Path) -> str:
             encoding="utf-8", errors="replace", timeout=5,
         )
         if proc.returncode == 0:
-            out = proc.stdout.strip()
+            out = (proc.stdout or "").strip()
             if out and out != "HEAD":
                 return out
         proc2 = subprocess.run(
@@ -111,7 +111,7 @@ def _resolve_branch(workspace: Path) -> str:
             encoding="utf-8", errors="replace", timeout=5,
         )
         if proc2.returncode == 0:
-            return proc2.stdout.strip()
+            return (proc2.stdout or "").strip()
         return ""
     except (subprocess.SubprocessError, OSError):
         return ""
@@ -223,7 +223,7 @@ def _run_tool_json(workspace: Path, rel_path: str,
             encoding="utf-8", errors="replace",
             timeout=timeout,
         )
-        if proc.stdout.strip():
+        if (proc.stdout or "").strip():
             return json.loads(proc.stdout)
         return {"error": "empty-output", "stderr_tail": (proc.stderr or "")[-200:]}
     except (subprocess.SubprocessError, json.JSONDecodeError, OSError) as e:

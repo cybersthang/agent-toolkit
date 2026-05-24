@@ -134,7 +134,7 @@ def _resolve_branch(workspace: Path) -> str:
             timeout=5,
         )
         if proc.returncode == 0:
-            out = proc.stdout.strip()
+            out = (proc.stdout or "").strip()
             if out and out != "HEAD":
                 return out
         # Fallback: unborn branch / detached HEAD (rev-parse returns
@@ -149,7 +149,7 @@ def _resolve_branch(workspace: Path) -> str:
             timeout=5,
         )
         if proc2.returncode == 0:
-            return proc2.stdout.strip()
+            return (proc2.stdout or "").strip()
         return ""
     except (subprocess.SubprocessError, OSError):
         return ""

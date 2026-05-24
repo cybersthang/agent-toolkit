@@ -54,7 +54,7 @@ class TestLocDeltaTracker(unittest.TestCase):
             "cwd": str(self.workspace),
         }
         result = _run_hook(envelope)
-        self.assertEqual(result.stdout.strip(), "", "Small edit → no warn")
+        self.assertEqual((result.stdout or "").strip(), "", "Small edit → no warn")
         # Event still logged
         log = self.workspace / ".agent-toolkit" / ".hook_loc_log.json"
         self.assertTrue(log.exists())
@@ -89,7 +89,7 @@ class TestLocDeltaTracker(unittest.TestCase):
             "cwd": str(self.workspace),
         }
         result = _run_hook(envelope)
-        self.assertEqual(result.stdout.strip(), "",
+        self.assertEqual((result.stdout or "").strip(), "",
                          "Test files exempt from LOC budget")
 
     def test_config_override_threshold(self):
@@ -119,7 +119,7 @@ class TestLocDeltaTracker(unittest.TestCase):
             "cwd": str(self.workspace),
         }
         result = _run_hook(envelope, extra_env={"AGENT_TOOLKIT_DISABLE": "1"})
-        self.assertEqual(result.stdout.strip(), "")
+        self.assertEqual((result.stdout or "").strip(), "")
 
     def test_disabled_in_config(self):
         cfg = self.workspace / ".agent-toolkit" / "loc_budget.json"
@@ -134,7 +134,7 @@ class TestLocDeltaTracker(unittest.TestCase):
             "cwd": str(self.workspace),
         }
         result = _run_hook(envelope)
-        self.assertEqual(result.stdout.strip(), "")
+        self.assertEqual((result.stdout or "").strip(), "")
 
 
 if __name__ == "__main__":

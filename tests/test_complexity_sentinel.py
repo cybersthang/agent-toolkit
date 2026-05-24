@@ -70,7 +70,7 @@ class TestComplexitySentinel(unittest.TestCase):
         f.write_text("def x():\n    return 1\n", encoding="utf-8")
         tx = _make_transcript(self.workspace, [f])
         result = _run_hook(self.workspace, tx)
-        self.assertEqual(result.stdout.strip(), "",
+        self.assertEqual((result.stdout or "").strip(), "",
                          "Clean file → no warning")
 
     def test_deep_loop_nest_warned(self):
@@ -111,7 +111,7 @@ class TestComplexitySentinel(unittest.TestCase):
         f.write_text(body, encoding="utf-8")
         tx = _make_transcript(self.workspace, [f])
         result = _run_hook(self.workspace, tx)
-        self.assertEqual(result.stdout.strip(), "",
+        self.assertEqual((result.stdout or "").strip(), "",
                          "Test files exempt from complexity sentinel")
 
     def test_syntax_error_skipped(self):
@@ -119,7 +119,7 @@ class TestComplexitySentinel(unittest.TestCase):
         f.write_text("def bad(\n  this is not python", encoding="utf-8")
         tx = _make_transcript(self.workspace, [f])
         result = _run_hook(self.workspace, tx)
-        self.assertEqual(result.stdout.strip(), "",
+        self.assertEqual((result.stdout or "").strip(), "",
                          "Unparseable file → silent (no false positive)")
 
     def test_disable_env_var(self):
@@ -135,7 +135,7 @@ class TestComplexitySentinel(unittest.TestCase):
         tx = _make_transcript(self.workspace, [f])
         result = _run_hook(self.workspace, tx,
                            extra_env={"AGENT_TOOLKIT_DISABLE": "1"})
-        self.assertEqual(result.stdout.strip(), "")
+        self.assertEqual((result.stdout or "").strip(), "")
 
     def test_config_override(self):
         cfg = self.workspace / ".agent-toolkit" / "complexity_budget.json"

@@ -27,9 +27,11 @@ Other presets: `odoo-13` / `odoo-14` / `odoo-15` / `odoo-16` / `odoo-17` /
 
 ## Why agent-toolkit?
 
-- 🛡️ **Mechanical enforcement, not honor system.** 21 hooks DENY at the
+- 🛡️ **Mechanical enforcement, not honor system.** 26 hooks DENY at the
   Claude Code harness level — invariant strips, claim-without-proof,
-  destructive git, hallucinated progress. Not warnings the agent can ignore.
+  destructive git (`git_guardrails` blocks commit/push/add until DEV
+  explicitly authorizes), hallucinated progress. Not warnings the agent
+  can ignore.
 - 🔬 **Real-data verify or it didn't ship.** `/verify` runs MCP probes on
   the live DB; `evidence_audit` Stop hook BLOCKS "tests pass" claims that
   lack an `mcp__realdata_test__*` or `mcp__postgres__*` call in the turn.
@@ -64,7 +66,8 @@ Other presets: `odoo-13` / `odoo-14` / `odoo-15` / `odoo-16` / `odoo-17` /
 Toolkit is in **active daily use** on a production Odoo 12 Enterprise
 workspace since 2026-Q1. Hook telemetry shows ~57
 fire-events per session avg, ~26% block rate, ~3.5% bypass rate.
-22 hooks active, 580+ unit tests in CI.
+**26 hooks** active, **560 unit tests** in CI (matrix: Ubuntu / macOS /
+Windows × Python 3.8 / 3.10 / 3.12 — all green).
 
 > 🤖 **AI agents installing into a project**: Read
 > [`AI_REBUILD_CHECKLIST.md`](AI_REBUILD_CHECKLIST.md) BEFORE invoking
@@ -844,7 +847,7 @@ Preset khác: `odoo-17`, `generic`. Thêm preset mới (Django/Rails/Go) chỉ l
 
 ### Tại sao dùng agent-toolkit?
 
-- 🛡️ **Enforce cơ học, không phải honor-system.** 21 hook DENY ở
+- 🛡️ **Enforce cơ học, không phải honor-system.** 26 hook DENY ở
   Claude Code harness — strip invariant, claim không proof, git
   destructive, fake progress đều bị chặn.
 - 🔬 **Verify trên data thật hoặc không ship.** `/verify` chạy MCP probe
@@ -890,7 +893,8 @@ deviation + trade-off + follow-up + confidence để DEV review trước merge.
 
 Toolkit đang **dùng thực tế hằng ngày** trên một production Odoo 12
 Enterprise workspace từ 2026-Q1. Hook telemetry trung bình ~57 fire-event/session,
-~26% block, ~3.5% bypass. 22 hook active, 580+ unit test trên CI.
+~26% block, ~3.5% bypass. **26 hook** active, **560 unit test** trên CI
+(matrix: Ubuntu / macOS / Windows × Python 3.8 / 3.10 / 3.12 — all green).
 
 ### Liên hệ tác giả
 

@@ -20,8 +20,10 @@ git clone <toolkit-repo> ~/agent-toolkit
 python ~/agent-toolkit/setup.py init /path/to/project --preset odoo-12 --yes
 ```
 
-Other presets: `odoo-17`, `generic`. Contributing a `django` / `rails` / `go`
-preset is a one-PR exercise — see [PORTING.md](templates/agent_toolkit/PORTING.md).
+Other presets: `odoo-13` / `odoo-14` / `odoo-15` / `odoo-16` / `odoo-17` /
+`odoo-18` / `odoo-19` / `odoo-20`, `generic`. Contributing a `django` /
+`rails` / `go` preset is a one-PR exercise — see
+[PORTING.md](templates/agent_toolkit/PORTING.md).
 
 ## Why agent-toolkit?
 
@@ -39,8 +41,8 @@ preset is a one-PR exercise — see [PORTING.md](templates/agent_toolkit/PORTING
   decisions) → invariants.json (mechanical patterns). Cross-linked,
   auditable, append-only. No upstream toolkit has this 3-tier layout.
 - 🔌 **Stack-agnostic core + preset overlays.** `<file>.<framework>.json`
-  picker installs the right config per preset. Odoo 12/17 ship today;
-  Django/Rails/Go is a config addition, not a fork.
+  picker installs the right config per preset. Odoo 12-20 (9 versions)
+  ship today; Django/Rails/Go is a config addition, not a fork.
 - 📡 **Observability built-in.** `emit_fire_event` ring buffer, hook-health
   aggregator, bypass-rate alerts, hook-crash banner. Know which rules are
   being sidestepped before they rot.
@@ -60,7 +62,7 @@ preset is a one-PR exercise — see [PORTING.md](templates/agent_toolkit/PORTING
 ## Production status
 
 Toolkit is in **active daily use** on a production Odoo 12 Enterprise
-workspace (Nakivo, Vietnam) since 2026-Q1. Hook telemetry shows ~57
+workspace since 2026-Q1. Hook telemetry shows ~57
 fire-events per session avg, ~26% block rate, ~3.5% bypass rate.
 22 hooks active, 580+ unit tests in CI.
 
@@ -367,13 +369,26 @@ $EDITOR /path/to/your/project/.codex/mcp.local.env
 python setup.py list-presets
 ```
 
-**3 presets** ship out of the box (2 Odoo-focused + 1 fallback):
+**10 presets** ship out of the box (9 Odoo versions + 1 generic fallback):
 
-| Preset | Stack | Defaults | MCP servers | Rules / Skills / Memory |
-|--------|-------|----------|-------------|------|
-| `odoo-12` | Odoo 12, Python 3.8, QWeb+jQuery, `@api.multi` | empty `addon_roots`, empty `default_db` — user supplies via Phase 1 Q&A or `agent-toolkit.config.json` overrides | codebase, postgres, realdata_test | _common + odoo-12 |
-| `odoo-17` | Odoo 17, Python 3.10+, OWL, recordset-by-default, `@api.model_create_multi` | `addon_roots`: addons / custom_addons / enterprise | codebase, postgres, realdata_test | _common + odoo-17 |
-| `generic` | Plain Python — fallback for stack-agnostic experiments only. **Not** the recommended preset for Odoo work. | `addon_roots`: src | codebase | _common |
+| Preset | Stack | Python | Frontend | Rules / Memory |
+|--------|-------|--------|----------|----------------|
+| `odoo-12` | Odoo 12, `@api.multi` era | 3.8 | QWeb + jQuery | _common + odoo-12 |
+| `odoo-13` | Odoo 13, `@api.multi` era | 3.6+ | QWeb + jQuery | _common + odoo-12 (legacy shared) |
+| `odoo-14` | Odoo 14, `@api.multi` era | 3.7+ | QWeb + jQuery | _common + odoo-12 (legacy shared) |
+| `odoo-15` | Odoo 15, transitional | 3.8+ | QWeb + OWL 1.x | _common + odoo-12 (legacy shared) |
+| `odoo-16` | Odoo 16, modern ORM | 3.10+ | OWL 2.x | _common + odoo-17 (modern shared) |
+| `odoo-17` | Odoo 17, modern ORM, `@api.model_create_multi` | 3.10+ | OWL framework | _common + odoo-17 |
+| `odoo-18` | Odoo 18, modern ORM | 3.10+ | OWL framework | _common + odoo-17 (modern shared) |
+| `odoo-19` | Odoo 19, modern ORM | 3.11+ | OWL framework | _common + odoo-17 (modern shared) |
+| `odoo-20` | Odoo 20 (expected GA late 2026) | 3.11+ | OWL framework | _common + odoo-17 (modern shared) |
+| `generic` | Plain Python — fallback for stack-agnostic experiments only. **Not** the recommended preset for Odoo work. | — | — | _common |
+
+Default `addon_roots` for Odoo presets: `addons` / `custom_addons` /
+`enterprise`. MCP servers: `codebase` + `postgres` + `realdata_test`.
+The Odoo 13-20 presets (besides 12 and 17) are **stub-extends** that
+share rules/memory packs with their nearest neighbor — fork the preset
+file to capture version-specific deltas.
 
 > **Project-specific overlays**: real projects almost always have extra
 > addon roots, a custom `odoo-bin` path, internal JIRA endpoints,
@@ -797,11 +812,6 @@ in your own toolkit is encouraged — check each license.
   - Zalo: [0989 464 344](tel:+84989464344) (`ictlucky.dhtn`)
   - Original work; toolkit is in active use on production Odoo 12 + 17
     Enterprise workspaces.
-- **Contributors / acknowledgements**:
-  - **Thang Vo** ([thang.vo@nakivo.com](mailto:thang.vo@nakivo.com)) —
-    field-tested the toolkit on the Nakivo Odoo 12 Enterprise
-    workspace; most invariants, ADRs, and Vibe-flow refinements were
-    captured from that day-to-day usage.
 - **Issues / contributions**: open an issue on the toolkit repo or
   reach out via the maintainer contact above.
 - **License**: toolkit is **MIT** — see [`LICENSE`](LICENSE) at root.
@@ -878,8 +888,8 @@ deviation + trade-off + follow-up + confidence để DEV review trước merge.
 
 ### Trạng thái sản xuất
 
-Toolkit đang **dùng thực tế hằng ngày** trên Odoo 12 Enterprise (Nakivo,
-Vietnam) từ 2026-Q1. Hook telemetry trung bình ~57 fire-event/session,
+Toolkit đang **dùng thực tế hằng ngày** trên một production Odoo 12
+Enterprise workspace từ 2026-Q1. Hook telemetry trung bình ~57 fire-event/session,
 ~26% block, ~3.5% bypass. 22 hook active, 580+ unit test trên CI.
 
 ### Liên hệ tác giả

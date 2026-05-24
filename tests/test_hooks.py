@@ -12,12 +12,10 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 TOOLKIT_ROOT = Path(__file__).resolve().parent.parent
 HOOKS_DIR = TOOLKIT_ROOT / 'templates' / 'claude' / 'hooks'

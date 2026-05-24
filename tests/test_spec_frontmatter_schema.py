@@ -8,7 +8,6 @@ for full validation; otherwise falls back to structural checks.
 from __future__ import annotations
 
 import json
-import sys
 import unittest
 from pathlib import Path
 

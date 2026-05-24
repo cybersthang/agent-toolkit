@@ -2,11 +2,9 @@
 template/copy decisioning, MEMORY.md regeneration."""
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
-import pytest
 
 # Provide stub `installer` import path same as setup.py does.
 TOOLKIT_ROOT = Path(__file__).resolve().parent.parent

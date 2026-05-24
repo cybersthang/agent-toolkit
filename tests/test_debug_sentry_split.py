@@ -28,7 +28,6 @@ def _load_hook():
         sys.path.insert(0, str(hooks_dir))
 
     # Pre-load + monkey-patch _common before debug_sentry imports it.
-    import types
     common_spec = importlib.util.spec_from_file_location(
         "_common", str(hooks_dir / "_common.py"))
     common_mod = importlib.util.module_from_spec(common_spec)

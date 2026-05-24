@@ -11,7 +11,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 TOOLKIT_ROOT = Path(__file__).resolve().parent.parent
 SETUP_PY = TOOLKIT_ROOT / 'setup.py'

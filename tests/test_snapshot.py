@@ -6,7 +6,6 @@ by unit tests of individual functions.
 """
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -37,8 +36,8 @@ def test_dry_run_emits_stable_file_count(tmp_path, preset):
     # Plan entries in the new format: `  NEW       <relpath>` or
     # `  MODIFY    <relpath>`. Old format `  [MODE] <relpath>` is gone.
     plan_lines = [
-        l for l in output.splitlines()
-        if l.lstrip().startswith(('NEW ', 'MODIFY ', '[TEMPLATE]', '[COPY]'))
+        ln for ln in output.splitlines()
+        if ln.lstrip().startswith(('NEW ', 'MODIFY ', '[TEMPLATE]', '[COPY]'))
     ]
     assert len(plan_lines) > 10, (
         f'{preset}: only {len(plan_lines)} plan items\n--- output ---\n{output}'

@@ -69,10 +69,9 @@ sys.path.insert(0, str(LIB_DIR))
 
 from installer import (  # noqa: E402
     __version__,
-    load_preset, render_text, render_into,
-    detect_python, detect_psql, encode_claude_project_path,
+    load_preset, render_text, detect_python, detect_psql, encode_claude_project_path,
     confirm, info, warn, ok,
-    validate_preset, resolve_preset, git_dirty_status,
+    resolve_preset, git_dirty_status,
 )
 
 
@@ -838,7 +837,6 @@ def regenerate_memory_index(target_mem: Path):
         added.append(f'- [{title}]({md.name}) — {desc}')
 
     if added:
-        sep = '\n' if existing.endswith('\n') or not existing else '\n'
         new_text = (existing.rstrip() + '\n' if existing else '') + '\n'.join(added) + '\n'
         index_path.write_text(new_text, encoding='utf-8')
         info(f'  added {len(added)} entries to MEMORY.md')

@@ -7,8 +7,6 @@ v0.7.2-comprehensive-scope-audit.
 from __future__ import annotations
 
 import importlib.util
-import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path

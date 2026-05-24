@@ -13,7 +13,6 @@ import sys
 import time
 from pathlib import Path
 
-import pytest
 
 TOOLKIT_ROOT = Path(__file__).resolve().parent.parent
 HOOKS_DIR = TOOLKIT_ROOT / 'templates' / 'claude' / 'hooks'

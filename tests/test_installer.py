@@ -3,12 +3,10 @@ inheritance, frontmatter, encoding, detection helpers."""
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
-import installer
 from installer import (
     __version__,
     load_preset, validate_preset, resolve_preset,

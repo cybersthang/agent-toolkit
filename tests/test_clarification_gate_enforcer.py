@@ -10,11 +10,9 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 import time
 from pathlib import Path
 
-import pytest
 
 TOOLKIT_ROOT = Path(__file__).resolve().parent.parent
 HOOK = TOOLKIT_ROOT / "templates" / "claude" / "hooks" / "clarification_gate_enforcer.py"
@@ -178,7 +176,7 @@ class TestUs4EscapeTokenSingleUseAndReasonLength:
     def test_expired_token_not_consumed(self, tmp_path):
         _seed_last_intent(tmp_path)
         # Token older than TTL (300s).
-        token_path = _seed_skip_token(tmp_path, reason="stale-emergency", ts=int(time.time()) - 1000)
+        _seed_skip_token(tmp_path, reason="stale-emergency", ts=int(time.time()) - 1000)
         r = _run_hook(tmp_path, {"response": "no markers"})
         assert r.returncode == 2, "expired token should not skip enforcement"
 

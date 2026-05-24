@@ -52,7 +52,7 @@ class TestExport:
         # File should exist + contain 2 JSONL lines.
         jsonl_path = Path(summary['jsonl_path'])
         assert jsonl_path.exists()
-        lines = [l for l in jsonl_path.read_text(encoding='utf-8').splitlines() if l]
+        lines = [ln for ln in jsonl_path.read_text(encoding='utf-8').splitlines() if ln]
         assert len(lines) == 2
         # Each line parses to a dict with enrichment fields.
         for line in lines:
@@ -112,8 +112,8 @@ class TestExport:
         assert summary['new_events'] == 2
 
         jsonl_path = Path(summary['jsonl_path'])
-        lines = [l for l in jsonl_path.read_text(encoding='utf-8').splitlines() if l]
-        sources = sorted(json.loads(l)['_source'] for l in lines)
+        lines = [ln for ln in jsonl_path.read_text(encoding='utf-8').splitlines() if ln]
+        sources = sorted(json.loads(ln)['_source'] for ln in lines)
         assert sources == ['crash', 'fire']
 
     def test_explicit_since_overrides_high_water(self, tmp_path: Path):

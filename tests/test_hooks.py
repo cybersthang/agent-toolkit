@@ -69,7 +69,7 @@ def _run_hook(hook_path: Path, envelope: dict, cwd: Path = None,
     return subprocess.run(
         [PYTHON, str(hook_path)],
         input=json.dumps(envelope),
-        capture_output=True, text=True, timeout=timeout,
+        capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout,
         cwd=str(cwd) if cwd else None, env=env,
     )
 
@@ -252,7 +252,7 @@ class TestEvidenceAudit:
         result = subprocess.run(
             [PYTHON, str(hook)],
             input='{not valid json}',
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=10,
             env=dict(os.environ, PYTHONIOENCODING='utf-8'),
         )
         assert result.returncode == 0
@@ -304,7 +304,7 @@ class TestInvariantGuard:
         result = subprocess.run(
             [PYTHON, str(hook)],
             input='',
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=10,
             env=dict(os.environ, PYTHONIOENCODING='utf-8'),
         )
         assert result.returncode == 0
@@ -611,7 +611,7 @@ class TestAnalyzeHaltGate:
         hook = _render_hook('analyze_halt_gate.py', tmp_path)
         result = subprocess.run(
             [PYTHON, str(hook)],
-            input='', capture_output=True, text=True, timeout=5,
+            input='', capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=5,
             env=dict(os.environ, PYTHONIOENCODING='utf-8'),
         )
         assert result.returncode == 0
@@ -826,7 +826,7 @@ class TestFailClosedOnCorruptState:
         result = subprocess.run(
             [PYTHON, str(hook)],
             input='{not valid json at all',
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=10,
             cwd=str(tmp_path),
             env=dict(os.environ, PYTHONIOENCODING='utf-8',
                      CLAUDE_PROJECT_DIR=str(tmp_path)),
@@ -845,7 +845,7 @@ class TestFailClosedOnCorruptState:
         result = subprocess.run(
             [PYTHON, str(hook)],
             input='{not valid json',
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=10,
             cwd=str(tmp_path),
             env=dict(os.environ, PYTHONIOENCODING='utf-8',
                      CLAUDE_PROJECT_DIR=str(tmp_path)),
@@ -863,7 +863,7 @@ class TestFailClosedOnCorruptState:
         result = subprocess.run(
             [PYTHON, str(hook)],
             input='{not valid json',
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=10,
             cwd=str(tmp_path),
             env=dict(os.environ, PYTHONIOENCODING='utf-8',
                      CLAUDE_PROJECT_DIR=str(tmp_path),

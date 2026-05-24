@@ -22,7 +22,7 @@ def _run_setup(args: list, expect_exit: int = 0, timeout: int = 60):
     env = dict(os.environ, PYTHONIOENCODING='utf-8')
     result = subprocess.run(
         [PYTHON, str(SETUP_PY)] + args,
-        capture_output=True, text=True, timeout=timeout, env=env,
+        capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout, env=env,
     )
     if result.returncode != expect_exit:
         raise AssertionError(
@@ -148,7 +148,7 @@ class TestCrossCuttingRegressions:
         result = subprocess.run(
             [PYTHON, str(SETUP_PY), 'init', str(target),
              '--preset', 'generic', '--yes'],
-            capture_output=True, text=True, timeout=60, env=env,
+            capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60, env=env,
         )
         # Should succeed because setup.py:38-46 forces stdout to UTF-8.
         assert result.returncode == 0, (
@@ -166,7 +166,7 @@ class TestCrossCuttingRegressions:
         result = subprocess.run(
             [PYTHON, str(SETUP_PY), 'init', str(target),
              '--preset', 'odo-17', '--yes'],  # close typo (missing 'o')
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30,
             env=dict(os.environ, PYTHONIOENCODING='utf-8'),
         )
         assert result.returncode != 0  # exits with error

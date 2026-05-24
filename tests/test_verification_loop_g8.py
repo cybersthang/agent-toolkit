@@ -43,7 +43,7 @@ def _run(hook: Path, envelope: dict, cwd: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
         [PYTHON, str(hook)],
         input=json.dumps(envelope),
-        capture_output=True, text=True, timeout=10,
+        capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=10,
         cwd=str(cwd),
         env=dict(os.environ, PYTHONIOENCODING='utf-8'),
     )

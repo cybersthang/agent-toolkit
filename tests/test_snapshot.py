@@ -30,7 +30,7 @@ def test_dry_run_emits_stable_file_count(tmp_path, preset):
     result = subprocess.run(
         [PYTHON, str(TOOLKIT_ROOT / 'setup.py'), 'init', str(target),
          '--preset', preset, '--yes', '--dry-run'],
-        capture_output=True, text=True, timeout=60, env=env,
+        capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60, env=env,
     )
     output = result.stdout + result.stderr
     # Plan entries in the new format: `  NEW       <relpath>` or

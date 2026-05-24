@@ -35,7 +35,9 @@ from typing import List, Tuple
 # streams as UTF-8 before any read/print.
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import wrap_utf8_stdio, run_main_safe  # noqa: E402
-from _patterns import BYPASS_INVARIANT_RE, SKIP_CLARIFICATION_RE  # noqa: E402
+from _patterns import (  # noqa: E402
+    BYPASS_INVARIANT_RE, SKIP_CLARIFICATION_RE, BYPASS_GAP_GATE_RE,
+)
 
 wrap_utf8_stdio()
 
@@ -429,6 +431,41 @@ def _write_last_intent_suggested(workspace: Path, skills: List[str],
         pass
 
 
+def _capture_bypass_gap_gate(workspace: Path, prompt: str) -> None:
+    """v0.19.0 — write a single-shot bypass token into `.open_gaps.json`
+    `pending_bypass` field when user typed `bypass-gap-gate: <reason ≥ 8>`.
+
+    Mirrors `_capture_skip_clarification` (token TTL + single-use). The
+    gap_completeness_gate Stop hook consumes (pops `pending_bypass`) on
+    next stop attempt, appends to `bypass_history` for audit.
+    """
+    import time
+    m = BYPASS_GAP_GATE_RE.search(prompt)
+    if not m:
+        return
+    reason = m.group(1).strip()
+    if not reason:
+        return
+    open_gaps_path = workspace / ".agent-toolkit" / ".open_gaps.json"
+    try:
+        state = {}
+        if open_gaps_path.exists():
+            try:
+                state = json.loads(open_gaps_path.read_text(encoding="utf-8-sig"))
+            except (OSError, json.JSONDecodeError):
+                state = {}
+        if not isinstance(state, dict):
+            state = {}
+        state.setdefault("version", 1)
+        state.setdefault("gaps", [])
+        state["pending_bypass"] = {"ts": int(time.time()), "reason": reason}
+        open_gaps_path.parent.mkdir(parents=True, exist_ok=True)
+        open_gaps_path.write_text(json.dumps(state, ensure_ascii=False, indent=2),
+                                  encoding="utf-8")
+    except OSError:
+        pass
+
+
 def _capture_skip_clarification(workspace: Path, prompt: str) -> None:
     """v0.13.0 — write ephemeral skip-token file when user typed
     `skip-clarification: <reason>` (reason ≥ 8 non-whitespace chars per D9).
@@ -522,6 +559,7 @@ def main() -> int:
     if prompt:
         _capture_bypass_invariant(workspace, prompt)
         _capture_skip_clarification(workspace, prompt)
+        _capture_bypass_gap_gate(workspace, prompt)
 
     # Heuristic skip for very short replies (yes/no/ok), questions about
     # earlier output, or empty prompts.

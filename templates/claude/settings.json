@@ -138,6 +138,12 @@
             "timeout": 5
           },
           {
+            "_comment": "v0.19.0 gap-completeness-gate: track open gaps across turns, BLOCK done-claim while gaps unresolved. Resolution markers: gap-defer / gap-cant-fix (in response) + bypass-gap-gate (in prompt). Default mode: block (matches feedback_exhaustive_analysis). Skips when autonomy active (auto-chain mid-fix).",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/gap_completeness_gate.py",
+            "timeout": 5
+          },
+          {
             "type": "command",
             "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/verify_lint.py",
             "timeout": 15

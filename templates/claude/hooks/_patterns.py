@@ -110,3 +110,48 @@ SKIP_CLARIFICATION_RE = re.compile(
     r"\bskip-clarification:\s*(\S{8,200})\b",
     re.IGNORECASE,
 )
+
+
+# --- v0.19.0 gap-completeness-gate --------------------------------------
+# Used by: gap_completeness_gate (Stop), intent_router (UserPromptSubmit
+# state writer). Detects when agent surfaces a numbered gap list, resolution
+# markers (defer / cant_fix), and whole-gate single-shot bypass.
+
+# Gap list emission: `G1`, `G2 -`, `**G3**:` etc. with description.
+# Requires at least 2 chars after the id (a hyphen / colon / space + text)
+# to avoid matching e.g. "G3 GPU" outside a gap context.
+GAP_LIST_EMIT_RE = re.compile(
+    r"(?:^|\n|\s)(?:[*_`]*?)G(\d+)(?:[*_`]*?)\s*[—\-:.]\s*([^\n]{3,200})",
+    re.IGNORECASE | re.UNICODE | re.MULTILINE,
+)
+
+# Per-gap resolution in agent response. Reason must be ≥ 8 chars per
+# `skip-clarification` precedent — audit-friendly.
+GAP_DEFER_RE = re.compile(
+    r"\bgap-defer:\s*G(\d+)\s+(\S(?:.{6,196}\S)?)",
+    re.IGNORECASE | re.UNICODE,
+)
+
+GAP_CANT_FIX_RE = re.compile(
+    r"\bgap-cant-fix:\s*G(\d+)\s+(\S(?:.{6,196}\S)?)",
+    re.IGNORECASE | re.UNICODE,
+)
+
+# Whole-gate single-shot bypass in user prompt.
+BYPASS_GAP_GATE_RE = re.compile(
+    r"\bbypass-gap-gate:\s*(\S{8,200})\b",
+    re.IGNORECASE,
+)
+
+# Completion claim variant scoped for gap-gate. Reuses COMPLETION_RE
+# semantics but tightens to "agent says workflow done", not casual mention.
+DONE_CLAIM_GAP_RE = re.compile(
+    r"\b(?:"
+    r"(?:t(?:ất|at|oàn|oan)\s*bộ|all|everything)\s+(?:done|xong|ho(?:à|a)n\s*th(?:à|a)nh|complete)"
+    r"|implement\s+done"
+    r"|đã\s+xong\s+(?:to(?:à|a)n\s*b(?:ộ|o)|h(?:ế|e)t)"
+    r"|sprint\s+(?:complete|done|ho(?:à|a)n\s*th(?:à|a)nh)"
+    r"|✅\s*(?:Implement\s+done|Done|Complete)"
+    r")\b",
+    re.IGNORECASE | re.UNICODE,
+)

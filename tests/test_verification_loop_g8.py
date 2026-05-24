@@ -73,7 +73,7 @@ class TestBackwardCompatOdoo:
             'cwd': str(tmp_path),
         }, tmp_path)
         assert result.returncode == 0
-        out = json.loads(result.stdout) if result.stdout.strip() else {}
+        out = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         ctx = out.get('hookSpecificOutput', {}).get('additionalContext', '')
         assert 'python_syntax_check' in ctx, (
             f'Default Odoo behaviour must nudge python_syntax_check; got: {ctx[:300]}'
@@ -97,7 +97,7 @@ class TestBackwardCompatOdoo:
             'cwd': str(tmp_path),
         }, tmp_path)
         assert result.returncode == 0
-        out = json.loads(result.stdout) if result.stdout.strip() else {}
+        out = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         ctx = out.get('hookSpecificOutput', {}).get('additionalContext', '')
         assert 'odoo_manifest_validate' in ctx
 
@@ -129,7 +129,7 @@ class TestPresetDrivenProbeRules:
             'cwd': str(tmp_path),
         }, tmp_path)
         assert result.returncode == 0
-        out = json.loads(result.stdout) if result.stdout.strip() else {}
+        out = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         ctx = out.get('hookSpecificOutput', {}).get('additionalContext', '')
         assert 'django_system_check' in ctx, (
             f'Custom probe should appear; got: {ctx[:300]}'
@@ -158,7 +158,7 @@ class TestPresetDrivenProbeRules:
             'cwd': str(tmp_path),
         }, tmp_path)
         assert result.returncode == 0
-        out = json.loads(result.stdout) if result.stdout.strip() else {}
+        out = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         ctx = out.get('hookSpecificOutput', {}).get('additionalContext', '')
         assert 'mystery_kind' in ctx
         assert 'probe_metadata' in ctx  # generic line points DEV at config
@@ -186,7 +186,7 @@ class TestPresetDrivenProbeRules:
             'cwd': str(tmp_path),
         }, tmp_path)
         assert result.returncode == 0
-        out = json.loads(result.stdout) if result.stdout.strip() else {}
+        out = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         ctx = out.get('hookSpecificOutput', {}).get('additionalContext', '')
         for probe in ('probe_one', 'probe_two', 'probe_three'):
             assert probe in ctx, f'{probe} missing from output'
@@ -212,7 +212,7 @@ class TestPresetDrivenProbeRules:
                            'old_string': 'a', 'new_string': 'b'},
             'cwd': str(tmp_path),
         }, tmp_path)
-        out = json.loads(result.stdout) if result.stdout.strip() else {}
+        out = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         ctx = out.get('hookSpecificOutput', {}).get('additionalContext', '')
         assert 'view_check' in ctx
 
@@ -225,7 +225,7 @@ class TestPresetDrivenProbeRules:
             'cwd': str(tmp_path),
         }, tmp_path)
         # No matching kinds → silent exit.
-        assert result2.stdout.strip() == '' or 'view_check' not in (
+        assert (result2.stdout or "").strip() == '' or 'view_check' not in (
             json.loads(result2.stdout).get('hookSpecificOutput', {})
-                .get('additionalContext', '') if result2.stdout.strip() else ''
+                .get('additionalContext', '') if (result2.stdout or "").strip() else ''
         )

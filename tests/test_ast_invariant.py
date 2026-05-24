@@ -70,7 +70,7 @@ class TestASTCallDetection:
             'cwd': str(tmp_path),
         }, tmp_path)
         assert result.returncode == 0
-        decision = json.loads(result.stdout) if result.stdout.strip() else {}
+        decision = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         out = decision.get('hookSpecificOutput', {})
         assert out.get('permissionDecision') == 'deny', (
             f'AST must catch direct call removal; got: {decision}'
@@ -92,7 +92,7 @@ class TestASTCallDetection:
             'cwd': str(tmp_path),
         }, tmp_path)
         assert result.returncode == 0
-        decision = json.loads(result.stdout) if result.stdout.strip() else {}
+        decision = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         out = decision.get('hookSpecificOutput', {})
         assert out.get('permissionDecision') == 'deny'
 
@@ -110,7 +110,7 @@ class TestASTCallDetection:
             'cwd': str(tmp_path),
         }, tmp_path)
         assert result.returncode == 0
-        decision = json.loads(result.stdout) if result.stdout.strip() else {}
+        decision = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         out = decision.get('hookSpecificOutput', {})
         assert out.get('permissionDecision') == 'allow'
 
@@ -131,7 +131,7 @@ class TestASTCallDetection:
             'cwd': str(tmp_path),
         }, tmp_path)
         assert result.returncode == 0
-        decision = json.loads(result.stdout) if result.stdout.strip() else {}
+        decision = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         out = decision.get('hookSpecificOutput', {})
         # AST skip for non-Python → must_keep_call_ast is the ONLY rule →
         # no patterns, no violation, allow.
@@ -152,7 +152,7 @@ class TestASTCallDetection:
             'cwd': str(tmp_path),
         }, tmp_path)
         assert result.returncode == 0
-        decision = json.loads(result.stdout) if result.stdout.strip() else {}
+        decision = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         out = decision.get('hookSpecificOutput', {})
         # AST can't parse old OR new → returns empty removed list → allow.
         assert out.get('permissionDecision') == 'allow'
@@ -178,7 +178,7 @@ class TestASTCallDetection:
             'cwd': str(tmp_path),
         }, tmp_path)
         assert result.returncode == 0
-        decision = json.loads(result.stdout) if result.stdout.strip() else {}
+        decision = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         out = decision.get('hookSpecificOutput', {})
         assert out.get('permissionDecision') == 'deny'
         reason = out.get('permissionDecisionReason', '')
@@ -200,7 +200,7 @@ class TestASTCallDetection:
             },
             'cwd': str(tmp_path),
         }, tmp_path)
-        decision = json.loads(result.stdout) if result.stdout.strip() else {}
+        decision = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         out = decision.get('hookSpecificOutput', {})
         assert out.get('permissionDecision') == 'deny'
 
@@ -213,6 +213,6 @@ class TestASTCallDetection:
             },
             'cwd': str(tmp_path),
         }, tmp_path)
-        decision2 = json.loads(result2.stdout) if result2.stdout.strip() else {}
+        decision2 = json.loads(result2.stdout) if (result2.stdout or "").strip() else {}
         out2 = decision2.get('hookSpecificOutput', {})
         assert out2.get('permissionDecision') == 'allow'

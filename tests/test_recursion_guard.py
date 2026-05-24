@@ -78,7 +78,7 @@ class TestRecursionGuard:
         envelope = _build_block_envelope(tmp_path)
         result = _run_audit(hook, envelope, tmp_path)
         assert result.returncode == 0
-        out = json.loads(result.stdout) if result.stdout.strip() else {}
+        out = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         # Standard block envelope shape from evidence_audit.
         assert out.get('decision') == 'block'
 
@@ -105,7 +105,7 @@ class TestRecursionGuard:
         # 4th call should bail out (count > 3).
         result = _run_audit(hook, envelope, tmp_path)
         assert result.returncode == 0
-        out = json.loads(result.stdout) if result.stdout.strip() else {}
+        out = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         # Bail-out path emits hookSpecificOutput (not block decision).
         assert 'hookSpecificOutput' in out, (
             f'Expected hookSpecificOutput on bail-out, got: {out}'
@@ -159,7 +159,7 @@ class TestRecursionGuard:
         envelope = _build_block_envelope(tmp_path)
         result = _run_audit(hook, envelope, tmp_path)
         assert result.returncode == 0
-        out = json.loads(result.stdout) if result.stdout.strip() else {}
+        out = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         assert out.get('decision') == 'block', (
             f'expired window must reset; expected standard block, got: {out}'
         )

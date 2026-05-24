@@ -84,14 +84,14 @@ class TestIntentRouter:
         result = _run_hook(hook, {'prompt': 'làm cho tôi feature mới X'})
         assert result.returncode == 0, result.stderr
         # Output is JSON envelope with additionalContext.
-        out = json.loads(result.stdout) if result.stdout.strip() else {}
+        out = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         ctx = out.get('hookSpecificOutput', {}).get('additionalContext', '')
         assert 'clarification-gate' in ctx
 
     def test_review_keyword_triggers_code_review(self, tmp_path):
         hook = _render_hook('intent_router.py', tmp_path)
         result = _run_hook(hook, {'prompt': 'review module sale_extension đi'})
-        out = json.loads(result.stdout) if result.stdout.strip() else {}
+        out = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         ctx = out.get('hookSpecificOutput', {}).get('additionalContext', '')
         assert 'code-review' in ctx
 
@@ -100,13 +100,13 @@ class TestIntentRouter:
         result = _run_hook(hook, {'prompt': 'ok'})
         assert result.returncode == 0
         # Short prompt → no output at all (silent skip).
-        assert result.stdout.strip() == ''
+        assert (result.stdout or "").strip() == ''
 
     def test_empty_prompt_silent(self, tmp_path):
         hook = _render_hook('intent_router.py', tmp_path)
         result = _run_hook(hook, {'prompt': ''})
         assert result.returncode == 0
-        assert result.stdout.strip() == ''
+        assert (result.stdout or "").strip() == ''
 
     def test_already_referencing_skill_suppressed(self, tmp_path):
         hook = _render_hook('intent_router.py', tmp_path)
@@ -115,7 +115,7 @@ class TestIntentRouter:
         })
         # Already references the skill → hook stays silent to avoid double-nag.
         assert result.returncode == 0
-        assert result.stdout.strip() == ''
+        assert (result.stdout or "").strip() == ''
 
     def test_invalid_json_falls_back_to_plain_text(self, tmp_path):
         """Older Claude Code versions piped raw prompt, not JSON envelope."""
@@ -139,7 +139,7 @@ class TestIntentRouter:
                       'sau đó chứng minh từng tag đúng',
         })
         assert result.returncode == 0
-        out = json.loads(result.stdout) if result.stdout.strip() else {}
+        out = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         ctx = out.get('hookSpecificOutput', {}).get('additionalContext', '')
         # Clarification-gate fires on action verbs first (priority rule).
         # Either we see real-data-proof directly, or clarification-gate is the
@@ -159,7 +159,7 @@ class TestIntentRouter:
             'prompt': 'perturb-test này đi, prove the tag is correct',
         })
         assert result.returncode == 0
-        out = json.loads(result.stdout) if result.stdout.strip() else {}
+        out = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         ctx = out.get('hookSpecificOutput', {}).get('additionalContext', '')
         # No action verb in this prompt → clarification-gate shouldn't fire,
         # so the classifier-intent route must take over.
@@ -204,7 +204,7 @@ class TestEvidenceAudit:
         if result.returncode != 0:
             return  # blocked as expected
         # If exit 0, hook may have emitted JSON decision — check.
-        if result.stdout.strip():
+        if (result.stdout or "").strip():
             decision = json.loads(result.stdout)
             assert decision.get('decision') in ('block', None) or \
                    'evidence' in str(decision).lower()
@@ -218,7 +218,7 @@ class TestEvidenceAudit:
         result = _run_hook(hook, envelope)
         assert result.returncode == 0
         # No block decision emitted.
-        if result.stdout.strip():
+        if (result.stdout or "").strip():
             decision = json.loads(result.stdout) if result.stdout.startswith('{') else {}
             assert decision.get('decision') != 'block'
 
@@ -389,7 +389,7 @@ class TestSessionBrief:
         )
         result = _run_hook(hook, {'cwd': str(tmp_path)}, cwd=tmp_path)
         assert result.returncode == 0
-        assert result.stdout.strip(), 'session_brief should emit brief'
+        assert (result.stdout or "").strip(), 'session_brief should emit brief'
         payload = json.loads(result.stdout)
         ctx = payload['hookSpecificOutput']['additionalContext']
         # Lock-file path must appear so the agent reads it.
@@ -428,7 +428,7 @@ class TestSessionBrief:
         )
         result = _run_hook(hook, {'cwd': str(tmp_path)}, cwd=tmp_path)
         assert result.returncode == 0
-        if result.stdout.strip():
+        if (result.stdout or "").strip():
             payload = json.loads(result.stdout)
             ctx = payload['hookSpecificOutput']['additionalContext']
             assert 'Lock-file' not in ctx and 'lock-file' not in ctx
@@ -475,7 +475,7 @@ class TestAnalyzeHaltGate:
             cwd=tmp_path,
         )
         assert result.returncode == 0
-        assert result.stdout.strip() == ''
+        assert (result.stdout or "").strip() == ''
 
     def test_no_analyze_report_fail_open(self, tmp_path):
         hook = _render_hook('analyze_halt_gate.py', tmp_path)
@@ -484,7 +484,7 @@ class TestAnalyzeHaltGate:
             hook, self._envelope(ws / 'src' / 'main.py', ws), cwd=ws,
         )
         assert result.returncode == 0
-        assert result.stdout.strip() == ''
+        assert (result.stdout or "").strip() == ''
 
     def test_ready_verdict_allows_edit(self, tmp_path):
         hook = _render_hook('analyze_halt_gate.py', tmp_path)
@@ -494,7 +494,7 @@ class TestAnalyzeHaltGate:
             hook, self._envelope(ws / 'src' / 'main.py', ws), cwd=ws,
         )
         assert result.returncode == 0
-        assert result.stdout.strip() == ''
+        assert (result.stdout or "").strip() == ''
 
     def test_halt_verdict_blocks_source_edit(self, tmp_path):
         hook = _render_hook('analyze_halt_gate.py', tmp_path)
@@ -548,7 +548,7 @@ class TestAnalyzeHaltGate:
         assert result.returncode == 0, (
             f'Re-emitted READY should allow; stdout={result.stdout!r}'
         )
-        assert result.stdout.strip() == ''
+        assert (result.stdout or "").strip() == ''
 
     def test_halt_allows_edit_inside_agent_toolkit(self, tmp_path):
         """The agent must still be able to fix the spec / tasks / report itself."""
@@ -559,7 +559,7 @@ class TestAnalyzeHaltGate:
         target = ws / '.agent-toolkit' / 'specs' / 'main' / 'my-feature' / 'analyze-report.md'
         result = _run_hook(hook, self._envelope(target, ws), cwd=ws)
         assert result.returncode == 0
-        assert result.stdout.strip() == ''
+        assert (result.stdout or "").strip() == ''
 
     def test_halt_allows_edit_inside_codex_claude_cursor(self, tmp_path):
         """Toolkit-managed dirs are always editable."""
@@ -572,7 +572,7 @@ class TestAnalyzeHaltGate:
             target.parent.mkdir(parents=True, exist_ok=True)
             result = _run_hook(hook, self._envelope(target, ws), cwd=ws)
             assert result.returncode == 0, f'edit on {sub} should be allowed'
-            assert result.stdout.strip() == '', (
+            assert (result.stdout or "").strip() == '', (
                 f'edit on {sub} should be silent allow, got {result.stdout!r}'
             )
 
@@ -587,7 +587,7 @@ class TestAnalyzeHaltGate:
         )
         assert result.returncode == 0
         # Stdout must be silent (no block JSON); stderr carries the diagnostic.
-        assert result.stdout.strip() == ''
+        assert (result.stdout or "").strip() == ''
         assert 'BYPASS' in result.stderr or 'bypass' in result.stderr.lower()
 
     def test_multiple_halt_reports_listed(self, tmp_path):
@@ -615,7 +615,7 @@ class TestAnalyzeHaltGate:
             env=dict(os.environ, PYTHONIOENCODING='utf-8'),
         )
         assert result.returncode == 0
-        assert result.stdout.strip() == ''
+        assert (result.stdout or "").strip() == ''
 
     def test_malformed_envelope_fail_open(self, tmp_path):
         hook = _render_hook('analyze_halt_gate.py', tmp_path)
@@ -625,7 +625,7 @@ class TestAnalyzeHaltGate:
             timeout=5, env=dict(os.environ, PYTHONIOENCODING='utf-8'),
         )
         assert result.returncode == 0
-        assert result.stdout.strip() == ''
+        assert (result.stdout or "").strip() == ''
 
 
 # ============================================================
@@ -724,7 +724,7 @@ class TestBypassEphemeral:
         }, cwd=tmp_path)
         assert result.returncode == 0  # hook always exits 0
         # Decision must be deny since bypass was expired.
-        decision = json.loads(result.stdout) if result.stdout.strip() else {}
+        decision = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         out_block = decision.get('hookSpecificOutput', {})
         assert out_block.get('permissionDecision') == 'deny'
         # Expired file should have been cleaned up.
@@ -746,7 +746,7 @@ class TestBypassEphemeral:
             'cwd': str(tmp_path),
         }, cwd=tmp_path)
         assert result.returncode == 0
-        decision = json.loads(result.stdout) if result.stdout.strip() else {}
+        decision = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         out_block = decision.get('hookSpecificOutput', {})
         # Legacy envelope-key bypass → should still allow.
         assert out_block.get('permissionDecision') == 'allow', (
@@ -780,7 +780,7 @@ class TestFailClosedOnCorruptState:
             'cwd': str(tmp_path),
         }, cwd=tmp_path)
         assert result.returncode == 0
-        decision = json.loads(result.stdout) if result.stdout.strip() else {}
+        decision = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         out_block = decision.get('hookSpecificOutput', {})
         assert out_block.get('permissionDecision') == 'deny', (
             f'Expected conservative deny on corrupt blocker config, got: {decision}'
@@ -806,7 +806,7 @@ class TestFailClosedOnCorruptState:
             'cwd': str(tmp_path),
         }, cwd=tmp_path)
         assert result.returncode == 0
-        decision = json.loads(result.stdout) if result.stdout.strip() else {}
+        decision = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         out_block = decision.get('hookSpecificOutput', {})
         # No blocker text → still fail-open (allow).
         assert out_block.get('permissionDecision') == 'allow'
@@ -832,7 +832,7 @@ class TestFailClosedOnCorruptState:
                      CLAUDE_PROJECT_DIR=str(tmp_path)),
         )
         assert result.returncode == 0
-        decision = json.loads(result.stdout) if result.stdout.strip() else {}
+        decision = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         out_block = decision.get('hookSpecificOutput', {})
         assert out_block.get('permissionDecision') == 'deny', (
             f'Expected conservative deny on corrupt envelope + blocker, got: {decision}'
@@ -852,7 +852,7 @@ class TestFailClosedOnCorruptState:
         )
         assert result.returncode == 0
         # Allow (no blocker text scan hit).
-        if result.stdout.strip():
+        if (result.stdout or "").strip():
             decision = json.loads(result.stdout)
             out_block = decision.get('hookSpecificOutput', {})
             assert out_block.get('permissionDecision') == 'allow'
@@ -870,7 +870,7 @@ class TestFailClosedOnCorruptState:
                      AGENT_TOOLKIT_STRICT='1'),
         )
         assert result.returncode == 0
-        decision = json.loads(result.stdout) if result.stdout.strip() else {}
+        decision = json.loads(result.stdout) if (result.stdout or "").strip() else {}
         out_block = decision.get('hookSpecificOutput', {})
         assert out_block.get('permissionDecision') == 'deny', (
             f'STRICT mode must deny on corrupt envelope, got: {decision}'

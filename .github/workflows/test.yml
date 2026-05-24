@@ -22,7 +22,7 @@ jobs:
           python-version: ${{ matrix.python }}
 
       - name: Install dev deps
-        run: python -m pip install --upgrade pip pytest
+        run: python -m pip install --upgrade pip pytest pytest-cov
 
       - name: Run pytest suite
         run: python -m pytest tests/ -v

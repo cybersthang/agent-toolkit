@@ -1,0 +1,132 @@
+{
+  "_doc": "Stack-agnostic intent → skill routing table read by .claude/hooks/intent_router.py. Each entry has a regex (matched case-insensitive on the user's prompt) and a list of skill names. Skill names must match the on-disk skill folder names. Framework-specific skill entries (Odoo, Django, Rails, ...) live in `intent_map.<framework>.json` overlays; installer picks the matching variant by preset stack.framework.",
+  "_schema": {
+    "stack": "stack identifier — kept for backward compat with hooks reading this field.",
+    "stack_bare": "bare stack name (kept for backward compat).",
+    "entries": "list of {pattern, skills, note?}"
+  },
+  "stack": "generic",
+  "stack_bare": "generic",
+  "entries": [
+    {
+      "note": "Clarification gate — action verbs that mutate state",
+      "pattern": "\\b(implement|build|deploy|sửa|fix|refactor|tạo|viết|làm|thêm|add|remove|xóa|delete|update|cập\\s*nhật|đổi|change|modify|tối\\s*ưu|optimize|migrate|chuyển|rewrite|làm\\s*lại|làm\\s*gọn|dọn|clean\\s*up|move|rename|extract|inline)\\b",
+      "skills": ["clarification-gate"]
+    },
+    {
+      "note": "Clarification gate — ambiguous reference triggers",
+      "pattern": "(\\b\\d+\\s*(cái|cái này|cái kia|thằng|thằng này|thằng kia|items?|things?|cụm|chỗ)\\b|\\b2\\s*cái\\s*này\\b|\\bcái\\s*này\\b|\\bcái\\s*kia\\b|\\bchỗ\\s*này\\b|\\bchỗ\\s*kia\\b|\\bnày\\s*khác\\b|\\bcùng\\s*một\\b)",
+      "skills": ["clarification-gate"]
+    },
+    {
+      "note": "Review / audit",
+      "pattern": "\\b(review|audit|phân\\s*tích\\s*sâu|tìm\\s*bug|kiểm\\s*tra\\s*code|còn\\s*gì.*fix|lỗ\\s*hổng|nguy\\s*hiểm)\\b",
+      "skills": ["code-review", "doubt-driven-review"]
+    },
+    {
+      "note": "Doubt-driven probe",
+      "pattern": "\\b(double[-\\s]?check|are\\s*you\\s*sure|chắc.*không|chắc.*chưa|sure\\?)\\b",
+      "skills": ["doubt-driven-review"]
+    },
+    {
+      "note": "Spec Kit Phase 1 — SPECIFY",
+      "pattern": "\\b(/plan\\b|feature\\s*mới|new\\s*feature|tính\\s*năng\\s*mới|thêm.*tính\\s*năng|add.*feature|write\\s*(a\\s*)?prd|create.*spec|tạo\\s*spec)\\b",
+      "skills": ["plan-feature"]
+    },
+    {
+      "note": "Spec Kit Phase 2 — CLARIFY",
+      "pattern": "\\b(/clarify\\b|grill\\s*me|stress[-\\s]*test\\s*(the\\s*)?spec|challenge\\s*me|đóng\\s*gap|refine\\s*spec)\\b",
+      "skills": ["clarify"]
+    },
+    {
+      "note": "Spec Kit Phase 3 — TASKS (manual re-emit)",
+      "pattern": "\\b(/tasks\\b|rã\\s*task|task\\s*breakdown|emit\\s*tasks)\\b",
+      "skills": ["tasks-breakdown"]
+    },
+    {
+      "note": "Spec Kit Phase 3.5 — ANALYZE",
+      "pattern": "\\b(/analyze\\b|cross[-\\s]*artifact|lint\\s*spec|artifact\\s*consistency)\\b",
+      "skills": ["analyze-artifacts"]
+    },
+    {
+      "note": "Spec Kit Phase 4 — IMPLEMENT",
+      "pattern": "\\b(/implement\\b|bắt\\s*đầu\\s*code|execute\\s*tasks|start\\s*implement|implement\\s*đi)\\b",
+      "skills": ["analyze-artifacts", "verify-feature"]
+    },
+    {
+      "note": "Spec Kit Phase 5 — VERIFY",
+      "pattern": "\\b(/verify\\b|real\\s*db|prod\\s*data|verify.*real|kiểm\\s*tra.*dữ\\s*liệu|live\\s*verify|thật\\s*hay\\s*không|any\\s*gaps?|còn\\s*gap)\\b",
+      "skills": ["verify-feature"]
+    },
+    {
+      "note": "Classifier / count-and-classify / prove-tag → real-data-proof workflow",
+      "pattern": "\\b(classify|classification|phân\\s*loại|tag\\s*(each|every|từng)|gán\\s*nhãn|nhãn\\s*nào|block\\s*vs\\s*async|block\\s*hay\\s*async|sync\\s*vs\\s*async|prove.*(tag|label|classification)|chứng\\s*minh.*(tag|nhãn|đúng)|falsif(y|ication)|perturb[-\\s]?test|inverse\\s*perturb|count.*requests?.*(classify|tag|phân\\s*loại)|đếm.*request.*phân\\s*loại|sleep\\s*inject|inject\\s*sleep)\\b",
+      "skills": ["real-data-proof", "claim-falsification", "classifier-output-audit"]
+    },
+    {
+      "note": "Toolkit-meta: /adr-add",
+      "pattern": "\\b(ghi\\s*adr|thêm\\s*quyết\\s*định|append\\s*adr|architecture\\s*decision|ghi\\s*nhận\\s*decision|chốt\\s*decision)\\b",
+      "skills": ["adr-add"]
+    },
+    {
+      "note": "Toolkit-meta: /inv-add",
+      "pattern": "\\b(thêm\\s*invariant|add.*invariant|register\\s*rule|đăng\\s*ký\\s*rule|chốt\\s*rule|must[-\\s]*keep)\\b",
+      "skills": ["inv-add"]
+    },
+    {
+      "note": "Toolkit-meta: /inv-list",
+      "pattern": "\\b(xem\\s*invariant|list.*invariant|danh\\s*sách\\s*invariant|liệt\\s*kê.*rule|active\\s*rules)\\b",
+      "skills": ["inv-list"]
+    },
+    {
+      "note": "Toolkit-meta: /recall",
+      "pattern": "\\b(recall|nhớ\\s*lại|tìm\\s*quyết\\s*định|trước\\s*đây\\s*chốt|chuyện\\s*gì.*adr|đã\\s*chốt\\s*gì)\\b",
+      "skills": ["recall"]
+    },
+    {
+      "note": "Toolkit-meta: /stop-autonomy",
+      "pattern": "\\b(tắt\\s*autonomy|dừng\\s*autonomy|stop[-\\s]*autonomy|cắt\\s*autonomy|kết\\s*thúc\\s*autonomy)\\b",
+      "skills": ["stop-autonomy"]
+    },
+    {
+      "note": "Toolkit-meta: /tdd toggle",
+      "pattern": "\\b(toggle\\s*tdd|/tdd\\s+(on|off|status)|tdd\\s*loop|tdd\\s*config|nudge\\s*pytest)\\b",
+      "skills": ["tdd"]
+    },
+    {
+      "note": "Toolkit-meta: /test-env",
+      "pattern": "\\b(test\\s*env|môi\\s*trường\\s*test|test\\s*url|test\\s*server|server\\s*test|sandbox\\s*url|đăng\\s*nhập\\s*test|môi\\s*trường\\s*staging|staging\\s*server)\\b",
+      "skills": ["test-env"]
+    },
+    {
+      "note": "Toolkit-meta: /gap-status",
+      "pattern": "\\b(/gap[-\\s]*status\\b|gap\\s*status|còn\\s*(blocker|gap)|có\\s*(blocker|gap)\\s*gì|outstanding\\s*probes?|probe\\s*verdict|status.*probe)\\b",
+      "skills": ["gap-status"]
+    },
+    {
+      "note": "Toolkit-meta: /gap-fix",
+      "pattern": "\\b(/gap[-\\s]*fix\\b|gap\\s*fix|fix\\s*đi|fix\\s*hết\\s*đi|sửa.*probe|tự\\s*sửa)\\b",
+      "skills": ["gap-fix-cycle"]
+    },
+    {
+      "note": "Toolkit-meta: /test-env-bootstrap",
+      "pattern": "\\b(/test[-\\s]*env[-\\s]*bootstrap|bootstrap.*test\\s*env|discover.*test\\s*env|auto.*test\\s*env|setup.*test\\s*env)\\b",
+      "skills": ["test-env-bootstrap"]
+    },
+    {
+      "note": "Toolkit-meta: /recipe-to-script",
+      "pattern": "\\b(/recipe[-\\s]*to[-\\s]*script|recipe\\s*to\\s*script|generate.*probe\\s*script|prose.*to.*script|probe.*recipe)\\b",
+      "skills": ["recipe-to-probe-script"]
+    },
+    {
+      "note": "Toolkit-meta: /spec-drift",
+      "pattern": "\\b(/spec[-\\s]*drift|spec\\s*drift|recipe\\s*drift|drift.*probe|recipe\\s*vs.*script)\\b",
+      "skills": ["spec-vs-evidence-diff"]
+    },
+    {
+      "note": "Toolkit-meta: /implement-notes",
+      "pattern": "\\b(/implement[-\\s]*notes?|implement[-\\s]*noted|ghi\\s*quyết\\s*định\\s*ngoài\\s*spec|note\\s*quyết\\s*định\\s*ngoài\\s*spec|capture\\s*decisions?\\s*outside\\s*spec|scope\\s*deviation|trade[-\\s]*off\\s*considered)\\b",
+      "skills": ["implement-notes"]
+    }
+  ]
+}

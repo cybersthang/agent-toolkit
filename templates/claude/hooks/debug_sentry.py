@@ -58,25 +58,24 @@ DEFAULT_PATTERNS = [
     r"\bAssertionError\b",
     r"\bAttributeError\b",
     r"\bIntegrityError\b",
-    r"\bAccessError\b",
     r"\bKeyError\b",
     r"\bTypeError\b",
     r"\bValueError\b",
     r"\bImportError\b",
     r"psycopg2\.errors\.",
-    r"odoo\.exceptions\.",
-    r"werkzeug\.exceptions\.",
 ]
 
 # v0.6.1 split — bare exception names are WEAK and only count when
 # wrapped in traceback context (File "...", line N | Traceback caret).
 # Reading a Python source file containing `raise ValueError(...)`
 # previously false-triggered → duplicate clarification-gate output.
+# Framework-specific exception namespaces (e.g. odoo.exceptions.*,
+# werkzeug.exceptions.*, django.core.exceptions.*) live in the runtime
+# config `.agent-toolkit/debug.json`'s `patterns` field — installer
+# pulls the right `debug.<framework>.json` overlay at install time.
 STRONG_PATTERNS = [
     r"Traceback \(most recent call last\)",
     r"psycopg2\.errors\.[A-Z]\w*",
-    r"odoo\.exceptions\.[A-Z]\w*",
-    r"werkzeug\.exceptions\.[A-Z]\w*",
     r'^\s*File "[^"]+", line \d+',
     r"\bUnhandledPromiseRejection\b",
 ]

@@ -4,7 +4,7 @@ Thanks for opening this — agent-toolkit is small enough that one engineer read
 
 ## Reporting bugs
 
-Open a GitHub issue with:
+Open an issue on the toolkit repo (the canonical home is GitLab; if you found this via a GitHub mirror, file there and the maintainer will sync) with:
 
 1. **What you ran** — exact command (`setup.py update <path> --preset <name>`, or the slash command).
 2. **What you expected** — one sentence.
@@ -72,4 +72,4 @@ By submitting a PR you agree your contribution is licensed under the MIT license
 
 ## Questions
 
-Open a GitHub Discussion (preferred over issues for "how do I..." questions) or email the maintainer listed in `README.md`.
+Open a Discussion (GitLab Discussions on the canonical repo, or the equivalent on whichever mirror you found) — preferred over issues for "how do I..." questions. Or email the maintainer listed in `README.md`.

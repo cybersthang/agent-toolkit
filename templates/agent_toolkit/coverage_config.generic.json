@@ -1,0 +1,16 @@
+{
+  "_doc": "Stack-agnostic coverage gate config. Read by .codex/precommit_hooks/probe_coverage.py. Empty feature_globs → use built-in defaults baked into probe_coverage.py (generic Python: services / handlers / api / views). Customize for your stack's feature layout; exempt_globs to opt out infra/tests/3rd-party.",
+  "feature_globs": [],
+  "exempt_globs": [
+    "**/__init__.py",
+    "**/tests/**.py",
+    "**/test_*.py",
+    "**/*_test.py",
+    "**/migrations/**.py",
+    "**/conftest.py",
+    ".codex/**",
+    ".claude/**",
+    ".agent-toolkit/**"
+  ],
+  "_note": "Empty feature_globs = scope-everything-not-exempted via probe_coverage.py defaults. Add stack-specific patterns (e.g. Odoo: '**/addons/**/{models,controllers,jobs,wizards}/**.py') to limit scope."
+}

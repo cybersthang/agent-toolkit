@@ -295,10 +295,16 @@ def main() -> int:
 
     placeholders: Dict[str, str] = {}
     config_path = workspace / ".agent-toolkit" / "agent_toolkit.config.json"
+    # Env-key list is stack-aware: `test_env.json` may declare
+    # `daemon_env_keys` (e.g. `["PYTHON_BIN","ODOO_CONF","DB"]` for Odoo,
+    # `["PYTHON_BIN","DJANGO_SETTINGS_MODULE","DB"]` for Django).
+    # Defaults stay stack-agnostic — just the universal ones.
+    DEFAULT_KEYS = ("PYTHON_BIN", "DB")
+    env_keys = test_env.get("daemon_env_keys") or DEFAULT_KEYS
     if config_path.exists():
         try:
             cfg = json.loads(config_path.read_text(encoding="utf-8-sig"))
-            for k in ("PYTHON_BIN", "ODOO_CONF", "DB"):
+            for k in env_keys:
                 v = cfg.get(k) or cfg.get(k.lower())
                 if v:
                     placeholders[k] = str(v)

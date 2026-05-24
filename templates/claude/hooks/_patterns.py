@@ -102,3 +102,11 @@ BYPASS_INVARIANT_RE = re.compile(
     r"bypass-invariant\s*:\s*([A-Za-z0-9_\-,\s]+)",
     re.IGNORECASE,
 )
+
+# v0.13.0 — escape token for clarification-gate enforcer (D9).
+# Reason must be 8-200 non-whitespace chars to be audit-able; shorter
+# rejected → enforcer enforces shape as usual.
+SKIP_CLARIFICATION_RE = re.compile(
+    r"\bskip-clarification:\s*(\S{8,200})\b",
+    re.IGNORECASE,
+)

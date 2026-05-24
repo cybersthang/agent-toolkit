@@ -35,7 +35,7 @@ from typing import List, Tuple
 # streams as UTF-8 before any read/print.
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import wrap_utf8_stdio, run_main_safe  # noqa: E402
-from _patterns import BYPASS_INVARIANT_RE  # noqa: E402
+from _patterns import BYPASS_INVARIANT_RE, SKIP_CLARIFICATION_RE  # noqa: E402
 
 wrap_utf8_stdio()
 
@@ -43,6 +43,11 @@ INTENT_MAP_REL = ".agent-toolkit/intent_map.json"
 BYPASS_FILE_REL = ".agent-toolkit/.bypass_next_edit.json"
 BYPASS_TTL_SECONDS = 300  # 5 min — long enough for agent to reach Edit, short
                           # enough to avoid leaking into a later session.
+
+# v0.13.0 — clarification-gate enforcer state files (D8/D9).
+LAST_INTENT_SUGGESTED_REL = ".agent-toolkit/.last_intent_suggested.json"
+SKIP_CLARIFICATION_REL = ".agent-toolkit/.skip_clarification_next.json"
+SKIP_CLARIFICATION_TTL_SECONDS = 300
 
 
 def _load_intent_map(workspace: Path) -> Tuple[str, str, List[Tuple[str, List[str]]]]:
@@ -399,6 +404,58 @@ def _format_reminder(skills: List[str]) -> str:
     )
 
 
+def _write_last_intent_suggested(workspace: Path, skills: List[str],
+                                  prompt: str) -> None:
+    """v0.13.0 — record that intent_router suggested skill X for this turn.
+
+    clarification_gate_enforcer.py reads this state file on Stop to know
+    whether the current turn's response must satisfy the skill's shape
+    contract (4 markers for clarification-gate). Single-use is NOT
+    required — state expires by TTL (600s default in enforcer).
+    """
+    import hashlib
+    import time
+    path = workspace / LAST_INTENT_SUGGESTED_REL
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "ts": int(time.time()),
+            "skills": list(skills),
+            "prompt_hash": hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:8],
+        }
+        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        # Best-effort: silent on failure (don't break UserPromptSubmit flow).
+        pass
+
+
+def _capture_skip_clarification(workspace: Path, prompt: str) -> None:
+    """v0.13.0 — write ephemeral skip-token file when user typed
+    `skip-clarification: <reason>` (reason ≥ 8 non-whitespace chars per D9).
+
+    Mirrors _capture_bypass_invariant pattern. Single-use: enforcer
+    consumes (unlinks) the file on hit. TTL 300s safety net.
+    """
+    import time
+    m = SKIP_CLARIFICATION_RE.search(prompt)
+    if not m:
+        return
+    reason = m.group(1).strip()
+    if not reason:
+        return
+    path = workspace / SKIP_CLARIFICATION_REL
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "ts": int(time.time()),
+            "reason": reason,
+            "ttl_seconds": SKIP_CLARIFICATION_TTL_SECONDS,
+        }
+        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+
+
 def _capture_bypass_invariant(workspace: Path, prompt: str) -> None:
     """G2 v0.10.0 — write ephemeral bypass file when user typed
     `bypass-invariant: <id>` in their prompt.
@@ -461,8 +518,10 @@ def main() -> int:
 
     # G2: capture bypass-invariant marker BEFORE the short-prompt early-out,
     # because a bare `bypass-invariant: INV-1` is short but load-bearing.
+    # v0.13.0: same logic for `skip-clarification: <reason>`.
     if prompt:
         _capture_bypass_invariant(workspace, prompt)
+        _capture_skip_clarification(workspace, prompt)
 
     # Heuristic skip for very short replies (yes/no/ok), questions about
     # earlier output, or empty prompts.
@@ -477,6 +536,10 @@ def main() -> int:
 
     if _already_referenced(prompt, skills):
         return 0
+
+    # v0.13.0: record suggested skills so clarification_gate_enforcer can
+    # decide whether to enforce shape contract on this turn's response.
+    _write_last_intent_suggested(workspace, skills, prompt)
 
     reminder = _format_reminder(skills)
 

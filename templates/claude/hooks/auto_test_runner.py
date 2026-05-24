@@ -8,10 +8,13 @@ patterns) and invokes the project's configured test MCP tool.
 
 Config: `.agent-toolkit/auto_test.json` (see _DEFAULT_CONFIG).
 
-Project-agnostic via per-stack `test_mapping` patterns:
-- Odoo: `{module}/models/foo.py` -> `{module}` via realdata_test:run_module_test
-- Django: `app/views/foo.py` -> `app/tests/test_foo.py` via pytest MCP
-- Generic: regex group capture to test file path.
+Project-agnostic via per-stack `test_mapping` patterns declared in
+`auto_test.json`. Default ships an Odoo-shaped mapping (the toolkit's
+primary use case today); override per project for Django / Rails /
+Generic-Python layouts. Examples:
+- Odoo:   `{module}/models/foo.py`     -> `{module}`            via realdata_test:run_module_test
+- Django: `app/views/foo.py`           -> `app/tests/test_foo.py` via pytest MCP
+- Generic: regex group capture to a test file path.
 
 Debounce: per-test last-run timestamp in
 `.agent-toolkit/.auto_test_state.json`.

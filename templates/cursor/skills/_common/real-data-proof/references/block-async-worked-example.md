@@ -22,7 +22,11 @@ eyeball.
 
 ## Step 1 — Acquire REAL data
 
-Find the data source. For a request classifier on an Odoo system:
+Find the data source — whichever table or log your framework writes
+HTTP / RPC traffic to (Odoo `ir_logging` + `<addon>_request_log`,
+Django `django.request` + custom audit table, Rails `production.log` +
+ActiveRecord audit, etc.). The SQL below assumes a Postgres-shaped
+audit table; swap to your stack's equivalent.
 
 ```sql
 -- Confirm the request log table exists and has organic data

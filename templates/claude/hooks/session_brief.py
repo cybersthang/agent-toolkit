@@ -358,10 +358,73 @@ def _build_brief(workspace: Path) -> str:
     return out
 
 
-def main() -> int:
-    # Kill-switch: env var disables all enforcement (emergency).
-    if os.environ.get("AGENT_TOOLKIT_DISABLE") == "1":
+def _emit_banner(message: str) -> int:
+    """Skip the regular brief; output only the banner as additionalContext."""
+    payload = {
+        "hookSpecificOutput": {
+            "hookEventName": "SessionStart",
+            "additionalContext": message,
+        }
+    }
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0
+
+
+def _format_kill_switch_warning() -> str:
+    return (
+        "⚠️ **AGENT_TOOLKIT_DISABLE=1 active** — ALL enforcement hooks are "
+        "silently no-op (invariant-guard, evidence-audit, git-guardrails, "
+        "verify-lint, debug-sentry, …). Edits are NOT gated; PASS claims "
+        "are NOT audited; destructive git ops are NOT blocked. Unset the "
+        "env var (`unset AGENT_TOOLKIT_DISABLE`) before resuming normal "
+        "work — this banner is the only signal the toolkit can show you."
+    )
+
+
+def _recent_hook_crashes(workspace: Path, window_seconds: int = 3600) -> int:
+    """Count `.hook_crash_log.json` entries whose ts is within window. Returns
+    0 on any error / missing file (fail-open, advisory only)."""
+    path = workspace / ".agent-toolkit" / ".hook_crash_log.json"
+    if not path.exists():
         return 0
+    try:
+        import time as _time
+        entries = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return 0
+    if not isinstance(entries, list):
+        return 0
+    cutoff = _time.time() - window_seconds
+    n = 0
+    for e in entries:
+        if isinstance(e, dict):
+            ts = e.get("ts") or e.get("timestamp")
+            try:
+                if ts and float(ts) >= cutoff:
+                    n += 1
+            except (TypeError, ValueError):
+                continue
+    return n
+
+
+def _format_hook_crash_banner(workspace: Path) -> str:
+    n = _recent_hook_crashes(workspace, window_seconds=3600)
+    if n == 0:
+        return ""
+    return (
+        f"🔴 **{n} hook crash(es) in last 1h** — fail-open kept the workflow "
+        f"green but enforcement was silently skipped on those edits. Run "
+        f"`python .codex/tools/hook_health.py` for aggregated stats; details "
+        f"in `.agent-toolkit/.hook_crash_log.json`."
+    )
+
+
+def main() -> int:
+    # Kill-switch: env var disables all enforcement. Session-brief is the
+    # ONE hook that still fires — its job is to warn the user the toolkit
+    # is off, otherwise the DEV has zero signal until something breaks.
+    if os.environ.get("AGENT_TOOLKIT_DISABLE") == "1":
+        return _emit_banner(_format_kill_switch_warning())
 
     raw = sys.stdin.read()
     envelope: Dict[str, Any] = {}
@@ -375,6 +438,9 @@ def main() -> int:
     workspace = Path(cwd).resolve()
 
     brief = _build_brief(workspace)
+    crash_banner = _format_hook_crash_banner(workspace)
+    if crash_banner:
+        brief = crash_banner + "\n\n" + brief
     if not brief.strip():
         return 0
 

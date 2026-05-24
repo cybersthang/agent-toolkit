@@ -3,6 +3,195 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
+## [0.13.x] — 2026-05-24 — "làm hết đi" sprint (Odoo-decouple + adopt + public-readiness)
+
+Multi-track sprint covering 3 user requests across one session:
+(1) "làm hết đi" — execute 18-item punch-list de-coupling Odoo from toolkit
+core; (2) HTML implement-doc for the sprint; (3) public-readiness check
+(license + bilingual + star-magnet README).
+
+Spec: ad-hoc composite — no single spec, but 4 forward-looking specs
+drafted as P3-LARGE follow-ups (`v0.14.0`/`v0.15.0`/`v0.16.0`/`v0.17.0`).
+
+**Added — framework-overlay machinery** (proves "stack-agnostic core" claim):
+- `setup.py` — 2 helpers `_discover_overlay_stems()` + `_classify_overlay()`
+  installer logic to pick `<stem>.<framework>.json` per preset's
+  `stack.framework`, fall back to `.generic.json`. Marker: `generic`
+  variant must exist for stem to qualify as overlay (excludes
+  `test_env.schema.json` / `test_env.example.json`).
+- `templates/agent_toolkit/coverage_config.{odoo,generic}.json` — split
+  the Odoo-flavored feature_globs (addons/controllers/models/wizards/jobs)
+  from a stack-neutral generic variant (empty globs, rely on
+  `probe_coverage.py` DEFAULT_FEATURE_GLOBS).
+- `templates/agent_toolkit/verification.{odoo,generic}.json` — Odoo probe
+  list (`odoo_manifest_validate` + addon_globs) vs generic Python lint.
+- `templates/agent_toolkit/debug.{odoo,generic}.json` — Odoo exception
+  namespaces (`odoo.exceptions.*`, `werkzeug.exceptions.*`) vs generic.
+- `templates/agent_toolkit/intent_map.{odoo,generic}.json` — Odoo skill
+  routes vs generic (drops `odoo-code-review`, `odoo-tdd`, etc).
+
+**Added — new hooks / commands**:
+- `templates/claude/hooks/git_guardrails.py` (PreToolUse Bash) — DENY
+  `git commit|push|add|--no-verify|--no-gpg-sign|--force|reset --hard|
+  clean -f|branch -D|checkout .|restore .`. Default mode `block`
+  (overrides toolkit-wide `warn` per `feedback_no_ai_commit`). Single-use
+  bypass: `.agent-toolkit/.skip_git_guard_next.json` TTL 600s consume-on-read.
+  Inspired by `mattpocock/skills/misc/git-guardrails-claude-code`
+  (MIT — Matt Pocock). Ported bash→Python to match `_common.py` plumbing.
+- `templates/claude/commands/constitution.md` — `/constitution` slash command
+  for amending the project constitution. Append-only Amendment N: blocks,
+  cross-links to `/adr-add` + `/inv-add` on `add`/`supersede`/`remove`.
+  Inspired by `github/spec-kit`'s `/speckit.constitution` (MIT).
+  Spec-kit's semver + extensions.yml hooks intentionally dropped — toolkit
+  already has ADR audit trail.
+- `tests/test_git_guardrails.py` — 26 tests across 4 classes (allow paths /
+  deny paths / bypass token / enforce mode). All PASS.
+
+**Added — runtime alerts**:
+- `templates/claude/hooks/session_brief.py` — 2 new banners:
+  (a) kill-switch banner when `AGENT_TOOLKIT_DISABLE=1` (was silent exit,
+      now emits warning so DEV knows enforcement is off);
+  (b) hook-crash banner showing count of `.hook_crash_log.json` entries in
+      last 1h (fail-open kept workflow green but surfaces the silent loss).
+- `templates/codex/tools/hook_health.py` — bypass-rate alert: any hook with
+  ≥ 20% bypass over ≥ 5 fires gets flagged for ADR review.
+
+**Added — specs (drafted, not implemented)**:
+- `specs/v0.14.0-adopt-pattern-scaffold.md` — `/adopt-pattern <url>` scaffold
+  to cut adoption friction from 5-7 touchpoints to one slash command.
+- `specs/v0.15.0-django-preset-dogfood.md` — Django REST preset as the
+  second concrete stack to prove framework-overlay machinery.
+- `specs/v0.16.0-topological-hook-order.md` — replace hardcoded hook
+  index in tests with constraint-based topological declaration.
+- `specs/v0.17.0-posttool-parallel-fire.md` — PostToolUse parallel-fire
+  for independent hooks; target 40% latency reduction.
+
+**Added — public-readiness**:
+- `NOTICE` — entry #3 (now 4 total): `affaan-m/everything-claude-code` (ECC)
+  attribution block with MIT text + 3 adoption points (`verification_loop`,
+  `/eval-define`, `/bug-to-test`). Closes gap where ECC patterns were
+  adopted but not credited in NOTICE.
+- `README.md` — hero rewrite: 6-badge cluster, ≤12-word tagline, fenced
+  install in fold, "Why agent-toolkit?" 6-bullet, comparison table
+  (vs spec-kit/mattpocock/ECC/Aider), production status block, bilingual
+  notice moved to footer (line 744). Research-driven via 8 top-starred
+  AI-dev-tooling repos (spec-kit, OpenHands, Cline, Aider, BMAD,
+  claude-task-master, claude-flow, LangGraph).
+- `templates/agent_toolkit/QUICKSTART.md` — `🇻🇳 Quickstart 5-phút` VN
+  section (~120 LOC) mirroring EN content.
+- `templates/agent_toolkit/QUICKSTART.odoo.md` — preserved Odoo-specific
+  quickstart from the pre-rewrite content.
+- `specs/v0.13.x-lam-het-di-sprint.implement-noted.html` — sidecar
+  technical-doc for the sprint, 483-LOC self-contained HTML with
+  collapsible file checklists, 10 SD / 6 T / 8 F items per
+  `implement-noted.example.md` schema.
+
+**Renamed**:
+- `templates/codex/canonical_decisions.json` → `canonical_decisions.odoo-12.json`
+  for naming consistency with `.generic.json` + `.odoo-17.json` siblings.
+- `templates/agent_toolkit/coverage_config.json` → `.odoo.json` (overlay).
+- `templates/agent_toolkit/verification.json` → `.odoo.json` (overlay).
+- `templates/agent_toolkit/debug.json` → `.odoo.json` (overlay).
+- `templates/agent_toolkit/intent_map.json` → `.odoo.json` (overlay).
+
+**Changed — installer**:
+- `setup.py` — canonical_decisions fallback changed from unsuffixed
+  default (= Odoo 12 default) to `.generic.json`. BREAKING for any
+  project that relied on the implicit Odoo 12 default; preset must now
+  be explicit. `setup.py` LOC: 845 → 907 (⚠ over 800 budget; pre-requisite
+  for `v0.16.0` topological refactor).
+
+**Changed — hooks** (Odoo strip):
+- `templates/claude/hooks/debug_sentry.py` — strip `r"odoo\.exceptions\.*"`
+  + `r"werkzeug\.exceptions\.*"` from hardcoded `DEFAULT_PATTERNS` +
+  `STRONG_PATTERNS`. Framework-specific patterns now live in
+  `.agent-toolkit/debug.json` overlay only.
+- `templates/claude/hooks/daemon_manager.py` — env keys tuple
+  `("PYTHON_BIN","ODOO_CONF","DB")` → read from `test_env.json`'s
+  `daemon_env_keys` field; default tuple now stack-neutral
+  `("PYTHON_BIN","DB")`.
+- `templates/claude/hooks/auto_test_runner.py` — `_doc` rewording: Odoo
+  is now framed as the default ship pattern, not the only one.
+- `templates/claude/hooks/reuse_probe.py` — strip `.odoo_data` from
+  hardcoded `skip_dirs` set; add `.agent-toolkit/reuse_probe.json`
+  `extra_skip_dirs` config override.
+- `templates/claude/settings.json` — wire `git_guardrails.py` into
+  PreToolUse as new matcher group (matcher `Bash`), positioned after
+  the existing `Edit|Write|MultiEdit|NotebookEdit` group so
+  `invariant_guard.py` stays at `PreToolUse[0]` for chain-order tests.
+
+**Changed — license metadata**:
+- `LICENSE` — Copyright holder email switched from work email
+  (`thang.vo@nakivo.com`) to personal (`ducthangict.dhtn@gmail.com`).
+- `README.md` Author/maintenance section — same switch; work email moved
+  to Contributors/acknowledgements with field-test context.
+- `CONTRIBUTING.md` — neutral GitLab/GitHub framing (was "GitHub Discussion").
+
+**Fixed**:
+- `tests/test_stop_chain_interactions.py::test_stop_chain_length` — count
+  9 → 10 (matches actual `settings.json` Stop chain post-v0.13.0).
+- `tests/test_git_guardrails.py` — `PY` fallback `sys.executable` instead
+  of hardcoded `/home/voducthang/NAKIVO/venv/bin/python`.
+- `tests/test_debug_sentry_split.py::test_odoo_exception_qualified_matches`
+  — rewritten to assert NEW structure (`odoo.exceptions` pattern lives in
+  `debug.odoo.json` overlay, NOT in hook's hardcoded defaults).
+- `templates/CLAUDE.md` — hook table + slash command list updated for new
+  `git_guardrails` + `/constitution`; upstream attribution table grew
+  4 → 5 rows.
+
+**Tests**: full suite GREEN final run (`pytest tests/ --no-cov -q` →
+`[100%]`, 0 failures, ~580 tests).
+
+**Migration**: `setup.py update` re-runs framework-overlay picker. Projects
+already installed: existing `.agent-toolkit/{coverage_config,verification,
+debug,intent_map}.json` are preserved (`SKIP_EXISTS` rule) — no auto-merge.
+Projects re-installing get the correct overlay per their preset.
+
+---
+
+## [0.13.0] — 2026-05-23 — clarification-gate-enforcer Stop hook (close first-turn bypass)
+
+Closes the gap where intent_router's `clarification-gate` skill suggestion
+(soft system-reminder) could be bypassed by the agent emitting a text-only
+response without honoring the 4-marker contract
+(`UNDERSTANDING/ASSUMPTIONS/QUESTIONS/Searched:`). Now mechanically
+enforced at Stop layer.
+
+Spec: [specs/v0.13.0-clarification-gate-enforcer.md](specs/v0.13.0-clarification-gate-enforcer.md) — 7 user stories, 7 acceptance_evals, 15 pytest tests.
+
+**Added**:
+- `templates/claude/hooks/clarification_gate_enforcer.py` (new Stop hook) — checks
+  response shape when intent_router suggested clarification-gate this turn.
+  4 skip paths: `stop_hook_active`, autonomy mode, no-suggestion, fresh
+  escape token. Default mode `block` (per D8 + constitution Principle 5).
+- `templates/claude/hooks/_patterns.py` — `SKIP_CLARIFICATION_RE` (regex
+  `\bskip-clarification:\s*(\S{8,200})\b`, reason ≥ 8 non-whitespace chars
+  per D9 → DEV-readable audit log).
+- `templates/claude/hooks/intent_router.py` — 2 helpers + 2 wires:
+  `_write_last_intent_suggested` records `{ts, skills, prompt_hash}` so
+  enforcer knows the turn needs shape check; `_capture_skip_clarification`
+  mirrors `_capture_bypass_invariant` pattern for single-use escape token.
+- `templates/agent_toolkit/enforce_mode.example.json` — new entry
+  `clarification_gate_enforcer: "block"` (contract-enforcement hook
+  class defaults to block, opposite of advisory hooks like
+  `spec_first_guard` which stay `warn`).
+
+**Changed**:
+- `templates/claude/settings.json` — wire enforcer into Stop chain
+  position 3 (after `evidence_audit.py`, before `verify_lint.py`/
+  `debug_sentry.py`).
+- `lib/installer.py` — `__version__` 0.12.3 → 0.13.0.
+
+**Tests**: `tests/test_clarification_gate_enforcer.py` — 7 test classes
+(`TestUs1`–`TestUs7`), 15 test cases covering all 7 acceptance_evals.
+Uses subprocess for hook invocation to avoid the
+`wrap_utf8_stdio()`-vs-pytest-capture interaction.
+
+**Migration for consumers**: run `setup.py update <project>` to receive
+the new hook + settings.json entry. Override `block` → `warn` in your
+project's `.agent-toolkit/enforce_mode.json` if you want soft-warn for
+this hook specifically.
+
 ## [0.12.3] — 2026-05-22 — Token optimization: invariant_guard silent-exit on empty registry
 
 Patch release reducing per-session token cost on workspaces with zero

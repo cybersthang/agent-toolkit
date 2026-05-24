@@ -19,7 +19,7 @@ schema in `templates/agent_toolkit/implement-noted.example.md`.
 
 Example:
 ```
-/implement-notes nakivo-profiler-hotpot-dashboard
+/implement-notes user-profile-redesign
 /implement-notes v0.6.2-cleanup-uplift
 ```
 

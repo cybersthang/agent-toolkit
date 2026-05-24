@@ -1,29 +1,151 @@
 # agent-toolkit
 
-Reusable Claude Code / Cursor / Codex agent infrastructure for **Odoo
-projects** (12 / 17). Clone once, install into any Odoo workspace with
-one `setup.py init`.
+> **Spec-driven Claude Code / Cursor / Codex infra — install once, run anywhere.**
 
-The toolkit packages a **GitHub Spec Kit-aligned spec-driven workflow**
-(`/plan` → `/clarify` → `/tasks` → `/analyze` → `/implement` → `/verify`)
-on top of Odoo-specific MCP servers (codebase + postgres + Odoo
-realdata_test + JIRA), Cursor rules, Claude Code hooks, and Spec
-Kit-style skills.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python: 3.8+](https://img.shields.io/badge/python-3.8%2B-blue)](setup.py)
+[![Claude Code](https://img.shields.io/badge/Claude_Code-compatible-7c3aed)](https://docs.claude.com/en/docs/claude-code)
+[![Cursor](https://img.shields.io/badge/Cursor-rules%20%2B%20skills-1e40af)](https://cursor.com)
+[![Spec Kit](https://img.shields.io/badge/Spec_Kit-aligned-22c55e)](https://github.com/github/spec-kit)
+[![Bilingual](https://img.shields.io/badge/docs-EN%20%2B%20VN-orange)](#-tiếng-việt)
 
-> **🌐 Languages / Ngôn ngữ:** the toolkit is **bilingual EN + VN**.
-> README/USAGE/AGENTS/CLAUDE docs ship both languages; the runtime
-> response language is per-preset (`response_language` field — defaults
-> to English; override per project via `agent-toolkit.config.json`).
-> Toàn bộ project hỗ trợ **2 ngôn ngữ Tiếng Anh + Tiếng Việt**: docs có
-> cả 2, runtime reply theo preset (override được trong config project).
+AI agents ship buggy code when nothing **mechanically** stops them. This toolkit
+makes 6 rules un-skip-able: invariant guard, evidence audit, real-data verify,
+git guardrail, kill-switch banner, bypass-rate alert.
 
-> 🤖 **AI agents**: Read [`AI_REBUILD_CHECKLIST.md`](AI_REBUILD_CHECKLIST.md)
-> BEFORE invoking `setup.py init` or `setup.py update`. The 4-phase Q&A
-> protocol is mandatory — without it the toolkit silently inherits
-> defaults from whatever preset and you ship a misconfigured project.
-> Also read [`AGENTS.md`](AGENTS.md) for the hard rules.
+## Install
 
-> **Hướng dẫn chi tiết bằng tiếng Việt:** xem [USAGE.md](USAGE.md).
+```bash
+git clone <toolkit-repo> ~/agent-toolkit
+python ~/agent-toolkit/setup.py init /path/to/project --preset odoo-12 --yes
+```
+
+Other presets: `odoo-17`, `generic`. Contributing a `django` / `rails` / `go`
+preset is a one-PR exercise — see [PORTING.md](templates/agent_toolkit/PORTING.md).
+
+## Why agent-toolkit?
+
+- 🛡️ **Mechanical enforcement, not honor system.** 21 hooks DENY at the
+  Claude Code harness level — invariant strips, claim-without-proof,
+  destructive git, hallucinated progress. Not warnings the agent can ignore.
+- 🔬 **Real-data verify or it didn't ship.** `/verify` runs MCP probes on
+  the live DB; `evidence_audit` Stop hook BLOCKS "tests pass" claims that
+  lack an `mcp__realdata_test__*` or `mcp__postgres__*` call in the turn.
+- 📐 **5-phase Spec Kit workflow with gate hooks.** `/plan → /clarify →
+  /tasks → /analyze → /implement → /verify` — each transition has a
+  PreToolUse / Stop hook that refuses to advance if the prior phase
+  has gaps.
+- 🧭 **Trinity rule system.** Constitution (slow principles) → ADRs (why
+  decisions) → invariants.json (mechanical patterns). Cross-linked,
+  auditable, append-only. No upstream toolkit has this 3-tier layout.
+- 🔌 **Stack-agnostic core + preset overlays.** `<file>.<framework>.json`
+  picker installs the right config per preset. Odoo 12/17 ship today;
+  Django/Rails/Go is a config addition, not a fork.
+- 📡 **Observability built-in.** `emit_fire_event` ring buffer, hook-health
+  aggregator, bypass-rate alerts, hook-crash banner. Know which rules are
+  being sidestepped before they rot.
+
+## Quick comparison
+
+|                                  | agent-toolkit | spec-kit | mattpocock/skills | ECC | Aider |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Spec-driven 5-phase workflow     | ✅ | ✅ | partial | partial | ❌ |
+| Hook-level mechanical enforcement | **✅** | ❌ | partial | partial | ❌ |
+| Real-data MCP verify gate        | **✅** | ❌ | ❌ | partial | ❌ |
+| Stack-preset overlay system      | **✅** | partial | ❌ | ❌ | ❌ |
+| Telemetry + bypass audit         | **✅** | ❌ | ❌ | partial | ❌ |
+| Bilingual docs (EN + VN)         | **✅** | ❌ | ❌ | ❌ | ❌ |
+| Git-state agent guardrail        | **✅** | ❌ | ✅ | ❌ | ❌ |
+
+## Production status
+
+Toolkit is in **active daily use** on a production Odoo 12 Enterprise
+workspace (Nakivo, Vietnam) since 2026-Q1. Hook telemetry shows ~57
+fire-events per session avg, ~26% block rate, ~3.5% bypass rate.
+22 hooks active, 580+ unit tests in CI.
+
+> 🤖 **AI agents installing into a project**: Read
+> [`AI_REBUILD_CHECKLIST.md`](AI_REBUILD_CHECKLIST.md) BEFORE invoking
+> `setup.py init` or `setup.py update`. The 4-phase Q&A protocol is
+> mandatory — without it the toolkit silently inherits defaults from
+> whatever preset and you ship a misconfigured project. Also read
+> [`AGENTS.md`](AGENTS.md) for the hard rules.
+
+> 🇻🇳 **Tiếng Việt:** giới thiệu tóm tắt ở
+> [§ Tiếng Việt](#-tiếng-việt) cuối README; full guide ở [USAGE.md](USAGE.md).
+
+## Architecture (1 picture)
+
+```
+                    ┌─────────────────────────────────────────┐
+                    │       DEV (intent owner)                │
+                    │  /plan  /clarify  /implement            │
+                    └────────────────┬────────────────────────┘
+                                     │ slash commands
+                                     ▼
+              ┌──────────────────────────────────────────────┐
+              │           CLAUDE CODE HARNESS                │
+              │                                              │
+              │  SessionStart ─► [session_brief]             │
+              │     │ inject: invariants, ADRs, hook health  │
+              │     ▼                                        │
+              │  UserPromptSubmit ─► [intent_router]         │
+              │     │ suggest skills, write last_intent      │
+              │     ▼                                        │
+              │  PreToolUse(Bash) ─► [git_guardrails]  ❌DENY │
+              │  PreToolUse(Edit) ─► [invariant_guard]  ❌DENY │
+              │                  ─► [analyze_halt_gate]      │
+              │                  ─► [spec_first_guard]       │
+              │     │                                        │
+              │     ▼                                        │
+              │  PostToolUse(Edit) ─► [tdd_runner]           │
+              │                   ─► [verification_loop]     │
+              │                   ─► [auto_test_runner]      │
+              │                   ─► [auto_run_probes]  ◄─── │
+              │     │                                  │     │
+              │     ▼                                  │MCP  │
+              │  Stop ─► [evidence_audit]   ❌BLOCK ◄──┤probe│
+              │       ─► [clarification_gate_enforcer] │     │
+              │       ─► [verify_lint]      ❌BLOCK    │     │
+              │       ─► [post_edit_verify_gate] ❌BLOCK     │
+              │       ─► [debug_sentry]     ❌BLOCK          │
+              └──────────────────────────────────────────────┘
+                                     │ tool call ▼
+              ┌──────────────────────────────────────────────┐
+              │             MCP SERVERS (per preset)         │
+              │                                              │
+              │  codebase ◄─► postgres ◄─► realdata_test     │
+              │   (search)    (DB read)    (run module test) │
+              │                                              │
+              │  + jira (ticket), playwright (E2E)           │
+              └──────────────────────────────────────────────┘
+
+   ─────── 3-tier rule (cross-linked, auditable) ───────
+
+         ┌─────────────────────────────────────────┐
+         │  1. CONSTITUTION  (slow-changing)        │ ◄─── /constitution
+         │     .agent-toolkit/constitution.md       │
+         │     project-wide principles              │
+         └───────────────┬─────────────────────────┘
+                         │ amendments cite
+                         ▼
+         ┌─────────────────────────────────────────┐
+         │  2. ADR LOG  (append-only WHY)          │ ◄─── /adr-add  /decide
+         │     .agent-toolkit/decision-log.md      │
+         │     one entry per durable decision      │
+         └───────────────┬─────────────────────────┘
+                         │ enforces via
+                         ▼
+         ┌─────────────────────────────────────────┐
+         │  3. INVARIANTS  (mechanical patterns)   │ ◄─── /inv-add
+         │     .agent-toolkit/invariants.json      │     /bug-to-test
+         │     regex/AST patterns — hooks DENY     │
+         │     edits that strip them               │
+         └─────────────────────────────────────────┘
+```
+
+[ASCII for browser-friendly inline render; the same diagram in
+mermaid/excalidraw form ships in `docs/architecture.md` (planned).]
 
 ## How to use — DEV vs AGENT split / DEV làm gì, AGENT làm gì
 
@@ -671,17 +793,99 @@ in your own toolkit is encouraged — check each license.
 ### Author + maintenance
 
 - **Author / maintainer**: **Thang Vo** — Senior Developer (Odoo & Agent AI)
-  - Work email: [thang.vo@nakivo.com](mailto:thang.vo@nakivo.com)
-  - Personal email: [ducthangict.dhtn@gmail.com](mailto:ducthangict.dhtn@gmail.com)
-  - Contact: `ictlucky.dhtn` · Zalo [0989 464 344](tel:+84989464344)
+  - Contact: [ducthangict.dhtn@gmail.com](mailto:ducthangict.dhtn@gmail.com)
+  - Zalo: [0989 464 344](tel:+84989464344) (`ictlucky.dhtn`)
   - Original work; toolkit is in active use on production Odoo 12 + 17
     Enterprise workspaces.
+- **Contributors / acknowledgements**:
+  - **Thang Vo** ([thang.vo@nakivo.com](mailto:thang.vo@nakivo.com)) —
+    field-tested the toolkit on the Nakivo Odoo 12 Enterprise
+    workspace; most invariants, ADRs, and Vibe-flow refinements were
+    captured from that day-to-day usage.
 - **Issues / contributions**: open an issue on the toolkit repo or
-  reach out via the contacts above.
+  reach out via the maintainer contact above.
 - **License**: toolkit is **MIT** — see [`LICENSE`](LICENSE) at root.
   Third-party MIT attribution (mattpocock/skills, github/spec-kit,
-  andrej-karpathy-skills) is consolidated in [`NOTICE`](NOTICE).
-  Original Python code in `lib/`, `setup.py` carries
-  `# SPDX-License-Identifier: MIT` at file top; skills/hooks/templates
-  inherit the toolkit LICENSE unless an in-file `license:` frontmatter
-  states otherwise.
+  affaan-m/everything-claude-code, andrej-karpathy-skills) is
+  consolidated in [`NOTICE`](NOTICE). Original Python code in `lib/`,
+  `setup.py` carries `# SPDX-License-Identifier: MIT` at file top;
+  skills/hooks/templates inherit the toolkit LICENSE unless an in-file
+  `license:` frontmatter states otherwise.
+
+---
+
+## 🇻🇳 Tiếng Việt
+
+**Hạ tầng AI agent (Claude Code / Cursor / Codex) cho spec-driven dev — cài 1 lần, chạy mọi project.**
+
+Agent AI hay ship code lỗi khi không có gì **ép cơ học**. Toolkit này biến
+6 rule thành un-skip-able: chặn xóa invariant, audit claim không có proof,
+verify trên data thật, chặn agent commit/push, banner cảnh báo kill-switch,
+alert khi bypass quá nhiều.
+
+### Cài đặt
+
+```bash
+git clone <toolkit-repo> ~/agent-toolkit
+python ~/agent-toolkit/setup.py init /đường-dẫn-tới-project --preset odoo-12 --yes
+```
+
+Preset khác: `odoo-17`, `generic`. Thêm preset mới (Django/Rails/Go) chỉ là 1 PR — xem [PORTING.md](templates/agent_toolkit/PORTING.md).
+
+### Tại sao dùng agent-toolkit?
+
+- 🛡️ **Enforce cơ học, không phải honor-system.** 21 hook DENY ở
+  Claude Code harness — strip invariant, claim không proof, git
+  destructive, fake progress đều bị chặn.
+- 🔬 **Verify trên data thật hoặc không ship.** `/verify` chạy MCP probe
+  lên DB live; `evidence_audit` Stop hook BLOCK "test pass" claim nếu
+  turn không có `mcp__realdata_test__*` / `mcp__postgres__*` call.
+- 📐 **5-phase Spec Kit workflow với hook gate.** `/plan → /clarify →
+  /tasks → /analyze → /implement → /verify` — mỗi transition có hook
+  từ chối tiến nếu phase trước có GAP.
+- 🧭 **Hệ thống rule 3 tầng.** Constitution (nguyên tắc) → ADR (lý do
+  decision) → invariants.json (pattern cơ học). Cross-link, auditable,
+  append-only. Không upstream toolkit nào có layout này.
+- 🔌 **Core stack-agnostic + preset overlay.** Picker
+  `<file>.<framework>.json` install config đúng theo preset. Odoo 12/17
+  ship sẵn; Django/Rails/Go chỉ thêm config, không fork.
+- 📡 **Observability built-in.** `emit_fire_event` ring buffer, hook-health
+  aggregator, bypass-rate alert, hook-crash banner — biết rule nào đang
+  bị sidestep TRƯỚC khi nó rot.
+
+### Workflow cho DEV
+
+DEV chỉ làm **3 bước manual** — agent tự lo 5 phase còn lại dưới autonomy:
+
+```
+DEV gõ:  /plan <ý tưởng>      →  spec.md có cấu trúc
+         /clarify <slug>       →  đóng GAP, agent tự /tasks rồi STOP
+         /implement <slug>     →  bật autonomy 4h
+         
+AGENT tự: /analyze → execute tasks → /verify → report PASS/GAP
+```
+
+Mỗi feature xong → sidecar `<slug>.implement-noted.md` capture scope
+deviation + trade-off + follow-up + confidence để DEV review trước merge.
+
+### Hướng dẫn chi tiết tiếng Việt
+
+Đọc [USAGE.md](USAGE.md) — full guide 861 dòng, có Mục lục 4 nhóm:
+- **A. Cài đặt** (§1-4): clone, install vào project, config trung tâm
+- **B. Workflow** (§5-6): spec-driven workflow theo từng preset
+- **C. Bảo trì** (§7-9): cấu trúc cài, update toolkit, thêm preset mới
+- **D. Khi có vấn đề** (§10-12): verify install, troubleshooting, FAQ
+
+### Trạng thái sản xuất
+
+Toolkit đang **dùng thực tế hằng ngày** trên Odoo 12 Enterprise (Nakivo,
+Vietnam) từ 2026-Q1. Hook telemetry trung bình ~57 fire-event/session,
+~26% block, ~3.5% bypass. 22 hook active, 580+ unit test trên CI.
+
+### Liên hệ tác giả
+
+- Email: [ducthangict.dhtn@gmail.com](mailto:ducthangict.dhtn@gmail.com)
+- Zalo: [0989 464 344](tel:+84989464344)
+- Mở issue trên repo hoặc liên hệ qua email/Zalo.
+
+License **MIT** — xem [LICENSE](LICENSE) và [NOTICE](NOTICE) cho attribution upstream.

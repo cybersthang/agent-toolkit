@@ -54,6 +54,17 @@
             "timeout": 8
           }
         ]
+      },
+      {
+        "_comment": "Bash guardrails — block destructive git ops the AGENT is not authorized to run (commit/push/add/reset --hard/etc.). DEV-only gate per feedback_no_ai_commit. Bypass once via `.agent-toolkit/.skip_git_guard_next.json`. Lives in a separate matcher group after Edit/Write so the chain-order test (which reads PreToolUse[0]) still sees invariant_guard first.",
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/git_guardrails.py",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -119,6 +130,12 @@
             "type": "command",
             "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/evidence_audit.py",
             "timeout": 8
+          },
+          {
+            "_comment": "v0.13.0 clarification-gate-enforcer: enforce 4-marker response shape (UNDERSTANDING/ASSUMPTIONS/QUESTIONS/Searched:) when intent_router suggested clarification-gate. Runs AFTER evidence_audit (evidence checks claim-vs-proof; this checks response shape contract) and BEFORE debug_sentry (final layer). Default mode: block (D8).",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/clarification_gate_enforcer.py",
+            "timeout": 5
           },
           {
             "type": "command",

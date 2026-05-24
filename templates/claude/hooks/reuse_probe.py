@@ -79,8 +79,21 @@ def _grep_workspace(workspace: Path, kind: str, name: str,
         excluded_resolved = exclude.resolve()
     except OSError:
         excluded_resolved = None
+    # Stack-agnostic default skip set. Framework-specific dirs (e.g.
+    # `.odoo_data`, `.django_cache`) should be added by the project to
+    # `.agent-toolkit/reuse_probe.json`'s `extra_skip_dirs` field — kept
+    # out of this hardcoded set so toolkit core stays stack-neutral.
     skip_dirs = {".git", "node_modules", ".venv", "venv", "__pycache__",
-                 ".cache", ".pytest_cache", "build", "dist", ".odoo_data"}
+                 ".cache", ".pytest_cache", "build", "dist"}
+    _config_path = workspace / ".agent-toolkit" / "reuse_probe.json"
+    if _config_path.exists():
+        try:
+            _cfg = json.loads(_config_path.read_text(encoding="utf-8-sig"))
+            extra = _cfg.get("extra_skip_dirs") or []
+            if isinstance(extra, list):
+                skip_dirs.update(str(d) for d in extra)
+        except (json.JSONDecodeError, OSError):
+            pass
     for py_file in workspace.rglob("*.py"):
         if any(part in skip_dirs for part in py_file.parts):
             continue

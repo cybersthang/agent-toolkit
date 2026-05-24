@@ -61,10 +61,33 @@ class TestStrongPatterns(unittest.TestCase):
         seen = self.mod._matches(text, self.mod.DEFAULT_PATTERNS)
         self.assertTrue(seen)
 
-    def test_odoo_exception_qualified_matches(self):
+    def test_odoo_exception_pattern_lives_in_overlay_not_hardcoded(self):
+        """v0.13+: framework-specific exception namespaces moved out of
+        DEFAULT_PATTERNS into `debug.<framework>.json` overlay config.
+        DEFAULT_PATTERNS must stay stack-agnostic (no `odoo.exceptions.`,
+        no `django.core.exceptions.`, etc.); the Odoo pattern lives in
+        `templates/agent_toolkit/debug.odoo.json` and is loaded by the
+        hook from `.agent-toolkit/debug.json` at runtime."""
+        import json
+        # Hardcoded defaults stay stack-agnostic.
+        for pattern in self.mod.DEFAULT_PATTERNS + self.mod.STRONG_PATTERNS:
+            self.assertNotIn(
+                "odoo.exceptions", pattern,
+                f"Found framework-specific Odoo pattern in hook defaults: {pattern!r}",
+            )
+        # Overlay file ships the Odoo pattern.
+        overlay = (
+            TOOLKIT_ROOT / "templates" / "agent_toolkit" / "debug.odoo.json"
+        )
+        self.assertTrue(overlay.exists(), f"missing overlay: {overlay}")
+        cfg = json.loads(overlay.read_text(encoding="utf-8"))
+        joined = " ".join(cfg.get("patterns", []))
+        self.assertIn("odoo", joined.lower(),
+                      "debug.odoo.json should ship an Odoo exception pattern")
+        # And the hook DOES match the pattern at runtime when loaded.
         text = "raise odoo.exceptions.AccessError('no perm')"
-        seen = self.mod._matches(text, self.mod.DEFAULT_PATTERNS)
-        self.assertTrue(seen)
+        seen = self.mod._matches(text, cfg["patterns"])
+        self.assertTrue(seen, f"Odoo overlay pattern should match: {text!r}")
 
     def test_python_frame_line_matches(self):
         text = '  File "/app/foo.py", line 42, in handler'

@@ -1,32 +1,41 @@
 # agent-toolkit — Hướng Dẫn Sử Dụng
 
 Toolkit này đóng gói toàn bộ hạ tầng AI agent (Claude Code / Cursor / Codex)
-cho **Odoo projects** (12 / 17). Clone về một lần, chạy `setup.py init`
-cho từng Odoo workspace.
+— **core stack-agnostic, presets opinionated**. Clone về một lần, chạy
+`setup.py init --preset <name>` cho từng project. Hôm nay 3 preset ship
+sẵn (`generic`, `odoo-12`, `odoo-17`); thêm Django/Rails/Go là việc
+"contribution-not-fork" — xem [PORTING.md](templates/agent_toolkit/PORTING.md).
 
 Toolkit bundle một quy trình **spec-driven theo chuẩn GitHub Spec Kit**
 (`/plan` → `/clarify` → `/tasks` → `/analyze` → `/implement` → `/verify`)
-trên nền các MCP server Odoo-specific (codebase + postgres + Odoo
-realdata_test + JIRA), Cursor rules + Claude Code hooks + skills.
+trên nền MCP server (codebase + postgres + một `realdata_test`
+stack-specific + JIRA), Cursor rules + Claude Code hooks + skills.
 
-> Toolkit được thiết kế stack-agnostic ở tầng core (hook + invariant +
-> spec workflow), nhưng các preset shipped đều hướng Odoo. Để port sang
-> stack khác, xem `templates/agent_toolkit/PORTING.md`.
+> Doc dài 850+ dòng — dùng **Mục lục dưới** để jump đến section cần
+> đọc. **Đọc nhanh tối thiểu**: §1 + §2 + §3 + §5 + §11 (skim §11
+> trước khi gặp lỗi đầu tiên).
 
 ## Mục lục
 
-- [1. Cài đặt toolkit lên máy](#1-cài-đặt-toolkit-lên-máy)
-- [2. Cài hạ tầng vào một project](#2-cài-hạ-tầng-vào-một-project)
-- [3. Sau khi install lần đầu](#3-sau-khi-install-lần-đầu)
-- [4. `agent-toolkit.config.json` — config trung tâm](#4-agent-toolkitconfigjson--config-trung-tâm)
-- [5. Spec-driven workflow — DEV chỉ làm Plan + Clarify](#5-spec-driven-workflow--dev-chỉ-làm-plan--clarify)
-- [6. Workflow theo từng preset](#6-workflow-theo-từng-preset)
-- [7. Cấu trúc được cài vào project](#7-cấu-trúc-được-cài-vào-project)
-- [8. Cập nhật toolkit cho project đã cài](#8-cập-nhật-toolkit-cho-project-đã-cài)
-- [9. Khi Odoo 21+ ra mắt — chỉ cần thêm files](#9-khi-odoo-21-ra-mắt--chỉ-cần-thêm-files)
-- [10. Verify install](#10-verify-install)
-- [11. Troubleshooting](#11-troubleshooting)
-- [12. FAQ](#12-faq)
+### Nhóm A — Cài đặt (đọc lần đầu)
+- [1. Cài đặt toolkit lên máy](#1-cài-đặt-toolkit-lên-máy) — clone repo, setup venv.
+- [2. Cài hạ tầng vào một project](#2-cài-hạ-tầng-vào-một-project) — `setup.py init` + chọn preset.
+- [3. Sau khi install lần đầu](#3-sau-khi-install-lần-đầu) — 3 việc cần làm ngay.
+- [4. `agent-toolkit.config.json` — config trung tâm](#4-agent-toolkitconfigjson--config-trung-tâm) — override preset defaults.
+
+### Nhóm B — Workflow hằng ngày
+- [5. Spec-driven workflow — DEV chỉ làm Plan + Clarify](#5-spec-driven-workflow--dev-chỉ-làm-plan--clarify) — 3 bước manual, 5 phase auto.
+- [6. Workflow theo từng preset](#6-workflow-theo-từng-preset) — odoo-12 vs odoo-17 vs generic vs tương lai.
+
+### Nhóm C — Bảo trì + nâng cấp
+- [7. Cấu trúc được cài vào project](#7-cấu-trúc-được-cài-vào-project) — `.codex/`, `.claude/`, `.cursor/`, `.agent-toolkit/`.
+- [8. Cập nhật toolkit cho project đã cài](#8-cập-nhật-toolkit-cho-project-đã-cài) — `setup.py update`.
+- [9. Khi Odoo 21+ ra mắt — chỉ cần thêm files](#9-khi-odoo-21-ra-mắt--chỉ-cần-thêm-files) — pattern thêm preset mới.
+
+### Nhóm D — Khi có vấn đề
+- [10. Verify install](#10-verify-install) — checklist 11 dòng confirm install OK.
+- [11. Troubleshooting](#11-troubleshooting) — lỗi hay gặp + cách fix.
+- [12. FAQ](#12-faq) — câu hỏi thường gặp.
 
 ---
 

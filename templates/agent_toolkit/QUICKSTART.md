@@ -1,21 +1,34 @@
 # Agent-Toolkit — 5-minute Quickstart
 
-For an Odoo dev who just inherited this project, or for installing the
-toolkit into a fresh Odoo workspace. **English** version; Vietnamese
-guide is at the toolkit repo root (`USAGE.md`).
+For a dev who just inherited a project using agent-toolkit, or for
+installing the toolkit into a fresh workspace. **English** version;
+Vietnamese guide is at the toolkit repo root (`USAGE.md`).
 
-## TL;DR (90 seconds)
+## What the toolkit gives you (90 seconds)
 
-The toolkit is for **Odoo projects** (12 / 17 / future Odoo majors). It
-bundles:
+The toolkit is **stack-agnostic at the core** — it bundles a Claude
+Code / Cursor / Codex agent harness with mechanical enforcement that
+works for any project type. **Presets** then layer on stack-specific
+defaults: which MCP servers to spin up, which exception namespaces to
+watch, which feature-glob shape to gate at commit.
+
+Today three presets ship:
+
+| Preset | Stack-specific overlays |
+|---|---|
+| `odoo-12` | Odoo 12 / Python 3.8 / QWeb + jQuery / `@api.multi`. See [QUICKSTART.odoo.md](QUICKSTART.odoo.md). |
+| `odoo-17` | Odoo 17 / Python 3.10+ / OWL / new ORM. See [QUICKSTART.odoo.md](QUICKSTART.odoo.md). |
+| `generic` | No stack-specific overlay — pure agnostic core. Build your own preset overlay on top. |
+
+The toolkit gives every preset, regardless of stack:
 
 - A **Spec Kit-aligned spec-driven workflow** — DEV runs `/plan` +
   `/clarify`, agent auto-chains `/tasks` → `/analyze` → `/implement` →
   `/verify` under autonomy.
-- **Odoo MCP servers**: codebase / postgres / realdata_test / JIRA.
+- **MCP servers**: codebase + postgres + a stack-specific
+  `realdata_test` (Odoo today; Django / Rails / Go contributions welcome).
 - **Mechanical enforcement** that catches "agent reports tests pass,
   but real-data reveals bugs" failures via 5 layers:
-
   1. **Invariant guard** (PreToolUse): blocks Edits that remove
      declared `must_keep_regex` patterns.
   2. **PASS-claim contract** (Stop): blocks `tests pass / verified /
@@ -28,182 +41,193 @@ bundles:
      cause` claims without any tool call in the turn.
   5. **Pre-commit mirror** (git): same enforcement at commit time so
      dev edits in IDE don't bypass.
+  6. **Git guardrails** (PreToolUse Bash): blocks the agent from
+     running destructive git ops (`commit`/`push`/`add`/`--no-verify`/
+     `reset --hard`/etc.) — DEV-only gate.
 
 ## Install in a new project
 
-The main install path is `setup.py init` at the toolkit root (NOT the
-internal `.codex/tools/agent_toolkit_init.py` — that's a legacy
-bootstrap script).
+The main install path is `setup.py init` at the toolkit root.
 
 ```bash
 # Clone toolkit (once per machine)
 git clone <toolkit-repo> ~/agent-toolkit
 
-# Install into an Odoo project
-python ~/agent-toolkit/setup.py init /path/to/your/odoo/project \
-    --preset odoo-12 \                  # or odoo-17 / generic
+# Install into a project — choose your preset
+python ~/agent-toolkit/setup.py init /path/to/your/project \
+    --preset <preset-name> \            # odoo-12 / odoo-17 / generic
     --python /path/to/venv/bin/python \
     --yes
 ```
 
 Output: copies hooks + commands + tests + tools + Spec Kit skills,
-seeds `.agent-toolkit/constitution.md` + canonical_decisions registry +
-auto-generated `.claude/settings.json` + `.mcp.json`.
+seeds `.agent-toolkit/constitution.md` + canonical_decisions registry
++ stack-specific config overlays (debug.json / coverage_config.json /
+intent_map.json / verification.json) chosen by the preset's
+`stack.framework` field.
 
-## Verify install
+## First 3 things to do after install
+
+1. **Read the constitution** — `.agent-toolkit/constitution.md`. ONE
+   file holding all project-wide principles. Slow-changing; updated
+   only via `/constitution` slash command.
+2. **Skim the canonical decisions** — `.codex/canonical_decisions.json`.
+   "How do we do X in this project?" lives here. Answer recurring
+   questions by reading, not re-deriving.
+3. **Run `/inv-list`** in Claude Code — see what mechanical rules are
+   active. These BLOCK Edits at the harness level, not just warn.
+
+## Pick your preset's guide
+
+- **Odoo (12 or 17)** → [QUICKSTART.odoo.md](QUICKSTART.odoo.md) —
+  Odoo-specific MCP server bootstrap, addon root configuration,
+  realdata_test wiring.
+- **Generic** → no extra setup; just start with `/plan <first-feature>`.
+- **Adding a new preset (Django / Rails / Go / etc.)** → see
+  [PORTING.md](PORTING.md) and `presets/_example_private_overlay.json.template`.
+
+## Hard rules every preset enforces
+
+- The agent **cannot** run `git commit / push / add` — DEV is the sole
+  git gatekeeper. Bypass once via `.agent-toolkit/.skip_git_guard_next.json`.
+- The agent **cannot** Edit files that strip a `must_keep_regex`
+  invariant marked `severity: blocker`. Bypass once with
+  `bypass-invariant: <id>` in the next prompt.
+- The agent **cannot** claim `tests pass / done / verified` without a
+  real-data MCP call (`mcp__realdata_test__*` or `mcp__postgres__*`)
+  in the same turn — `evidence_audit` Stop hook BLOCKs.
+- The agent **cannot** stop with a Verify Report missing required
+  sections — `verify_lint` Stop hook BLOCKs.
+
+## Troubleshooting
+
+- **Hook is misfiring**: edit `.agent-toolkit/enforce_mode.json`'s
+  `per_hook` entry to `warn` or `off` for the offending hook.
+- **Entire toolkit needs disabling for a moment**: set
+  `AGENT_TOOLKIT_DISABLE=1` in the shell. Every hook becomes a no-op.
+- **Hook crashed**: `.agent-toolkit/.hook_crash_log.json` ring buffer
+  has the last 1000 crashes. `python .codex/tools/hook_health.py` for
+  aggregated stats.
+
+## Where to go next
+
+- Full guide (EN + VN): `USAGE.md` at the toolkit repo root.
+- Contribute a preset: `CONTRIBUTING.md`.
+- Adopt a new pattern from upstream (mattpocock / spec-kit / ECC):
+  see `NOTICE` for attribution model + the existing `verification_loop`
+  / `/eval-define` / `/bug-to-test` adoptions as templates.
+
+---
+
+## 🇻🇳 Quickstart 5-phút (Tiếng Việt)
+
+Cho dev vừa được giao project có agent-toolkit, hoặc cài toolkit vào
+workspace mới.
+
+### Toolkit này cho cái gì (90 giây)
+
+Toolkit **stack-agnostic ở core** — Claude Code / Cursor / Codex agent
+harness với enforcement cơ học cho mọi loại project. **Preset** chọn
+default stack-specific: MCP server nào, namespace exception nào watch,
+feature-glob shape nào gate ở commit.
+
+Hôm nay 3 preset ship:
+
+| Preset | Overlay stack-specific |
+|---|---|
+| `odoo-12` | Odoo 12 / Python 3.8 / QWeb + jQuery / `@api.multi` |
+| `odoo-17` | Odoo 17 / Python 3.10+ / OWL / ORM mới |
+| `generic` | Không overlay — core agnostic thuần. Tự build preset overlay lên. |
+
+Mọi preset đều có:
+
+- **Spec-driven workflow theo Spec Kit** — DEV gõ `/plan` + `/clarify`,
+  agent tự `/tasks → /analyze → /implement → /verify` dưới autonomy.
+- **MCP server**: codebase + postgres + `realdata_test` stack-specific
+  (Odoo hôm nay; Django/Rails/Go contribution welcome).
+- **6 lớp enforcement cơ học** chống pattern "agent báo test pass, prod
+  data lộ bug":
+  1. **Invariant guard** (PreToolUse): chặn Edit xóa pattern `must_keep_regex`
+  2. **PASS-claim contract** (Stop): chặn claim "test pass / done" không
+     kèm MCP real-data call cùng turn
+  3. **Hallucinated-progress check** (Stop): chặn past-tense action mà
+     không có tool_use, claim done khi TodoWrite còn open, over-count
+  4. **Generic claim audit** (Stop): chặn "X is slow / missing / root
+     cause" không có tool call trong turn
+  5. **Pre-commit mirror** (git): enforce cùng rule ở commit time để
+     edit IDE không bypass
+  6. **Git guardrail** (PreToolUse Bash): chặn agent chạy git destructive
+     (`commit`/`push`/`add`/`--no-verify`/`reset --hard`/...) — DEV-only gate
+
+### Cài vào project mới
+
+Đường vào chính: `setup.py init` ở root toolkit.
 
 ```bash
-cd /path/to/your/new/project
-python -m pytest .codex/tests/hooks/ -v
+# Clone toolkit (1 lần / 1 máy)
+git clone <toolkit-repo> ~/agent-toolkit
+
+# Cài vào project — chọn preset
+python ~/agent-toolkit/setup.py init /đường-dẫn-project \
+    --preset <tên-preset> \              # odoo-12 / odoo-17 / generic
+    --python /đường-dẫn-venv/bin/python \
+    --yes
 ```
 
-Expected: 120+ tests pass.
+Output: copy hook + command + test + tool + Spec Kit skill, seed
+`.agent-toolkit/constitution.md` + canonical_decisions registry +
+stack-specific overlay (debug.json / coverage_config.json /
+intent_map.json / verification.json) — chọn theo field
+`stack.framework` của preset.
 
-Open Claude Code in the project → SessionStart hook shows
-`Registry loaded: 0 invariant · 0 probe`. You're live.
+### 3 việc làm ngay sau khi cài
 
-## Register your first invariant (2 minutes)
+1. **Đọc constitution** — `.agent-toolkit/constitution.md`. 1 file chứa
+   mọi nguyên tắc project-wide. Slow-changing; chỉ update qua slash
+   command `/constitution`.
+2. **Skim canonical decisions** — `.codex/canonical_decisions.json`. "Làm
+   X trong project này thế nào?" sống ở đây. Trả lời câu hỏi tái lặp
+   bằng cách ĐỌC, không re-derive.
+3. **Chạy `/inv-list`** trong Claude Code — xem rule cơ học nào đang
+   active. Rule này CHẶN Edit ở harness, không chỉ warn.
 
-In Claude Code, type:
-```
-/inv-add no-bare-python
-```
+### Chọn guide theo preset
 
-Claude will prompt for:
-- `description`: "Scripts must use venv Python, not bare `python`"
-- `applies_to`: `["scripts/**/*.py", "tools/**/*.py"]`
-- `rules.must_keep_regex`: `["sys\\.executable|VENV_PYTHON"]`
-- `severity`: `warn`
+- **Odoo (12 hoặc 17)** → [QUICKSTART.odoo.md](QUICKSTART.odoo.md) —
+  Odoo-specific MCP bootstrap, cấu hình addon root, realdata_test wiring.
+- **Generic** → không setup thêm; bắt đầu với `/plan <feature-đầu-tiên>`.
+- **Thêm preset mới (Django/Rails/Go/v.v.)** → xem [PORTING.md](PORTING.md)
+  và `presets/_example_private_overlay.json.template`.
 
-Claude writes the entry to `.agent-toolkit/invariants.json` + smoke-
-tests the hook + reports.
+### Hard rule mọi preset enforce
 
-## Register your first probe (3 minutes)
+- Agent **KHÔNG** chạy được `git commit / push / add` — DEV là gatekeeper
+  duy nhất cho git state. Bypass 1 lần qua
+  `.agent-toolkit/.skip_git_guard_next.json`.
+- Agent **KHÔNG** Edit được file strip invariant `must_keep_regex`
+  severity `blocker`. Bypass 1 lần với `bypass-invariant: <id>` ở prompt
+  tiếp theo.
+- Agent **KHÔNG** claim được "test pass / done / verified" mà thiếu
+  MCP real-data call (`mcp__realdata_test__*` hoặc `mcp__postgres__*`)
+  cùng turn — `evidence_audit` Stop hook BLOCK.
+- Agent **KHÔNG** stop được với Verify Report thiếu section bắt buộc
+  — `verify_lint` Stop hook BLOCK.
 
-In Claude Code, type:
-```
-/probe-add load-views-blocking
-```
+### Troubleshooting
 
-Claude will prompt for (example Odoo 12 controller):
-- `description`: "GET /web/dataset/load_views must block UI until response"
-- `applies_when.path_globs`: `["<addon>/controllers/web.py"]`
-- `evidence.required_tools`: `["mcp__realdata_test__run_smoke_test"]`
-- `falsification.runner`:
-  ```json
-  {
-    "target_file": "<addon>/controllers/web.py",
-    "target_line_pattern": "def load_views\\(",
-    "sleep_seconds": 2,
-    "measurement_command": "curl -s -w '%{time_total}' http://localhost:8069/web/dataset/load_views",
-    "expected_delta_seconds": 2.0,
-    "tolerance": 0.3
-  }
-  ```
+- **Hook fire sai**: sửa `.agent-toolkit/enforce_mode.json` entry
+  `per_hook` thành `warn` hoặc `off` cho hook đó.
+- **Cần tắt toàn bộ toolkit tạm**: set `AGENT_TOOLKIT_DISABLE=1` trong
+  shell. Mọi hook thành no-op. `session_brief` sẽ inject banner đỏ mỗi
+  turn cảnh báo enforcement đang OFF.
+- **Hook crashed**: `.agent-toolkit/.hook_crash_log.json` ring buffer
+  giữ 1000 crash gần nhất. Chạy
+  `python .codex/tools/hook_health.py` để xem stats tổng hợp.
 
-Now any edit to `<addon>/controllers/web.py` requires a probe-satisfying
-MCP call before Claude can say "PASS". And dev can run:
+### Đi tiếp đâu
 
-```bash
-python .codex/tools/falsify.py --probe load-views-blocking
-```
-
-…to **empirically prove** the endpoint behaves as claimed (or refute
-the claim if timing doesn't shift by 2s).
-
-## Slash commands
-
-**Spec Kit workflow (the main path)**:
-
-| Command | When to use |
-|---|---|
-| `/plan <feature>` | Phase 1 — turn a feature ask into a structured spec |
-| `/clarify <slug>` | Phase 2 — DEV interview to close every Open Question |
-| `/tasks <slug>` | Phase 3 — auto-fired by `/clarify`; can re-emit manually |
-| `/analyze <slug>` | Phase 3.5 — cross-artifact lint (auto-fired by `/implement`) |
-| `/implement <slug>` | Phase 4 — autonomy ON, execute tasks, auto-verify |
-| `/verify <slug>` | Phase 5 — real-data probes, emit PASS/GAP/BLOCKER report |
-
-**Toolkit meta** (durable rules + decisions):
-
-| Command | When to use |
-|---|---|
-| `/inv-add <id>` | Durable rule ("always sort by X", "never bypass auth check") |
-| `/inv-list` | Audit what's currently enforced |
-| `/probe-add <id>` | Feature has verifiable real-data behavior |
-| `/probe-coverage` | Pre-merge: which feature files lack a probe? |
-| `/adr-add <title>` | Capture WHY behind a decision |
-| `/review <scope>` | Exhaustive 3-skill code review with lock-file precedence |
-
-## CLI tools
-
-| Tool | Purpose |
-|---|---|
-| `.codex/tools/falsify.py --probe <id>` | Run falsification recipe live |
-| `.codex/tools/falsify.py --probe <id> --dry-run` | Preview without executing |
-| `.codex/tools/agent_toolkit_init.py --target X` | Bootstrap new project |
-
-## When the toolkit blocks you (cheat sheet)
-
-| Block message starts with | Fix in 30 seconds |
-|---|---|
-| `[invariant-guard] Edit vi phạm...` | Restore the missing pattern OR add `bypass-invariant: <id>` to next user prompt |
-| `[evidence-audit] PASS/DONE/VERIFIED claim detected` | Run the required MCP tool OR add `probe-skip: <id|all> <reason>` to response |
-| `[evidence-audit] Hallucinated-progress` | Remove past-tense claim OR add `progress-skip: <category|all> <reason>` |
-| Generic claim audit (slow/missing/root cause) | Tag claim `[assumption]` OR run Read/Grep first |
-| Pre-commit fails | `git commit --no-verify` (single-commit bypass; audit logged) |
-
-## Kill-switch (emergency)
-
-If hooks are broken and you can't bypass per-call:
-
-```bash
-# Disable ALL hook enforcement for this terminal session
-export AGENT_TOOLKIT_DISABLE=1
-```
-
-Re-enable: `unset AGENT_TOOLKIT_DISABLE` (or `Remove-Item Env:AGENT_TOOLKIT_DISABLE` on PowerShell).
-
-## Telemetry
-
-Every hook decision logs to `.codex/logs/hook_events.jsonl`. After 200
-events, `session_brief` shows:
-
-```
-Hook health (last 200 events): 12 block (6%), 4 bypass · top: action_ghost=8, generic_claim=4
-```
-
-Use this to tune regex thresholds OR identify "always-bypassed"
-categories worth disabling per project via
-`.agent-toolkit/acceptance-probes.json` → `_defaults.disabled_progress_checks`.
-
-## Where to dig deeper
-
-- `.agent-toolkit/README.md` — full architecture
-- `.agent-toolkit/PORTING.md` — porting to non-Odoo stacks
-- `.agent-toolkit/decision-log.md` — ADRs explaining each design choice
-- `.codex/tests/hooks/` — 93+ test cases as executable spec
-
-## Common mistakes
-
-1. **Registering empty probes.** A probe with `must_keep_regex: []`
-   surfaces in SessionStart but enforces nothing. Always include real
-   regex/tools/falsification.
-2. **Hardcoding module names in invariants.** Use globs
-   (`addons/**/models/**.py`), not specific modules — see ADR-005.
-3. **Bypassing without reason.** `probe-skip: all` without rationale
-   defeats the audit trail. Always include `<reason>`.
-4. **Not running `/probe-coverage` before merge.** The pre-commit gate
-   catches it but takes longer than the in-session command.
-
-## Cost vs value
-
-In-session friction: ~3-5% of responses blocked initially, drops to
-<1% after 1 week of tuning invariants/probes/disabled_progress_checks
-for your project's vocabulary. Trade-off: catches ~80% of "I claimed
-done but actually didn't run real verification" failures that would
-otherwise reach PR review.
-
-Not worth installing if: your team relies on heavy human PR review and
-agent autonomous workflow is minimal. Worth installing if: agents
-write code that lands on `main` with limited human review.
+- Full guide (EN + VN): `USAGE.md` ở root toolkit (861 dòng).
+- Contribute preset: `CONTRIBUTING.md`.
+- Adopt pattern mới từ upstream (mattpocock / spec-kit / ECC): xem
+  `NOTICE` cho model attribution + 3 adoption hiện có
+  (`verification_loop` / `/eval-define` / `/bug-to-test`) làm template.

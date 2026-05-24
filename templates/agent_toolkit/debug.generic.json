@@ -1,0 +1,16 @@
+{
+  "_doc": "Stack-agnostic debug sentry config. Đọc bởi `.claude/hooks/debug_sentry.py` (Stop). Set `enabled: false` để tắt; `block_on_match: false` để chỉ warn. Framework-specific exception namespaces (Odoo, Django, Rails, ...) live in `debug.<framework>.json` overlays.",
+  "enabled": true,
+  "block_on_match": true,
+  "patterns": [
+    "Traceback \\(most recent call last\\)",
+    "\\bAssertionError\\b",
+    "\\bAttributeError\\b",
+    "\\bIntegrityError\\b",
+    "\\bKeyError\\b",
+    "\\bTypeError\\b",
+    "\\bValueError\\b",
+    "\\bImportError\\b",
+    "psycopg2\\.errors\\."
+  ]
+}

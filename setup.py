@@ -505,12 +505,15 @@ def build_plan(preset, ctx, target):
     # 1. .codex/ tree — MCP server impls + scripts
     codex_src = TEMPLATES / 'codex'
     preset_name = ctx.get('PRESET_NAME')
-    # Pick preset-specific canonical_decisions seed if it exists, else fall
-    # back to the default. Variants live next to the default file as
-    # `canonical_decisions.<preset>.json`.
-    canonical_default = codex_src / 'canonical_decisions.json'
+    # Pick preset-specific canonical_decisions seed; fall back to the
+    # `generic` variant when the preset has no dedicated file. Variants
+    # live as `canonical_decisions.<preset>.json` next to each other.
+    # NOTE: pre-v0.13 shipped an unsuffixed `canonical_decisions.json`
+    # holding the odoo-12 default — that file has been renamed to
+    # `canonical_decisions.odoo-12.json` so every preset is explicit.
+    canonical_fallback = codex_src / 'canonical_decisions.generic.json'
     canonical_preset = codex_src / f'canonical_decisions.{preset_name}.json'
-    canonical_chosen = canonical_preset if canonical_preset.exists() else canonical_default
+    canonical_chosen = canonical_preset if canonical_preset.exists() else canonical_fallback
     for src in codex_src.rglob('*'):
         if not src.is_file():
             continue
@@ -620,13 +623,30 @@ def build_plan(preset, ctx, target):
 
     # 6. .agent-toolkit/ — per-project runtime files (invariants, decision log).
     # These are user-curated after install; preserve existing content on update.
+    #
+    # Framework-overlay picker (v0.13+): files named `<stem>.<framework>.json`
+    # (e.g. `coverage_config.odoo.json`) ship as-overlays; the installer keeps
+    # the one matching the preset's `stack.framework`, falls back to
+    # `<stem>.generic.json` otherwise, and emits as `<stem>.json` in the
+    # target. Drops sibling overlays for other frameworks. Lets the toolkit
+    # core stay stack-agnostic while a single preset can supply Odoo (or
+    # Django, etc.) defaults without renaming files post-install.
     runtime_src = TEMPLATES / 'agent_toolkit'
+    preset_framework = (preset.get('stack') or {}).get('framework') or 'generic'
+    overlay_stems = _discover_overlay_stems(runtime_src)
     if runtime_src.exists():
         for src in runtime_src.rglob('*'):
             if not src.is_file():
                 continue
             rel = src.relative_to(runtime_src)
-            dst = target / '.agent-toolkit' / rel
+            overlay_match = _classify_overlay(rel.name, overlay_stems, preset_framework)
+            if overlay_match == 'drop':
+                continue
+            if overlay_match is not None:
+                # overlay_match is the rewritten target filename `<stem>.json`
+                dst = target / '.agent-toolkit' / rel.parent / overlay_match
+            else:
+                dst = target / '.agent-toolkit' / rel
             if dst.exists():
                 # Never overwrite a project's curated invariants/decisions.
                 plan.append((src, dst, 'SKIP_EXISTS'))
@@ -636,6 +656,57 @@ def build_plan(preset, ctx, target):
 
     # 7. .gitignore added later (via write_gitignore)
     return plan
+
+
+def _discover_overlay_stems(runtime_src: Path) -> Dict[str, set]:
+    """Scan `templates/agent_toolkit/` for `<stem>.<framework>.json` files.
+
+    Returns `{stem: {framework, ...}}` so `_classify_overlay` can tell
+    overlays from plain files. A stem is an "overlay" only when ≥2
+    framework variants exist OR a `.generic.json` sibling is present —
+    a lone `foo.odoo.json` with no sibling is treated as a plain file.
+    """
+    if not runtime_src.exists():
+        return {}
+    candidates: Dict[str, set] = {}
+    for src in runtime_src.iterdir():
+        if not src.is_file() or src.suffix != '.json':
+            continue
+        parts = src.stem.split('.')
+        if len(parts) < 2:
+            continue
+        stem, framework = '.'.join(parts[:-1]), parts[-1]
+        candidates.setdefault(stem, set()).add(framework)
+    # An overlay set must include a `generic` variant — that's the marker
+    # distinguishing real overlays from incidental dotted filenames like
+    # `test_env.schema.json` / `test_env.example.json`.
+    return {s: fws for s, fws in candidates.items() if 'generic' in fws}
+
+
+def _classify_overlay(filename: str, overlay_stems: Dict[str, set],
+                      preset_framework: str):
+    """Decide what to do with `filename` in the agent_toolkit copy loop.
+
+    - Not an overlay → return `None` (caller uses original path).
+    - Overlay matches `preset_framework` or is `.generic.json` fallback →
+      return the rewritten target name `<stem>.json`.
+    - Overlay for a different framework → return `'drop'`.
+    """
+    if not filename.endswith('.json'):
+        return None
+    parts = filename[:-len('.json')].split('.')
+    if len(parts) < 2:
+        return None
+    stem, framework = '.'.join(parts[:-1]), parts[-1]
+    if stem not in overlay_stems:
+        return None
+    variants = overlay_stems[stem]
+    if framework == preset_framework and framework in variants:
+        return f'{stem}.json'
+    # Preset has no dedicated variant → fall back to generic.
+    if preset_framework not in variants and framework == 'generic':
+        return f'{stem}.json'
+    return 'drop'
 
 
 def _looks_templated(path: Path) -> bool:

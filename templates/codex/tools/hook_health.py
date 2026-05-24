@@ -96,6 +96,30 @@ def aggregate(workspace: Path, window: int = 50) -> Dict[str, Any]:
     # Recent activity
     recent_crash = any(now - (e.get("ts") or 0) < 86400 for e in crash_events)
 
+    # Bypass-rate alert (v0.13+): for each hook, compute the fraction of
+    # fires that recorded `verdict=bypass`. A high rate signals the
+    # invariant/gate is stale — DEV is sidestepping it routinely, which
+    # usually means it should be retired or its threshold tuned. We only
+    # flag hooks with ≥ MIN_BYPASS_SAMPLE fires to avoid noise from small
+    # samples.
+    MIN_BYPASS_SAMPLE = 5
+    BYPASS_RATE_WARN = 0.20  # 20%
+    bypass_alerts: List[Dict[str, Any]] = []
+    for h, vs in verdicts_per_hook.items():
+        total = sum(vs.values())
+        bypasses = vs.get("bypass", 0)
+        if total < MIN_BYPASS_SAMPLE or bypasses == 0:
+            continue
+        rate = bypasses / total
+        if rate >= BYPASS_RATE_WARN:
+            bypass_alerts.append({
+                "hook": h,
+                "bypasses": bypasses,
+                "total_fires": total,
+                "rate_pct": round(rate * 100, 1),
+            })
+    bypass_alerts.sort(key=lambda r: -r["rate_pct"])
+
     # Health verdict
     if sum(crashes_per_hook.values()) > 5:
         health = "red"
@@ -135,6 +159,7 @@ def aggregate(workspace: Path, window: int = 50) -> Dict[str, Any]:
             "events_in_window": len(loc_events),
         },
         "recent_crash_24h": recent_crash,
+        "bypass_alerts": bypass_alerts,
     }
 
 
@@ -169,6 +194,23 @@ def render_markdown(report: Dict[str, Any]) -> str:
         for hook, count in sorted(report["crashes_per_hook"].items(),
                                   key=lambda kv: -kv[1]):
             lines.append(f"- `{hook}`: {count}")
+        lines.append("")
+
+    alerts = report.get("bypass_alerts") or []
+    if alerts:
+        lines.append("### ⚠️ Bypass-rate alerts (≥ 20%)")
+        lines.append("")
+        lines.append("High bypass rate = the rule is being sidestepped routinely.")
+        lines.append("Review whether the invariant/gate is still load-bearing, or")
+        lines.append("if its threshold needs tuning. Each row = consider ADR review.")
+        lines.append("")
+        lines.append("| Hook | Bypasses / Fires | Rate |")
+        lines.append("|---|---|---|")
+        for row in alerts:
+            lines.append(
+                f"| `{row['hook']}` | {row['bypasses']} / {row['total_fires']} "
+                f"| {row['rate_pct']}% |"
+            )
         lines.append("")
 
     sfg = report.get("spec_first_guard") or {}

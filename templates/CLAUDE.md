@@ -14,7 +14,7 @@ Installed by **agent-toolkit** preset `{{PRESET_NAME}}` ({{STACK_LABEL}}).
 - `.cursor/rules/` — always-apply Cursor rules
 - `.cursor/skills/` — focused skills
 - `.claude/hooks/` — enforcement hooks (see "Enforcement" below)
-- `.claude/commands/` — slash commands (`/inv-add`, `/inv-list`, `/adr-add`)
+- `.claude/commands/` — slash commands (`/inv-add`, `/inv-list`, `/adr-add`, `/constitution`)
 - `.agent-toolkit/` — durable per-project state: `invariants.json` + `decision-log.md`
 - `AGENTS.md` — entry pointer
 
@@ -30,6 +30,11 @@ Installed by **agent-toolkit** preset `{{PRESET_NAME}}` ({{STACK_LABEL}}).
    `.agent-toolkit/invariants.json` and **denies** any edit that strips
    a `must_keep_regex` / `must_keep_call` pattern marked `severity:
    blocker`. Bypass once with `bypass-invariant: <id>` in the next prompt.
+3a. **PreToolUse(Bash)**: `git_guardrails.py` **denies** destructive git
+   commands (`commit`/`push`/`add`/`--no-verify`/`--force`/`reset --hard`/
+   `clean -f`/`branch -D`/`checkout .`/`restore .`). DEV-only gate per
+   `feedback_no_ai_commit`. Bypass once: DEV creates
+   `.agent-toolkit/.skip_git_guard_next.json` (any content; expires 600s).
 4. **PostToolUse(Edit|Write|MultiEdit)**: `tdd_runner.py` nudges
    pytest on test/source edits; `verification_loop.py` nudges
    `python_syntax_check` + `python_import_check` + `xml_validate` MCP
@@ -53,6 +58,7 @@ Installed by **agent-toolkit** preset `{{PRESET_NAME}}` ({{STACK_LABEL}}).
 | `session_brief` | SessionStart | Brief injected — agent knows active rules from turn 1. |
 | `intent_router` | UserPromptSubmit | Skill suggestions + hard-rule reminders. |
 | `invariant_guard` | PreToolUse(Edit/Write/MultiEdit/NotebookEdit) | **DENY** if edit removes a must-keep pattern (severity `blocker`). Reads both `.agent-toolkit/invariants.json` and any `external_sources` declared there (e.g. project canonical registry with `enforcement` metadata). |
+| `git_guardrails` | PreToolUse(Bash) | **DENY** destructive git commands (`commit`/`push`/`add`/`--no-verify`/`--force`/`reset --hard`/etc.) — DEV-only gate per `feedback_no_ai_commit`. Default mode `block`; override via `.agent-toolkit/enforce_mode.json` `per_hook.git_guardrails`. One-time bypass via fresh `.skip_git_guard_next.json` token. Inspired by [mattpocock/skills/misc/git-guardrails-claude-code](https://github.com/mattpocock/skills/tree/main/skills/misc/git-guardrails-claude-code). |
 | `tdd_runner` | PostToolUse(Edit/Write/MultiEdit) | Nudge pytest after test/source edit (Vibe-flow Phase 3). |
 | `verification_loop` | PostToolUse(Edit/Write/MultiEdit) | Nudge `python_syntax_check` + `python_import_check` + `xml_validate` MCP after edits inside addon globs. MCP prefix auto-discovered from `.mcp.json` if config is a placeholder. |
 | `verify_nudge` | PostToolUse(Edit/Write/MultiEdit) | Nudge `/verify <slug>` when edit touches a file tracked by a spec with status `implementing`/`gaps-found`. 30s per-file TTL. |
@@ -63,6 +69,11 @@ Installed by **agent-toolkit** preset `{{PRESET_NAME}}` ({{STACK_LABEL}}).
 
 Adding a new rule: `/adr-add` (capture WHY) → `/inv-add` (translate to
 enforced pattern). See `.agent-toolkit/README.md`.
+
+Amending a **project-wide principle** (cross-spec, slow-changing):
+`/constitution` — read/edit `.agent-toolkit/constitution.md`, auto-link
+to a matching ADR + invariant. Use only for principles that govern HOW
+the agent works, not WHAT a single feature builds.
 
 Adding a regression test for a fixed bug: `/bug-to-test <slug>` → writes
 test + registers invariant so future Edits can't strip it.
@@ -82,6 +93,8 @@ new mechanics are caught.
 | `verification_loop` hook | [affaan-m/everything-claude-code](https://github.com/affaan-m/everything-claude-code) | [@affaan-m](https://github.com/affaan-m) | [`skills/verification-loop/SKILL.md`](https://github.com/affaan-m/everything-claude-code/blob/main/skills/verification-loop/SKILL.md) |
 | `/eval-define` command | [affaan-m/everything-claude-code](https://github.com/affaan-m/everything-claude-code) | [@affaan-m](https://github.com/affaan-m) | [`skills/eval-harness/SKILL.md`](https://github.com/affaan-m/everything-claude-code/blob/main/skills/eval-harness/SKILL.md) · [`skills/agent-eval/SKILL.md`](https://github.com/affaan-m/everything-claude-code/blob/main/skills/agent-eval/SKILL.md) |
 | `/bug-to-test` command | [affaan-m/everything-claude-code](https://github.com/affaan-m/everything-claude-code) | [@affaan-m](https://github.com/affaan-m) | [`skills/ai-regression-testing/SKILL.md`](https://github.com/affaan-m/everything-claude-code/blob/main/skills/ai-regression-testing/SKILL.md) |
+| `git_guardrails` hook | [mattpocock/skills](https://github.com/mattpocock/skills) | [@mattpocock](https://github.com/mattpocock) | [`skills/misc/git-guardrails-claude-code/SKILL.md`](https://github.com/mattpocock/skills/blob/main/skills/misc/git-guardrails-claude-code/SKILL.md) |
+| `/constitution` command | [github/spec-kit](https://github.com/github/spec-kit) | GitHub | [`templates/commands/constitution.md`](https://github.com/github/spec-kit/blob/main/templates/commands/constitution.md) |
 
 Full mapping (kể cả pattern đang xét adopt thêm) ở memory
 `reference_ecc_upstream.md`. **DO NOT** install ECC via

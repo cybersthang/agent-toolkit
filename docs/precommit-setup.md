@@ -64,10 +64,16 @@ git commit -m "..."
 If the venv lacks `pytest` / `pytest-cov`:
 
 ```bash
-pip install pytest pytest-cov
+pip install -r requirements-dev.txt
+# or, equivalent:
+make install
+# or, manual:
+pip install pytest pytest-cov ruff
 ```
 
-(CI installs these explicitly per `.github/workflows/test.yml`.)
+(CI installs these explicitly per `.github/workflows/test.yml`. Note: no
+`pytest-cov` version pin is needed — see `docs/AUDIT_HISTORY.md` F7 for
+why both 5.x and 7.x work with the project's `.coveragerc` config.)
 
 ## Bypass (use sparingly)
 
@@ -110,7 +116,7 @@ Useful for verifying the YAML is well-formed before installing.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `pytest: command not found` | Venv not activated, or pytest not installed in active venv | Activate venv + `pip install pytest pytest-cov` |
+| `pytest: command not found` | Venv not activated, or pytest not installed in active venv | Activate venv + `make install` (or `pip install -r requirements-dev.txt`) |
 | Hook runs on doc-only commits | `files:` regex too broad | Adjust regex in `.pre-commit-config.yaml`; double-check the staged paths |
 | Hook never runs | `pre-commit install` was skipped, or `.git/hooks/pre-commit` was overwritten by another tool | Re-run `pre-commit install --hook-type pre-commit` |
 | `Executable python not found` on Windows | `language: system` cannot resolve `python` on PATH | Activate venv, or change `entry:` to absolute venv path locally (do NOT commit that change — breaks portability) |

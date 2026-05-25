@@ -30,9 +30,18 @@ Other presets: `odoo-13` / `odoo-14` / `odoo-15` / `odoo-16` / `odoo-17` /
 `rails` / `go` preset is a one-PR exercise — see
 [PORTING.md](templates/agent_toolkit/PORTING.md).
 
+**For contributors / local hacking on the toolkit itself**:
+```bash
+cd ~/agent-toolkit
+make install   # pytest + pytest-cov + ruff
+make rebuild   # full CI-equivalent: lint + test + smoke + dry-run + coverage gate
+```
+
+Full release / mirror / tag procedure documented in [REBUILD.md](REBUILD.md).
+
 ## Why agent-toolkit?
 
-- 🛡️ **Mechanical enforcement, not honor system.** 28 hooks DENY at the
+- 🛡️ **Mechanical enforcement, not honor system.** 29 hooks DENY at the
   Claude Code harness level — invariant strips, claim-without-proof,
   destructive git (`git_guardrails` blocks commit/push/add until DEV
   explicitly authorizes), hallucinated progress, **unresolved gaps on
@@ -74,7 +83,7 @@ Other presets: `odoo-13` / `odoo-14` / `odoo-15` / `odoo-16` / `odoo-17` /
 Toolkit is in **active daily use** on a production Odoo 12 Enterprise
 workspace since 2026-Q1. Hook telemetry shows ~57
 fire-events per session avg, ~26% block rate, ~3.5% bypass rate.
-**28 hooks** active, **576 unit tests** in CI (matrix: Ubuntu / macOS /
+**29 hooks** active, **587 unit tests** in CI (matrix: Ubuntu / macOS /
 Windows × Python 3.8 / 3.10 / 3.12 — all green).
 
 > 🤖 **AI agents installing into a project**: Read
@@ -556,9 +565,22 @@ agent-toolkit/
 │   ├── AGENTS.md             # template with {{PLACEHOLDERS}}
 │   └── CLAUDE.md
 ├── tests/                    # toolkit-level pytest suite (installer, e2e, hooks, snapshot)
+├── docs/
+│   ├── AUDIT_HISTORY.md      # 60+ findings across 3 audit rounds + reviewer (v0.21)
+│   ├── precommit-setup.md
+│   └── troubleshooting.md
+├── .github/workflows/test.yml # GitHub Actions matrix CI + lint + coverage
+├── .gitlab-ci.yml            # GitLab CI mirror (test + lint + coverage stages)
+├── Makefile                  # one-command targets: install / test / coverage / rebuild
+├── requirements-dev.txt      # dev deps (pytest, pytest-cov, ruff) — no version pins required
+├── REBUILD.md                # maintainer guide: clone → verify → push → tag → release
 ├── AGENTS.md                 # toolkit's own AI agent rules
-├── AI_REBUILD_CHECKLIST.md   # 4-phase Q&A protocol for init/update
+├── AI_REBUILD_CHECKLIST.md   # 4-phase Q&A protocol for init/update (consumer side)
 ├── CHANGELOG.md
+├── CONTRIBUTING.md
+├── LICENSE                   # MIT
+├── NOTICE                    # upstream attribution
+├── SECURITY.md
 ├── README.md                 # this file
 └── USAGE.md                  # detailed VN user guide
 ```
@@ -906,7 +928,7 @@ deviation + trade-off + follow-up + confidence để DEV review trước merge.
 
 Toolkit đang **dùng thực tế hằng ngày** trên một production Odoo 12
 Enterprise workspace từ 2026-Q1. Hook telemetry trung bình ~57 fire-event/session,
-~26% block, ~3.5% bypass. **28 hook** active, **576 unit test** trên CI
+~26% block, ~3.5% bypass. **29 hook** active, **587 unit test** trên CI
 (matrix: Ubuntu / macOS / Windows × Python 3.8 / 3.10 / 3.12 — all green).
 
 ### Liên hệ tác giả

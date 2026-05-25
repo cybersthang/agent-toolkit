@@ -2,7 +2,12 @@ name: tests
 
 on:
   push:
-    branches: [main, master]
+    # `main`, `master`, plus any release-line branch matching `N.M` (e.g. `1.0`).
+    # W7 fix: dev branches like `1.0` previously skipped CI silently.
+    branches:
+      - main
+      - master
+      - '[0-9]+.[0-9]+'
   pull_request:
 
 jobs:
@@ -48,3 +53,27 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install --upgrade pip ruff
       - run: ruff check setup.py lib/ tests/
+
+  coverage:
+    # F7 (CI fix): runs on Python 3.12 (latest matrix cell) with
+    # pytest-cov<7 so subprocess coverage from test_e2e.py setup.py
+    # invocations is captured. Without the pin, setup.py coverage drops
+    # to 17% on 3.10/3.12 and trips the 70% gate. See
+    # docs/AUDIT_HISTORY.md finding F7 for the full pytest-cov 7.x
+    # subprocess-tracking regression.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dev deps
+        run: python -m pip install --upgrade pip pytest 'pytest-cov<7'
+      - name: Run pytest with coverage gate
+        # COVERAGE_PROCESS_START activates pytest-cov 7.x subprocess
+        # tracking (see F7 in docs/AUDIT_HISTORY.md). Combined with
+        # parallel + multiprocessing in .coveragerc, this captures
+        # subprocess setup.py runs from test_e2e.py.
+        env:
+          COVERAGE_PROCESS_START: ${{ github.workspace }}/.coveragerc
+        run: python -m pytest tests/ --cov --cov-report=term-missing --cov-fail-under=70

@@ -1,0 +1,83 @@
+# F3 fix (v0.21): GitLab CI mirror of .github/workflows/test.yml.
+#
+# Why both: agent-toolkit's canonical remote is GitLab
+# (https://gitlab.com/nosafarm/agent-toolkit), but CI history lived on
+# GitHub Actions. Mirroring here gives GitLab MRs a native pipeline +
+# badge without losing the GitHub matrix.
+#
+# Scope difference vs test.yml: GitHub Actions runs the matrix across
+# ubuntu/macos/windows. GitLab CI here runs Linux-only (Python images);
+# Windows/macOS coverage stays on GitHub. ruff lint mirrors test.yml job.
+
+stages:
+  - test
+  - lint
+  - coverage
+
+variables:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_CACHE_DIR: "off"
+
+# F7 (CI fix): coverage moved to a dedicated stage. The default `pytest`
+# invocation no longer enforces --cov-fail-under because the threshold
+# was Python-version-dependent (setup.py 85% on 3.8 vs 17% on 3.10/3.12)
+# and was tripping CI on every matrix cell even with all tests passing.
+
+.python-test:
+  stage: test
+  before_script:
+    - python -m pip install --upgrade pip pytest pytest-cov
+  script:
+    - python -m pytest tests/ -v
+    - python setup.py --version
+    - python setup.py list-presets
+    - mkdir -p /tmp/agent-toolkit-smoke
+    - python setup.py init /tmp/agent-toolkit-smoke --preset generic --yes --dry-run
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "master"
+    - if: $CI_COMMIT_BRANCH =~ /^[0-9]+\.[0-9]+$/
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+test:py38:
+  extends: .python-test
+  image: python:3.8
+
+test:py310:
+  extends: .python-test
+  image: python:3.10
+
+test:py312:
+  extends: .python-test
+  image: python:3.12
+
+lint:
+  stage: lint
+  image: python:3.12
+  before_script:
+    - python -m pip install --upgrade pip ruff
+  script:
+    - ruff check setup.py lib/ tests/
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "master"
+    - if: $CI_COMMIT_BRANCH =~ /^[0-9]+\.[0-9]+$/
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+coverage:
+  # Runs on Python 3.12 (latest matrix cell). Subprocess coverage from
+  # test_e2e.py setup.py runs is captured via COVERAGE_PROCESS_START +
+  # the parallel/multiprocessing config in .coveragerc (works with both
+  # pytest-cov 5.x and 7.x).
+  stage: coverage
+  image: python:3.12
+  before_script:
+    - python -m pip install --upgrade pip pytest pytest-cov
+  script:
+    - COVERAGE_PROCESS_START=$CI_PROJECT_DIR/.coveragerc python -m pytest tests/ --cov --cov-report=term-missing --cov-fail-under=70
+  coverage: '/^TOTAL.*\s+(\d+)%/'
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "master"
+    - if: $CI_COMMIT_BRANCH =~ /^[0-9]+\.[0-9]+$/
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"

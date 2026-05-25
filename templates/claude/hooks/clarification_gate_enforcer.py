@@ -35,7 +35,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import run_main_safe, emit_fire_event, get_enforce_mode  # noqa: E402
+from _common import run_main_safe, emit_fire_event, get_enforce_mode, parse_expires_at  # noqa: E402
+from _audit.transcript import read_transcript, split_current_turn, extract_text_and_tools  # noqa: E402
 
 # UTF-8 stdin/stdout (Vietnamese-friendly).
 if hasattr(sys.stdin, "buffer"):
@@ -50,6 +51,7 @@ SKIP_REL = ".agent-toolkit/.skip_clarification_next.json"
 AUTONOMY_REL = ".agent-toolkit/.autonomy_active.json"
 
 STATE_TTL_SECONDS = 600
+SKIP_CLARIFICATION_TTL_SECONDS = 600  # must match intent_router.py constant
 HOOK_NAME = "clarification_gate_enforcer"
 
 # 4 marker literals enforced (D5/D10 — no override at v0.13.0).
@@ -101,21 +103,15 @@ def _autonomy_active(workspace: Path) -> bool:
     data = _read_state(workspace, AUTONOMY_REL)
     if not data:
         return False
-    # Check expires_at if present (ISO string); otherwise treat as active.
     expires = data.get("expires_at")
     if not expires:
         return True
-    try:
-        # Parse ISO 8601 — strip timezone for naive compare against now.
-        # Reasonable fallback: if parse fails, treat as active (fail-open).
-        from datetime import datetime
-        # datetime.fromisoformat handles "+07:00" in 3.7+.
-        exp_dt = datetime.fromisoformat(expires)
-        # Compare in UTC if tz-aware; else naive vs naive.
-        now_dt = datetime.now(exp_dt.tzinfo) if exp_dt.tzinfo else datetime.now()
-        return now_dt < exp_dt
-    except (ValueError, TypeError):
-        return True
+    from datetime import datetime
+    exp_dt = parse_expires_at(expires)
+    if exp_dt is None:
+        return True  # parse fail → treat as active (fail-open)
+    now_dt = datetime.now(exp_dt.tzinfo) if exp_dt.tzinfo else datetime.now()
+    return now_dt < exp_dt
 
 
 def _consume_skip_token(workspace: Path) -> Optional[str]:
@@ -125,7 +121,7 @@ def _consume_skip_token(workspace: Path) -> Optional[str]:
     if not data:
         return None
     ts = int(data.get("ts") or 0)
-    ttl = int(data.get("ttl_seconds") or 300)
+    ttl = int(data.get("ttl_seconds") or SKIP_CLARIFICATION_TTL_SECONDS)
     if int(time.time()) - ts > ttl:
         # Expired — clean up.
         try:
@@ -165,33 +161,54 @@ def _last_intent_relevant(workspace: Path) -> bool:
 def _extract_response_text(envelope: Dict[str, Any]) -> str:
     """Pull the assistant response text from the Stop envelope.
 
-    Claude Code envelope shape varies; try common fields in order. Falls
-    back to empty string (treated as 0-marker → enforce).
+    Claude Code Stop hook envelopes carry the conversation via
+    `transcript_path` (JSONL), NOT inline response fields like `response`
+    or `response_text`. Read the transcript, slice the current turn,
+    and return the assistant text.
+
+    Falls back to empty string on any error (fail-open: 0 markers →
+    enforce, which is the safer default).
     """
-    for key in ("response", "response_text", "assistant_message", "text"):
-        v = envelope.get(key)
-        if isinstance(v, str) and v.strip():
-            return v
-    # Newer envelope nests under transcript / messages — best-effort.
-    messages = envelope.get("messages") or envelope.get("transcript")
-    if isinstance(messages, list) and messages:
-        last = messages[-1]
-        if isinstance(last, dict):
-            content = last.get("content") or last.get("text") or ""
-            if isinstance(content, str):
-                return content
-            if isinstance(content, list):
-                # Anthropic-style list of content blocks.
-                parts = []
-                for block in content:
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        parts.append(block.get("text") or "")
-                return "\n".join(parts)
-    return ""
+    transcript_path = envelope.get("transcript_path")
+    if not transcript_path:
+        return ""
+    tpath = Path(transcript_path)
+    if not tpath.exists():
+        return ""
+    messages = read_transcript(tpath)
+    if not messages:
+        return ""
+    turn = split_current_turn(messages)
+    text, _ = extract_text_and_tools(turn)
+    return text or ""
 
 
 def _missing_markers(response: str) -> List[str]:
     return [m for m in REQUIRED_MARKERS if m not in response]
+
+
+def _check_searched_coverage(response: str, workspace: Path) -> None:
+    """5-layer audit: count Q<N> headers vs Searched: lines in QUESTIONS block.
+
+    If the response has more Q headers than Searched: lines, emit a
+    warn-only fire event (no block). This catches questions that skipped
+    code-lookup and may be answerable from the codebase.
+    """
+    # Extract QUESTIONS section (between QUESTIONS and end or next section).
+    q_section_match = re.search(r"QUESTIONS\s*\n(.*?)(?:\n[A-Z]{4,}|\Z)",
+                                response, re.DOTALL | re.IGNORECASE)
+    if not q_section_match:
+        return
+    q_section = q_section_match.group(1)
+    q_count = len(re.findall(r"\bQ\d+[:\.]", q_section))
+    searched_count = len(re.findall(r"\bSearched:", response))
+    if q_count > 0 and searched_count < q_count:
+        detail = f"Q-count={q_count} > Searched:-count={searched_count}: some questions may be answerable from code"
+        sys.stderr.write(f"[clarification-gate-enforcer] warn: {detail}\n")
+        try:
+            emit_fire_event(f"{HOOK_NAME}.py", verdict="warn", detail=detail[:200])
+        except Exception:
+            pass
 
 
 def main() -> int:
@@ -230,6 +247,41 @@ def main() -> int:
     response = _extract_response_text(envelope)
     missing = _missing_markers(response)
     if not missing:
+        # All 4 markers present — run 5-layer Searched: coverage audit (warn only).
+        _check_searched_coverage(response, workspace)
+
+        # v0.21 T15 (M12): inject deferred skills (downstream skills
+        # suppressed during gate turn) as additionalContext.
+        intent_state = _read_state(workspace, LAST_INTENT_REL) or {}
+        deferred = intent_state.get("deferred_skills") or []
+        if isinstance(deferred, list) and deferred:
+            skill_list = ", ".join(f"`{s}`" for s in deferred)
+            reminder = (
+                f"[clarification-gate-enforcer] Gate satisfied. "
+                f"Skills queued for next turn: {skill_list}. "
+                f"Open these SKILL.md files when you act on the DEV answer."
+            )
+            try:
+                print(json.dumps({
+                    "hookSpecificOutput": {
+                        "hookEventName": "Stop",
+                        "additionalContext": reminder,
+                    }
+                }, ensure_ascii=False))
+            except Exception:
+                pass
+
+        # T15 round 1: Consume last_intent_suggested.json so gate doesn't
+        # re-fire on subsequent turns in the same session.
+        try:
+            (workspace / LAST_INTENT_REL).unlink(missing_ok=True)
+        except (OSError, TypeError):
+            try:
+                intent_path = workspace / LAST_INTENT_REL
+                if intent_path.exists():
+                    intent_path.unlink()
+            except OSError:
+                pass
         return _exit_allow(workspace, detail="shape-ok")
 
     # Missing markers → enforce per mode.

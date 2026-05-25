@@ -27,16 +27,17 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 # Claude Code pipes the hook envelope as UTF-8 JSON. On Windows the
 # default stdin/stdout encoding is cp1252, which mangles Vietnamese
 # (and any non-Latin) characters in the user's prompt. Re-wrap both
 # streams as UTF-8 before any read/print.
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import wrap_utf8_stdio, run_main_safe  # noqa: E402
+from _common import wrap_utf8_stdio, run_main_safe, atomic_write_json  # noqa: E402
 from _patterns import (  # noqa: E402
     BYPASS_INVARIANT_RE, SKIP_CLARIFICATION_RE, BYPASS_GAP_GATE_RE,
+    BYPASS_GIT_GUARD_RE, BYPASS_DEBUG_SENTRY_RE,
 )
 
 wrap_utf8_stdio()
@@ -49,7 +50,15 @@ BYPASS_TTL_SECONDS = 300  # 5 min — long enough for agent to reach Edit, short
 # v0.13.0 — clarification-gate enforcer state files (D8/D9).
 LAST_INTENT_SUGGESTED_REL = ".agent-toolkit/.last_intent_suggested.json"
 SKIP_CLARIFICATION_REL = ".agent-toolkit/.skip_clarification_next.json"
-SKIP_CLARIFICATION_TTL_SECONDS = 300
+SKIP_CLARIFICATION_TTL_SECONDS = 600
+
+# v0.20.0 — git-guardrails bypass token.
+SKIP_GIT_GUARD_REL = ".agent-toolkit/.skip_git_guard_next.json"
+SKIP_GIT_GUARD_TTL_SECONDS = 600
+
+# v0.21 T16 (M13) — debug-sentry bypass token.
+SKIP_DEBUG_SENTRY_REL = ".agent-toolkit/.skip_debug_sentry_next.json"
+SKIP_DEBUG_SENTRY_TTL_SECONDS = 600
 
 
 def _load_intent_map(workspace: Path) -> Tuple[str, str, List[Tuple[str, List[str]]]]:
@@ -239,10 +248,35 @@ def _matched_skills(prompt: str, intent_map: List[Tuple[str, List[str]]]) -> Lis
                     out.append(s)
 
     # Priority: if the clarification-gate is on the list, return ONLY
-    # it. The gate must complete before downstream action skills load.
+    # it for current turn — but cache the downstream skills so
+    # clarification_gate_enforcer can inject them as "deferred" on
+    # post-satisfy (fixes M12 — downstream skills never re-fired before).
     if "clarification-gate" in seen:
         return ["clarification-gate"]
     return out
+
+
+def _matched_skills_with_deferred(prompt: str,
+                                  intent_map: List[Tuple[str, List[str]]]
+                                  ) -> Tuple[List[str], List[str]]:
+    """v0.21 T15 (M12) — return (primary_skills, deferred_skills).
+
+    primary = [clarification-gate] if gate triggered, else all matches.
+    deferred = downstream skills suppressed during gate turn, re-injected
+    by clarification_gate_enforcer on shape-ok.
+    """
+    norm = _normalize(prompt)
+    seen = []
+    for pattern, skills in intent_map:
+        if re.search(pattern, norm, flags=re.IGNORECASE | re.UNICODE):
+            for s in skills:
+                if s not in seen:
+                    seen.append(s)
+    if "clarification-gate" in seen:
+        primary = ["clarification-gate"]
+        deferred = [s for s in seen if s != "clarification-gate"]
+        return primary, deferred
+    return seen, []
 
 
 def _already_referenced(prompt: str, skills: List[str]) -> bool:
@@ -407,8 +441,12 @@ def _format_reminder(skills: List[str]) -> str:
 
 
 def _write_last_intent_suggested(workspace: Path, skills: List[str],
-                                  prompt: str) -> None:
+                                  prompt: str,
+                                  deferred_skills: Optional[List[str]] = None
+                                  ) -> None:
     """v0.13.0 — record that intent_router suggested skill X for this turn.
+    v0.21 T15 (M12) — also persist `deferred_skills` so
+    clarification_gate_enforcer can re-inject them post-satisfy.
 
     clarification_gate_enforcer.py reads this state file on Stop to know
     whether the current turn's response must satisfy the skill's shape
@@ -423,9 +461,11 @@ def _write_last_intent_suggested(workspace: Path, skills: List[str],
         payload = {
             "ts": int(time.time()),
             "skills": list(skills),
+            "deferred_skills": list(deferred_skills or []),
             "prompt_hash": hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:8],
         }
-        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        # v0.21 T03 (B4): atomic write — concurrent prompts can race.
+        atomic_write_json(path, payload)
     except OSError:
         # Best-effort: silent on failure (don't break UserPromptSubmit flow).
         pass
@@ -459,9 +499,8 @@ def _capture_bypass_gap_gate(workspace: Path, prompt: str) -> None:
         state.setdefault("version", 1)
         state.setdefault("gaps", [])
         state["pending_bypass"] = {"ts": int(time.time()), "reason": reason}
-        open_gaps_path.parent.mkdir(parents=True, exist_ok=True)
-        open_gaps_path.write_text(json.dumps(state, ensure_ascii=False, indent=2),
-                                  encoding="utf-8")
+        # v0.21 T03 (B4): atomic write.
+        atomic_write_json(open_gaps_path, state)
     except OSError:
         pass
 
@@ -488,7 +527,65 @@ def _capture_skip_clarification(workspace: Path, prompt: str) -> None:
             "reason": reason,
             "ttl_seconds": SKIP_CLARIFICATION_TTL_SECONDS,
         }
-        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        # v0.21 T03 (B4): atomic write.
+        atomic_write_json(path, payload)
+    except OSError:
+        pass
+
+
+def _capture_bypass_debug_sentry(workspace: Path, prompt: str) -> None:
+    """v0.21 T16 (M13) — write single-shot debug_sentry bypass token when
+    user types `bypass-debug-sentry: <reason ≥ 8 chars>`.
+
+    Symmetric with _capture_skip_git_guard. debug_sentry.py reads
+    `.skip_debug_sentry_next.json` (TTL 600s, single-use) to skip
+    enforcement on the next Stop.
+    """
+    import time
+    m = BYPASS_DEBUG_SENTRY_RE.search(prompt)
+    if not m:
+        return
+    reason = m.group(1).strip()
+    if not reason:
+        return
+    path = workspace / SKIP_DEBUG_SENTRY_REL
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "ts": int(time.time()),
+            "reason": reason,
+            "ttl_seconds": SKIP_DEBUG_SENTRY_TTL_SECONDS,
+        }
+        atomic_write_json(path, payload)
+    except OSError:
+        pass
+
+
+def _capture_skip_git_guard(workspace: Path, prompt: str) -> None:
+    """v0.20.0 — write single-shot git-guard bypass token when user types
+    `bypass-git-guard: <reason ≥ 8 chars>`.
+
+    Mirrors _capture_skip_clarification pattern. git_guardrails.py reads
+    `.skip_git_guard_next.json` (mtime TTL 600s, single-use) to pre-authorize
+    one agent-driven git op without disabling the hook globally.
+    """
+    import time
+    m = BYPASS_GIT_GUARD_RE.search(prompt)
+    if not m:
+        return
+    reason = m.group(1).strip()
+    if not reason:
+        return
+    path = workspace / SKIP_GIT_GUARD_REL
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "ts": int(time.time()),
+            "reason": reason,
+            "ttl_seconds": SKIP_GIT_GUARD_TTL_SECONDS,
+        }
+        # v0.21 T03 (B4): atomic write.
+        atomic_write_json(path, payload)
     except OSError:
         pass
 
@@ -526,7 +623,8 @@ def _capture_bypass_invariant(workspace: Path, prompt: str) -> None:
             "ts": int(time.time()),
             "ttl_seconds": BYPASS_TTL_SECONDS,
         }
-        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        # v0.21 T03 (B4): atomic write.
+        atomic_write_json(path, payload)
     except OSError:
         # Best-effort: silent on failure (don't break UserPromptSubmit flow).
         pass
@@ -560,6 +658,8 @@ def main() -> int:
         _capture_bypass_invariant(workspace, prompt)
         _capture_skip_clarification(workspace, prompt)
         _capture_bypass_gap_gate(workspace, prompt)
+        _capture_skip_git_guard(workspace, prompt)
+        _capture_bypass_debug_sentry(workspace, prompt)
 
     # Heuristic skip for very short replies (yes/no/ok), questions about
     # earlier output, or empty prompts.
@@ -568,16 +668,17 @@ def main() -> int:
 
     _stack, _stack_bare, intent_map = _load_intent_map(workspace)
 
-    skills = _matched_skills(prompt, intent_map)
+    # v0.21 T15 (M12): get primary skills + deferred ones for cache.
+    skills, deferred = _matched_skills_with_deferred(prompt, intent_map)
     if not skills:
         return 0
 
     if _already_referenced(prompt, skills):
         return 0
 
-    # v0.13.0: record suggested skills so clarification_gate_enforcer can
-    # decide whether to enforce shape contract on this turn's response.
-    _write_last_intent_suggested(workspace, skills, prompt)
+    # v0.13.0 + v0.21: record suggested skills + deferred list.
+    _write_last_intent_suggested(workspace, skills, prompt,
+                                 deferred_skills=deferred)
 
     reminder = _format_reminder(skills)
 

@@ -255,20 +255,62 @@ def _log_hook_crash(hook_name: str, exc: BaseException) -> None:
             "traceback_tail": _traceback.format_exc()[-1500:],
         })
         existing = existing[-_CRASH_LOG_MAX:]
-        log_path.write_text(
-            json.dumps({"events": existing}, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        # v0.21 T01 (B2): atomic write — prevent telemetry corruption from
+        # concurrent hook crashes.
+        atomic_write_json(log_path, {"events": existing})
     except (OSError, Exception):  # noqa: BLE001
         pass  # crash logger crashed — give up silently
 
 
+def parse_expires_at(ts_str: str) -> "Optional[Any]":
+    """Parse ISO 8601 datetime string handling 5 formats safely.
+
+    Handles: naive ISO, +HH:MM, +HHMM (bare offset), Z suffix, UTC.
+    Returns None on any parse failure — never raises.
+
+    Usage pattern for expiry check:
+        exp_dt = parse_expires_at(data.get("expires_at") or "")
+        if exp_dt is None:
+            return True  # treat as active (fail-open)
+        now = datetime.now(exp_dt.tzinfo) if exp_dt.tzinfo else datetime.now()
+        return now < exp_dt
+    """
+    from datetime import datetime
+    import re as _re
+    if not ts_str:
+        return None
+    normalized = ts_str.strip()
+    # Insert colon into bare offset like +0700 → +07:00 for fromisoformat.
+    normalized = _re.sub(r"([+-])(\d{2})(\d{2})$", r"\1\2:\3", normalized)
+    # Normalize Z suffix to +00:00.
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(normalized)
+    except (ValueError, TypeError):
+        pass
+    # Fallback: strip tz suffix + strptime as naive.
+    bare = ts_str.split(".")[0].split("+")[0].split("Z")[0].strip()
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M"):
+        try:
+            return datetime.strptime(bare, fmt)
+        except ValueError:
+            continue
+    return None
+
+
 def is_strict_mode() -> bool:
-    """Phase E v0.9.0 — return True if AGENT_TOOLKIT_STRICT=1 env var set.
-    Strict mode flips fail-open hooks → fail-closed. Default unset
-    preserves dev-friendly fail-open continuity. CI / production
-    pipelines should opt-in via env var."""
-    return os.environ.get("AGENT_TOOLKIT_STRICT") == "1"
+    """v0.20.0 — fail-CLOSED by default. Set AGENT_TOOLKIT_NO_STRICT=1
+    to revert to fail-open (legacy dev-friendly behavior).
+
+    Breaking change from v0.9.0: the old AGENT_TOOLKIT_STRICT=1 opt-in
+    is replaced by AGENT_TOOLKIT_NO_STRICT=1 opt-out. Existing installs
+    that relied on fail-open behavior MUST set AGENT_TOOLKIT_NO_STRICT=1
+    — hook crashes will now block instead of silently allowing.
+    See QUICKSTART.odoo.md §Breaking change v0.20.
+    """
+    return os.environ.get("AGENT_TOOLKIT_NO_STRICT") != "1"
 
 
 def get_enforce_mode(workspace: Path, hook_name: str,
@@ -346,41 +388,86 @@ def emit_fire_event(hook_name: str, verdict: str = "ok",
             event["detail"] = detail[:200]
         existing.append(event)
         existing = existing[-_FIRE_LOG_MAX:]
-        log_path.write_text(
-            json.dumps({"events": existing}, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        # v0.21 T01 (B2): atomic write — telemetry log shared by all hooks.
+        atomic_write_json(log_path, {"events": existing})
     except (OSError, Exception):  # noqa: BLE001
         pass
 
 
+def emit_timed_fire(hook_name: str, verdict: str,
+                    start_monotonic: float,
+                    detail: Optional[str] = None) -> None:
+    """v0.21 T07 — emit_fire_event with duration_ms auto-computed.
+
+    Usage at hook exit paths:
+        import time
+        _start = time.monotonic()
+        ...
+        emit_timed_fire("my_hook.py", "allow", _start)
+
+    Mitigates B3 (Stop chain latency invisibility): hook_health aggregator
+    surfaces hooks with high p50/p99 duration so DEV knows which hook to
+    tune. Helper auto-handles `time.monotonic() - start` in ms.
+    """
+    import time
+    duration_ms = int((time.monotonic() - start_monotonic) * 1000)
+    emit_fire_event(hook_name, verdict=verdict,
+                    duration_ms=duration_ms, detail=detail)
+
+
 def run_main_safe(main_fn) -> int:
-    """Wrap a hook's main() with try/except.
+    """Wrap a hook's main() with try/except + timing telemetry.
 
     Usage at the bottom of each hook:
         if __name__ == "__main__":
             sys.exit(run_main_safe(main))
 
-    Default (fail-open): uncaught exception → log to .hook_crash_log.json + exit 0.
-    STRICT mode (Phase E v0.9.0): if AGENT_TOOLKIT_STRICT=1 env var set,
-    exception bubbles → exit 1 (CI catches). Crash still logged.
+    Default (fail-CLOSED from v0.20.0): uncaught exception → log to
+    .hook_crash_log.json + exit 1 (hook crash blocks the response).
+    Set AGENT_TOOLKIT_NO_STRICT=1 to revert to fail-open (exit 0).
+
+    v0.21 (T08+T09 — H6 + S9): EVERY hook now auto-emits a fire event
+    with `duration_ms` at exit. Closes 15-hook telemetry blind spot
+    + B3 timing-visibility mitigation in one wrapper update.
     """
     import inspect
+    import time
+    start_monotonic = time.monotonic()
+    hook_name = "unknown"
+    try:
+        src = inspect.getsourcefile(main_fn) or ""
+        hook_name = Path(src).name
+    except (TypeError, OSError):
+        pass
+
     try:
         rv = main_fn()
-        return int(rv) if isinstance(rv, int) else 0
+        code = int(rv) if isinstance(rv, int) else 0
+        verdict = "block" if code == 2 else ("error" if code == 1 else "ok")
+        try:
+            emit_timed_fire(hook_name, verdict, start_monotonic,
+                            detail="run_main_safe")
+        except Exception:
+            pass
+        return code
     except SystemExit as exit_exc:
         # honor explicit sys.exit() calls from inside main
         code = exit_exc.code
-        return int(code) if isinstance(code, int) else 0
-    except BaseException as exc:  # noqa: BLE001
-        hook_name = "unknown"
+        code_int = int(code) if isinstance(code, int) else 0
+        verdict = "block" if code_int == 2 else ("error" if code_int == 1 else "ok")
         try:
-            src = inspect.getsourcefile(main_fn) or ""
-            hook_name = Path(src).name
-        except (TypeError, OSError):
+            emit_timed_fire(hook_name, verdict, start_monotonic,
+                            detail="sys.exit")
+        except Exception:
             pass
+        return code_int
+    except BaseException as exc:  # noqa: BLE001
         _log_hook_crash(hook_name, exc)
+        try:
+            emit_timed_fire(hook_name, "crash", start_monotonic,
+                            detail=type(exc).__name__[:50])
+        except Exception:
+            pass
         # Phase E: STRICT mode → propagate exit 1; default fail-open → exit 0
         if is_strict_mode():
             return 1

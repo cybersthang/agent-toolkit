@@ -212,10 +212,9 @@ def _log_event(workspace: Path, event: Dict[str, Any]) -> None:
                 existing = []
         existing.append(event)
         existing = existing[-LOG_MAX_EVENTS:]
-        log_path.write_text(
-            json.dumps({"events": existing}, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        # v0.21 T05 (M10): atomic write.
+        from _common import atomic_write_json as _aw
+        _aw(log_path, {"events": existing})
     except OSError:
         pass
 

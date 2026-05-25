@@ -118,10 +118,15 @@ SKIP_CLARIFICATION_RE = re.compile(
 # markers (defer / cant_fix), and whole-gate single-shot bypass.
 
 # Gap list emission: `G1`, `G2 -`, `**G3**:` etc. with description.
-# Requires at least 2 chars after the id (a hyphen / colon / space + text)
-# to avoid matching e.g. "G3 GPU" outside a gap context.
+# v0.21 T17B (M15): tightened — require LINE-START (not just whitespace)
+# so prose mentions like "Graph 1 - main" or "G7 — good performance"
+# embedded in sentences don't false-create gap entries. Pattern now:
+# 1. Anchored to ^ via MULTILINE
+# 2. Optional list marker (`- `, `* `, `1. `, `**`)
+# 3. G<digits> followed by — / - / : / .
+# 4. Description text 3-200 chars
 GAP_LIST_EMIT_RE = re.compile(
-    r"(?:^|\n|\s)(?:[*_`]*?)G(\d+)(?:[*_`]*?)\s*[—\-:.]\s*([^\n]{3,200})",
+    r"^(?:[\s>]*(?:[-*]|\d+\.)\s+)?(?:[*_`]*?)G(\d+)\b(?:[*_`]*?)\s*[—\-:.]\s*([^\n]{3,200})",
     re.IGNORECASE | re.UNICODE | re.MULTILINE,
 )
 
@@ -140,6 +145,23 @@ GAP_CANT_FIX_RE = re.compile(
 # Whole-gate single-shot bypass in user prompt.
 BYPASS_GAP_GATE_RE = re.compile(
     r"\bbypass-gap-gate:\s*(\S{8,200})\b",
+    re.IGNORECASE,
+)
+
+# v0.20.0 — git-guardrails single-shot bypass keyword.
+# Reason must be ≥ 8 non-whitespace chars (same audit-trail standard as
+# skip-clarification). intent_router writes .skip_git_guard_next.json;
+# git_guardrails consumes (unlinks) on next matching Bash tool call.
+BYPASS_GIT_GUARD_RE = re.compile(
+    r"\bbypass-git-guard:\s*(\S{8,200})\b",
+    re.IGNORECASE,
+)
+
+# v0.21 T16 (M13) — debug-sentry single-shot bypass keyword.
+# Symmetric with bypass-git-guard. intent_router writes
+# .skip_debug_sentry_next.json; debug_sentry consumes on Stop.
+BYPASS_DEBUG_SENTRY_RE = re.compile(
+    r"\bbypass-debug-sentry:\s*(\S{8,200})\b",
     re.IGNORECASE,
 )
 

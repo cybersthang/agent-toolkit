@@ -143,6 +143,96 @@ the claim if timing doesn't shift by 2s).
 | `.codex/tools/falsify.py --probe <id> --dry-run` | Preview without executing |
 | `.codex/tools/agent_toolkit_init.py --target X` | Bootstrap new project |
 
+## ⚠️ Breaking change v0.20 — Strict mode
+
+From v0.20.0, `is_strict_mode()` defaults to **fail-CLOSED** (True).
+Previously hooks were fail-open: a Python exception in a hook → exit 0
+(silent allow). Now they fail-closed: exception → exit 1 (blocks the
+response).
+
+**If you see hooks suddenly blocking after upgrading**, set:
+
+```bash
+# Bash/zsh — revert to legacy fail-open behavior
+export AGENT_TOOLKIT_NO_STRICT=1
+
+# PowerShell
+$env:AGENT_TOOLKIT_NO_STRICT = "1"
+```
+
+Or add to `.claude/settings.json`:
+```json
+{
+  "env": { "AGENT_TOOLKIT_NO_STRICT": "1" }
+}
+```
+
+The old `AGENT_TOOLKIT_STRICT=1` opt-in is retired. The new opt-out is
+`AGENT_TOOLKIT_NO_STRICT=1`.
+
+---
+
+## Bypass & Skip Tokens
+
+One-shot keywords to pre-authorize a single agent operation without
+disabling enforcement globally. All tokens are single-use and expire
+after 600s.
+
+| Keyword in prompt | Effect | Token file |
+|---|---|---|
+| `bypass-invariant: <id>` | Allow ONE Edit that removes an invariant pattern | `.agent-toolkit/.bypass_next_edit.json` |
+| `skip-clarification: <reason ≥ 8 chars>` | Allow ONE response without UNDERSTANDING/ASSUMPTIONS/QUESTIONS markers | `.agent-toolkit/.skip_clarification_next.json` |
+| `bypass-gap-gate: <reason ≥ 8 chars>` | Allow ONE "done" claim while gaps remain open | `.open_gaps.json` `pending_bypass` field |
+| `bypass-git-guard: <reason ≥ 8 chars>` | Allow ONE agent-driven `git commit/push/add` | `.agent-toolkit/.skip_git_guard_next.json` |
+
+**Example usage**:
+```
+bypass-git-guard: deploy hotfix to production — emergency bypass
+```
+Agent receives the prompt → intent_router writes the bypass token →
+git_guardrails allows the next matching git command → token consumed.
+
+---
+
+## Tier Adoption — 3-week rollout plan
+
+For teams inheriting this toolkit mid-project:
+
+**Week 1 — Observe only** (set all hooks to `warn`):
+```json
+// .agent-toolkit/enforce_mode.json
+{
+  "default": "warn",
+  "per_hook": {}
+}
+```
+Check SessionStart hook-health stats. Identify which categories trigger
+most blocks. Tune `disabled_progress_checks` for project vocabulary.
+
+**Week 2 — Selective block** (flip highest-signal hooks):
+```json
+{
+  "default": "warn",
+  "per_hook": {
+    "evidence_audit": "block",
+    "invariant_guard": "block"
+  }
+}
+```
+These two have lowest false-positive rate. Leave `debug_sentry` and
+`gap_completeness_gate` on `warn` until the project vocab is tuned.
+
+**Week 3 — Full block** (remove enforce_mode.json or set default block):
+```json
+{
+  "default": "block"
+}
+```
+At this point the bypass/skip tokens are your safety valve for
+legitimate one-off exceptions.
+
+---
+
 ## When the toolkit blocks you (cheat sheet)
 
 | Block message starts with | Fix in 30 seconds |

@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import run_main_safe, emit_fire_event, get_enforce_mode  # noqa: E402
+from _common import run_main_safe, emit_fire_event, get_enforce_mode, parse_expires_at, atomic_write_json  # noqa: E402
 from _patterns import (  # noqa: E402
     DONE_CLAIM_GAP_RE, GAP_DEFER_RE, GAP_CANT_FIX_RE, GAP_LIST_EMIT_RE,
 )
@@ -122,13 +122,12 @@ def _autonomy_active(workspace: Path) -> bool:
     expires = data.get("expires_at")
     if not expires:
         return True
-    try:
-        from datetime import datetime
-        exp_dt = datetime.fromisoformat(expires)
-        now_dt = datetime.now(exp_dt.tzinfo) if exp_dt.tzinfo else datetime.now()
-        return now_dt < exp_dt
-    except (ValueError, TypeError):
-        return True
+    from datetime import datetime
+    exp_dt = parse_expires_at(expires)
+    if exp_dt is None:
+        return True  # parse fail → treat as active (fail-open)
+    now_dt = datetime.now(exp_dt.tzinfo) if exp_dt.tzinfo else datetime.now()
+    return now_dt < exp_dt
 
 
 def _capture_new_gap_emissions(state: Dict[str, Any],
@@ -243,12 +242,8 @@ def _extract_assistant_text(envelope: Dict[str, Any]) -> str:
 
 
 def _persist(state: Dict[str, Any], path: Path) -> None:
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(state, ensure_ascii=False, indent=2),
-                        encoding="utf-8")
-    except OSError:
-        pass
+    """Atomic rename write — prevents file corruption from parallel hook fires."""
+    atomic_write_json(path, state)
 
 
 def _main() -> int:
@@ -287,11 +282,22 @@ def _main() -> int:
     # before deciding whether to block.
     state = _apply_resolution_markers(state, response_text)
 
-    # Count remaining open gaps.
+    # Count remaining open + newly-staled gaps.
     open_gaps = [
         g for g in state.get("gaps", [])
         if isinstance(g, dict) and g.get("status") == "open"
     ]
+    stale_gaps = [
+        g for g in state.get("gaps", [])
+        if isinstance(g, dict) and g.get("status") == "stale"
+           and int(g.get("resolution_ts") or 0) >= int(time.time()) - 5
+    ]
+    if stale_gaps:
+        stale_msg = "; ".join(
+            f"Gap {g.get('id','?')} đã stale sau 24h — không còn enforce"
+            for g in stale_gaps
+        )
+        sys.stderr.write(f"[gap-completeness-gate] {stale_msg}\n")
 
     # If response doesn't claim done at all, just persist mutations + allow.
     if not DONE_CLAIM_GAP_RE.search(response_text):

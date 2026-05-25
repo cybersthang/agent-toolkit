@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import run_main_safe
+from _common import run_main_safe, atomic_write_json
 
 
 if hasattr(sys.stdin, "buffer"):
@@ -88,8 +88,13 @@ def _read_pid(pid_file: Path) -> Optional[int]:
     if not pid_file.exists():
         return None
     try:
-        return int(pid_file.read_text(encoding="utf-8").strip())
-    except (ValueError, OSError):
+        raw = pid_file.read_text(encoding="utf-8").strip()
+        # v0.21 T04 (M9): support both new JSON format and legacy plain-int.
+        if raw.startswith("{"):
+            import json as _json
+            return int(_json.loads(raw).get("pid") or 0) or None
+        return int(raw)
+    except (ValueError, OSError, Exception):  # noqa: BLE001
         return None
 
 
@@ -336,11 +341,12 @@ def main() -> int:
         print(f"[daemon_manager] spawn failed: {cmd[:3]}...", file=sys.stderr)
         return 0
 
-    try:
-        pid_file.parent.mkdir(parents=True, exist_ok=True)
-        pid_file.write_text(str(new_pid), encoding="utf-8")
-    except OSError:
-        pass
+    # v0.21 T04 (M9): JSON format + atomic write.
+    from datetime import datetime as _dt
+    atomic_write_json(pid_file, {
+        "pid": new_pid,
+        "spawned_at": _dt.now().isoformat(timespec="seconds"),
+    })
 
     base_url = test_env.get("url") or ""
     health_path = pm.get("health_check_url") or ""

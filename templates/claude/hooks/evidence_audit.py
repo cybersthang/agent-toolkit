@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import run_main_safe, emit_fire_event
+from _common import run_main_safe, emit_fire_event, atomic_write_json
 
 # Make `_audit` package importable when invoked as a standalone script.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -99,13 +99,10 @@ def _bump_recursion_state(workspace: Path, current: Dict[str, Any]) -> int:
     count = int(current.get("count") or 0) + 1
     first_ts = int(current.get("first_ts") or now)
     path = workspace / _RECURSION_STATE_REL
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({
-            "count": count, "first_ts": first_ts, "last_ts": now,
-        }, ensure_ascii=False), encoding="utf-8")
-    except OSError:
-        pass
+    # v0.21 T02 (H7): atomic write — concurrent crashes can race counter.
+    atomic_write_json(path, {
+        "count": count, "first_ts": first_ts, "last_ts": now,
+    })
     return count
 
 

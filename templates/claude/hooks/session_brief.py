@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import wrap_utf8_stdio, run_main_safe  # noqa: E402
+from _common import wrap_utf8_stdio, run_main_safe, parse_expires_at  # noqa: E402
 
 wrap_utf8_stdio()
 
@@ -57,50 +57,18 @@ def _format_autonomy(workspace: Path) -> str:
     if not isinstance(data, dict):
         return ""
 
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime
     expires_str = data.get("expires_at") or ""
     spec = data.get("spec") or "<unknown>"
     scopes = data.get("scopes") or []
     blocked = data.get("still_blocked") or []
 
-    # Parse expires_at as timezone-aware when possible.
-    #
-    # Real-world bug caught 2026-05-18: `/go` command wrote `expires_at` using
-    # `date -u +...+0700` which produced UTC time stamped with `+0700` tz
-    # suffix — these are inconsistent (the time IS UTC but suffix claims
-    # +0700). Previous parser stripped the tz suffix and treated as naive
-    # local → false-expired banner. Fix: parse tz-aware when suffix present,
-    # convert to local for comparison.
-    expires_dt = None
-    if expires_str:
-        # Try fromisoformat first (Python 3.7+ handles `+HH:MM` aware,
-        # but not `+HHMM` without colon — normalize first).
-        normalized = expires_str.strip()
-        # Insert colon into bare offset like `+0700` -> `+07:00` for fromisoformat.
-        import re as _re
-        normalized = _re.sub(r"([+-])(\d{2})(\d{2})$", r"\1\2:\3", normalized)
-        try:
-            expires_dt = datetime.fromisoformat(normalized)
-        except (ValueError, TypeError):
-            # Fallback: strip tz suffix + strptime as naive (legacy behavior).
-            for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S",
-                        "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M"):
-                try:
-                    expires_dt = datetime.strptime(
-                        expires_str.split(".")[0].split("+")[0].split("Z")[0],
-                        fmt,
-                    )
-                    break
-                except ValueError:
-                    continue
+    expires_dt = parse_expires_at(expires_str) if expires_str else None
 
     now = datetime.now()
     if expires_dt is not None and expires_dt.tzinfo is not None:
-        # Aware comparison — use local-aware now.
         now = datetime.now().astimezone()
         if now.tzinfo is None:
-            # Fallback: convert expires to naive UTC then subtract from naive
-            # local — best-effort if astimezone fails (no system tz info).
             expires_dt = expires_dt.replace(tzinfo=None)
             now = datetime.now()
 
@@ -278,6 +246,43 @@ def _read_hook_stats(workspace: Path) -> Dict[str, Any]:
     }
 
 
+def _read_fire_log_bypass_rates(workspace: Path) -> List[str]:
+    """Read .hook_fire_log.json; return list of warning strings for hooks
+    with bypass rate >= 20% across >= 5 events. Returns [] on any error."""
+    log_path = workspace / ".agent-toolkit" / ".hook_fire_log.json"
+    if not log_path.exists():
+        return []
+    try:
+        data = json.loads(log_path.read_text(encoding="utf-8"))
+        events = data.get("events") if isinstance(data, dict) else None
+        if not isinstance(events, list):
+            return []
+    except (OSError, json.JSONDecodeError):
+        return []
+    by_hook: Dict[str, Dict[str, int]] = {}
+    for evt in events:
+        if not isinstance(evt, dict):
+            continue
+        hook = evt.get("hook") or ""
+        verdict = evt.get("verdict") or ""
+        if not hook:
+            continue
+        h = by_hook.setdefault(hook, {"total": 0, "bypass": 0})
+        h["total"] += 1
+        if verdict in ("bypass", "allow") and evt.get("detail", "").startswith("bypass"):
+            h["bypass"] += 1
+        elif verdict == "bypass":
+            h["bypass"] += 1
+    warnings: List[str] = []
+    for hook, counts in sorted(by_hook.items()):
+        total = counts["total"]
+        bypassed = counts["bypass"]
+        if total >= 5 and bypassed / total >= 0.20:
+            rate = int(bypassed / total * 100)
+            warnings.append(f"⚠️ HIGH BYPASS: {hook} {rate}% ({bypassed}/{total})")
+    return warnings
+
+
 def _format_hook_stats(stats: Dict[str, Any]) -> str:
     if not stats or not stats.get("total"):
         return ""
@@ -352,6 +357,12 @@ def _build_brief(workspace: Path) -> str:
     stats_line = _format_hook_stats(hook_stats)
     if stats_line:
         sections.append(stats_line)
+
+    # T03: bypass rate warnings — surface high-bypass hooks so DEV can tune.
+    bypass_warnings = _read_fire_log_bypass_rates(workspace)
+    if bypass_warnings:
+        sections.append("\n".join(bypass_warnings))
+
     out = "\n\n".join(sections)
     if len(out) > MAX_OUTPUT_CHARS:
         out = out[: MAX_OUTPUT_CHARS - 3] + "…"

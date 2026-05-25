@@ -104,6 +104,10 @@ SKIP_MARKERS = (
     "[assumption]",
     "[chưa fix]",
     "[chưa verify]",
+    "[low-confidence]",  # v0.21 T17A (M14)
+    "[unverified]",      # v0.21 T17A (M14)
+    "[guess]",           # v0.21 T17A (M14)
+    "[tbd]",             # v0.21 T17A (M14) — match lowercased by _has_skip_marker
     "debug-troubleshoot",
     "debug-sentry: skip",
     "root cause đã xác định",
@@ -153,6 +157,20 @@ _read_transcript = read_jsonl_transcript
 _split_current_turn = split_current_turn
 
 
+def _turn_has_tool_use(turn: List[Dict[str, Any]]) -> bool:
+    """Return True if any assistant message in the turn used a tool."""
+    for msg in turn:
+        role = msg.get("role") or msg.get("type")
+        if role != "assistant":
+            continue
+        content = (msg.get("message") or {}).get("content") or msg.get("content")
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "tool_use":
+                    return True
+    return False
+
+
 def _extract_text_and_results(turn: List[Dict[str, Any]]) -> Tuple[str, str]:
     """Return (assistant_text, tool_results_text) for the turn."""
     asst_parts: List[str] = []
@@ -183,25 +201,29 @@ def _extract_text_and_results(turn: List[Dict[str, Any]]) -> Tuple[str, str]:
     return ("\n".join(asst_parts), "\n".join(result_parts))
 
 
-def _matches(text: str, patterns: List[str]) -> List[str]:
-    """Return pattern hits.
+def _matches(text: str, patterns: List[str]) -> Tuple[List[str], List[str]]:
+    """Return (strong_hits, weak_hits) pattern lists.
 
     v0.6.1 logic:
-      - STRONG_PATTERNS match → count immediately (clear runtime shape).
+      - STRONG_PATTERNS match → block regardless of context.
       - WEAK_PATTERNS only count when a TRACEBACK_CONTEXT signal
         (File "...", line N | Traceback | caret) appears within
         ±CONTEXT_WINDOW_CHARS of the match.
 
+    v0.20.0 addition: caller uses strong/weak split to decide block vs warn
+    when no tool_use blocks are present in the turn (T13 context-aware).
+
     Custom `patterns` arg (project debug.json override) are treated as
     STRONG (no context check) — DEV explicitly opted in.
     """
-    seen: List[str] = []
+    strong: List[str] = []
+    weak: List[str] = []
     is_default = patterns is DEFAULT_PATTERNS or patterns == DEFAULT_PATTERNS
     if is_default:
         for pat in STRONG_PATTERNS:
             try:
                 if re.search(pat, text, re.MULTILINE):
-                    seen.append(pat)
+                    strong.append(pat)
             except re.error:
                 continue
         for pat in WEAK_PATTERNS:
@@ -213,17 +235,18 @@ def _matches(text: str, patterns: List[str]) -> List[str]:
                 start = max(0, m.start() - CONTEXT_WINDOW_CHARS)
                 end = min(len(text), m.end() + CONTEXT_WINDOW_CHARS)
                 if TRACEBACK_CONTEXT.search(text[start:end]):
-                    seen.append(pat)
+                    weak.append(pat)
                     break
-        return seen
-    # Legacy / project-customized patterns.
+        return strong, weak
+    # Legacy / project-customized patterns → all treated as STRONG.
+    custom: List[str] = []
     for pat in patterns:
         try:
             if re.search(pat, text, re.MULTILINE):
-                seen.append(pat)
+                custom.append(pat)
         except re.error:
             continue
-    return seen
+    return custom, []
 
 
 def _has_skip_marker(text: str) -> bool:
@@ -297,16 +320,41 @@ def main() -> int:
     if _has_skip_marker(asst_text):
         _exit_allow()
 
+    # v0.21 T16 (M13): consume single-shot bypass token from prompt keyword.
+    skip_token = workspace / ".agent-toolkit" / ".skip_debug_sentry_next.json"
+    if skip_token.exists():
+        try:
+            data = json.loads(skip_token.read_text(encoding="utf-8-sig"))
+            ts = int(data.get("ts") or 0)
+            ttl = int(data.get("ttl_seconds") or 600)
+            import time as _t
+            if int(_t.time()) - ts <= ttl and data.get("reason"):
+                skip_token.unlink()
+                _exit_allow()
+        except (OSError, json.JSONDecodeError, ValueError):
+            pass
+
     patterns = cfg.get("patterns") or DEFAULT_PATTERNS
-    matched = _matches(tool_text + "\n" + asst_text, patterns)
-    if not matched:
+    strong_hits, weak_hits = _matches(tool_text + "\n" + asst_text, patterns)
+    all_hits = strong_hits + weak_hits
+    if not all_hits:
         _exit_allow()
 
-    reason = _format_reason(asst_text, tool_text, matched)
-    if cfg.get("block_on_match"):
-        _emit_block(reason)
-    else:
+    reason = _format_reason(asst_text, tool_text, all_hits)
+
+    # T13 context-aware: WEAK-only hits with no tool_use in turn → warn only.
+    # STRONG hits always block regardless (clear runtime exception shape).
+    has_tool = _turn_has_tool_use(turn)
+    if not cfg.get("block_on_match"):
         _emit_warn(reason)
+    elif strong_hits:
+        _emit_block(reason)
+    elif weak_hits and not has_tool:
+        # WEAK patterns in a turn with no tool calls: likely code analysis
+        # mentioning exception type names, not an actual traceback.
+        _emit_warn(reason)
+    else:
+        _emit_block(reason)
     return 0
 
 

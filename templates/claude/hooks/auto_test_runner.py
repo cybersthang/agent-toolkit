@@ -145,12 +145,9 @@ def _load_state(workspace: Path, config: Dict[str, Any]) -> Dict[str, Any]:
 def _save_state(workspace: Path, config: Dict[str, Any],
                 state: Dict[str, Any]) -> None:
     p = workspace / config["state_file"]
-    try:
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(state, ensure_ascii=False, indent=2),
-                     encoding="utf-8")
-    except OSError:
-        pass
+    # v0.21 T05 (M11): atomic write.
+    from _common import atomic_write_json as _aw
+    _aw(p, state)
 
 
 def _invoke_mcp(workspace: Path, server: str, tool: str,

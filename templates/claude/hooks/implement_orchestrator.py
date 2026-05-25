@@ -253,8 +253,9 @@ def _save_cache(workspace: Path, slug: str, verdict: Dict[str, Any],
             except OSError:
                 pass
         all_cache[slug] = entry
-        p.write_text(json.dumps(all_cache, ensure_ascii=False, indent=2),
-                     encoding="utf-8")
+        # v0.21 T05 (M10): atomic write.
+        from _common import atomic_write_json as _aw
+        _aw(p, all_cache)
     except OSError:
         pass
 

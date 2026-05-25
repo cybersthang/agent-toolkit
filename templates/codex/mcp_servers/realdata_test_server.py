@@ -113,10 +113,16 @@ def get_database(arguments: Dict[str, Any]) -> str:
 
 
 def is_production_like(database: str) -> bool:
+    # v0.21 H9/H10/H11 (security fix)
+    # Conservative: prod marker wins. Previous logic short-circuited on a
+    # staging/test/clone marker → DB tên `prod_clone_for_load_test` slipped
+    # through as non-prod. Now any prod marker is decisive even if a
+    # staging-style marker is also present.
     lowered = database.lower()
-    if any(marker in lowered for marker in ("staging", "stage", "test", "clone", "dev", "uat")):
-        return False
-    return any(marker in lowered for marker in ("prod", "production", "live"))
+    has_prod = any(marker in lowered for marker in ("prod", "production", "live"))
+    if has_prod:
+        return True
+    return False
 
 
 def get_python_bin(arguments: Dict[str, Any]) -> str:
@@ -348,9 +354,16 @@ def build_module_test_command(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
 def run_module_test(arguments: Dict[str, Any]) -> Dict[str, Any]:
     database = get_database(arguments)
-    if is_production_like(database) and not bool_arg(arguments, "allow_production_like"):
+    # v0.21 H9/H10/H11 (security fix)
+    # H10: gate must NOT be an agent-controllable argument — agent could
+    # set `allow_production_like=true` itself and bypass. Move the override
+    # to an env var that only a human operator can export in the terminal
+    # session that launches the MCP server (agents cannot mutate the parent
+    # process env over the MCP wire).
+    if is_production_like(database) and os.environ.get("AGENT_TOOLKIT_ALLOW_PROD_LIKE") != "1":
         raise ValueError(
-            "database name looks production-like; pass allow_production_like=true only after explicit approval"
+            "database name looks production-like; set env AGENT_TOOLKIT_ALLOW_PROD_LIKE=1 "
+            "in the terminal that launches the MCP server (cannot be passed as MCP argument)"
         )
     if not bool_arg(arguments, "allow_db_write"):
         raise ValueError(
@@ -447,42 +460,47 @@ def fingerprint(value: Any) -> str:
 def run_orm_eval_once(arguments: Dict[str, Any], expression: str) -> Dict[str, Any]:
     script_path = write_eval_script(expression)
     try:
-        # Use a shell to redirect the script as stdin to odoo-bin shell.
-        # Build a single-string command for shell=True execution to handle '<' redirect.
-        cmd_str = subprocess.list2cmdline(
-            [
-                get_python_bin(arguments),
-                str(get_odoo_bin(arguments)),
-                "shell",
-                "-c",
-                str(get_odoo_conf(arguments)),
-                "-d",
-                get_database(arguments),
-                "--stop-after-init",
-                "--no-http",
-            ]
-        )
-        cmd_str += " < " + subprocess.list2cmdline([str(script_path)])
+        # v0.21 H9/H10/H11 (security fix)
+        # H11: drop shell=True. The previous implementation built a single
+        # string with `< <script_path>` redirection and passed it to a shell,
+        # which expanded the door for token-blacklist bypasses inside the
+        # expression to escape into shell metacharacters. Now the command is
+        # a real argv list (no shell) and the auto-generated read-only ORM
+        # script is fed to odoo-bin shell over stdin via subprocess `input=`.
+        cmd = [
+            get_python_bin(arguments),
+            str(get_odoo_bin(arguments)),
+            "shell",
+            "-c",
+            str(get_odoo_conf(arguments)),
+            "-d",
+            get_database(arguments),
+            "--stop-after-init",
+            "--no-http",
+        ]
+        with open(script_path, "rb") as script_handle:
+            script_input = script_handle.read()
         result = subprocess.run(
-            cmd_str,
-            shell=True,
+            cmd,
+            input=script_input,
             cwd=str(WORKSPACE_ROOT),
             capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
             env=base_env(),
             timeout=clamp_timeout(arguments.get("timeout"), default=600),
             check=False,
         )
-        parsed = parse_eval_output(result.stdout)
+        # capture_output=True returns bytes when text= is not set; decode
+        # explicitly so downstream JSON parsing keeps working.
+        stdout_text = result.stdout.decode("utf-8", errors="replace") if isinstance(result.stdout, (bytes, bytearray)) else (result.stdout or "")
+        stderr_text = result.stderr.decode("utf-8", errors="replace") if isinstance(result.stderr, (bytes, bytearray)) else (result.stderr or "")
+        parsed = parse_eval_output(stdout_text)
         return {
             "returncode": result.returncode,
             "expression": expression,
             "result": parsed,
             "fingerprint": fingerprint(parsed.get("value")) if parsed.get("ok") else None,
-            "stdout_tail": tail_text(result.stdout.strip()),
-            "stderr_tail": tail_text(result.stderr.strip()),
+            "stdout_tail": tail_text(stdout_text.strip()),
+            "stderr_tail": tail_text(stderr_text.strip()),
         }
     finally:
         try:
@@ -635,7 +653,10 @@ SERVER = SimpleMcpServer(
                     },
                     "test_tag": {"type": "string"},
                     "allow_db_write": {"type": "boolean"},
-                    "allow_production_like": {"type": "boolean"},
+                    # v0.21 H9/H10/H11 (security fix) — `allow_production_like`
+                    # was removed from the schema. The override is now an env
+                    # var (AGENT_TOOLKIT_ALLOW_PROD_LIKE=1) set by a human in
+                    # the terminal that launches the MCP server.
                     "timeout": {"type": "integer", "minimum": 30, "maximum": 7200},
                     "python_bin": {"type": "string"},
                     "odoo_bin": {"type": "string"},

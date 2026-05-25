@@ -74,6 +74,12 @@ def _exit_block(reason: str) -> int:
     except Exception:
         pass
     sys.stderr.write(f"[clarification-gate-enforcer] block: {reason}\n")
+    # v0.21 E6 (UX improvement) — structured docs reference + bypass tail.
+    sys.stderr.write(
+        "  · See docs: docs/hooks/clarification_gate_enforcer.md\n"
+        "  · Bypass once: `skip-clarification: <reason>` in next user prompt "
+        "OR ensure all 4 markers (UNDERSTANDING/ASSUMPTIONS/QUESTIONS/Searched:) present\n"
+    )
     return 2
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -47,18 +48,23 @@ class TestRunMainSafe(unittest.TestCase):
         rv = self.mod.run_main_safe(my_main)
         self.assertEqual(rv, 0)
 
-    def test_crash_caught_returns_0_and_logs(self):
+    def test_crash_caught_and_logs(self):
+        """v0.21: Default is now fail-CLOSED (rc=1). Crash still logged.
+        Set AGENT_TOOLKIT_NO_STRICT=1 to revert to legacy fail-open (rc=0).
+        """
         def my_main():
             raise RuntimeError("test crash")
 
         with tempfile.TemporaryDirectory() as td:
             workspace = Path(td)
             (workspace / ".agent-toolkit").mkdir()
-            # Patch crash log workspace resolution
+            # Patch crash log workspace resolution + opt out of strict
+            # to preserve legacy fail-open assertion semantics.
             with patch.object(self.mod, "_resolve_crash_workspace",
-                              return_value=workspace):
+                              return_value=workspace), \
+                 patch.dict(os.environ, {"AGENT_TOOLKIT_NO_STRICT": "1"}):
                 rv = self.mod.run_main_safe(my_main)
-            self.assertEqual(rv, 0, "Crash should return 0 (fail-open)")
+            self.assertEqual(rv, 0, "NO_STRICT opt-out → rc=0 (fail-open)")
             log_path = workspace / ".agent-toolkit" / ".hook_crash_log.json"
             self.assertTrue(log_path.exists(), "Crash log file should be written")
             data = json.loads(log_path.read_text(encoding="utf-8"))

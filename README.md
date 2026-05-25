@@ -4,14 +4,11 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python: 3.8+](https://img.shields.io/badge/python-3.8%2B-blue)](setup.py)
-[![tests](https://github.com/GITHUB_OWNER_PLACEHOLDER/agent-toolkit/actions/workflows/test.yml/badge.svg)](https://github.com/GITHUB_OWNER_PLACEHOLDER/agent-toolkit/actions/workflows/test.yml)
+[![tests](https://github.com/cybersthang/agent-toolkit/actions/workflows/test.yml/badge.svg)](https://github.com/cybersthang/agent-toolkit/actions/workflows/test.yml)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-compatible-7c3aed)](https://docs.claude.com/en/docs/claude-code)
 [![Cursor](https://img.shields.io/badge/Cursor-rules%20%2B%20skills-1e40af)](https://cursor.com)
 [![Spec Kit](https://img.shields.io/badge/Spec_Kit-aligned-22c55e)](https://github.com/github/spec-kit)
 [![Bilingual](https://img.shields.io/badge/docs-EN%20%2B%20VN-orange)](#-tiếng-việt)
-
-<!-- NOTE: replace `GITHUB_OWNER_PLACEHOLDER` above with your GitHub org/user
-     once the repo is pushed to GitHub. See REBUILD.md step 4. -->
 
 
 AI agents ship buggy code when nothing **mechanically** stops them. This toolkit

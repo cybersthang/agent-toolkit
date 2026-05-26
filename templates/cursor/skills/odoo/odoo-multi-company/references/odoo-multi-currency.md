@@ -194,9 +194,11 @@ may differ from the seller's company currency).
   flowing into rate selection.
 - `references/odoo-17-multicompany.md` — `with_company()` chain
   propagation into `_convert`.
-- `<see Odoo res.currency module source>` — for the exact
-  `_get_conversion_rate` algorithm + tiebreaker when a date matches
-  no rate row.
+- `odoo/odoo` `odoo/addons/base/models/res_currency.py` on the branch
+  matching the audited Odoo major — for the exact `_get_conversion_rate`
+  algorithm + tiebreaker when a date matches no rate row. The lookup
+  logic drifts between majors, so read the version under audit rather
+  than relying on a remembered behaviour from a prior project.
 
 ## 9. Hard rules
 

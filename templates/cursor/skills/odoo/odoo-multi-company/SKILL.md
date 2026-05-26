@@ -43,7 +43,7 @@ Then load the matching reference:
 | 12 | `references/odoo-12-multicompany.md` (pre-`with_company` era) |
 | 13 / 14 / 15 / 16 | apply `odoo-17-multicompany.md` + flag LOW transitional |
 | 17 | `references/odoo-17-multicompany.md` |
-| 18 / 19 / 20 | apply `odoo-17-multicompany.md` (no major delta yet — `<see Odoo 18+ multi-company guide>` for confirmation) + flag LOW |
+| 18 / 19 / 20 | apply `odoo-17-multicompany.md` (no dedicated delta written yet — re-check the target major's multi-company release notes before relying on this for an audit) + flag LOW |
 
 Currency conversion is **not version-locked** — always load
 `references/odoo-multi-currency.md` regardless of detected version.
@@ -199,8 +199,10 @@ def _summarize(self, records, target_currency=None):
 3. Call the summarizer in the user's `env.company = USD` context.
 4. Compare total to what should be — bug: ~49 USD reported; correct:
    ~0 USD (JPY rounds the per-record 0.49 to 0, sum is 0).
-5. Per-currency rounding error is `<see Odoo currency.round() reference>`
-   for exact semantics.
+5. For exact per-currency rounding semantics, refer to
+   `res.currency.round()` in `odoo/odoo` `odoo/addons/base/models/res_currency.py`
+   on the branch matching the target Odoo version (rounding helper
+   implementations drift between majors — read the version under audit).
 
 ### Invariant suggestion (auto-enforce)
 
@@ -363,9 +365,13 @@ class MyModel(models.Model):
 
 For `_inherit` extending a base model that already has a global
 `UNIQUE(...)`, dropping the original and re-declaring with the
-company-scoped variant requires a migration (`<see Odoo migration
-script reference>`) — never modify in-place without a `pre-init` hook
-that drops the old constraint.
+company-scoped variant requires a migration (Odoo `migrations/<version>/pre-*.py`
+hook pattern — see Odoo official docs "Module migration scripts"
+and `OCA/openupgrade` examples) — never modify in-place without a
+`pre-init` hook that drops the old constraint. When writing the
+fix-sketch, ground the pre-init example in an actual migration script
+from the project under audit (or an OCA reference) — generic snippets
+hide the per-table constraint name.
 
 ### Falsification recipe
 

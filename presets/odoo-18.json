@@ -1,5 +1,6 @@
 {
-  "description": "Odoo 18 Community / Enterprise — Python 3.10+, OWL framework. Reuses odoo-17 rules/memory (very similar architecture); fork the preset for v18-specific deltas.",
+  "_comment": "Odoo 18 differentiation from odoo-17 base: search(domain=...) keyword (was search(args=...)), aggregator='sum' field attr (was group_operator=), unified check_access(operation), <list> view tag preferred over <tree>, name_get() deprecated → _compute_display_name(). Reuses odoo-17 rule pack since deltas are additive-not-breaking for review purposes. See templates/cursor/skills/odoo/odoo-code-patterns/references/odoo-18-patterns.md for full delta list.",
+  "description": "Odoo 18 Community / Enterprise — Python 3.10+, OWL, search(domain=...), <list> view tag, unified check_access(). Reuses odoo-17 rule pack — see odoo-18-patterns.md for deltas.",
   "stack_label": "Odoo 18",
   "response_language": "Vietnamese",
   "stack": {
@@ -7,7 +8,11 @@
     "language_version": "3.10",
     "framework": "odoo",
     "framework_version": "18",
-    "frontend": "OWL framework"
+    "frontend": "OWL framework",
+    "_doc": "Per-stack optional path overrides — used by realdata_test MCP. Leave empty to let user set <PREFIX>_ODOO_BIN / <PREFIX>_ODOO_CONF env vars at runtime.",
+    "odoo_bin_rel": "",
+    "odoo_conf_rel": "",
+    "smoke_test_rel": ""
   },
   "addon_roots": ["addons", "custom_addons", "enterprise"],
   "mcp_servers": ["codebase", "postgres", "realdata_test"],
@@ -23,6 +28,7 @@
     "default_user": "odoo"
   },
   "rules": ["_common", "odoo-17"],
+  "_rules_comment": "TODO: differentiate from odoo-17 base when templates/cursor/rules/odoo-18/ is authored. v18 deltas (search keyword, aggregator, check_access) covered in skill references only.",
   "skills": ["_common", "odoo"],
   "memory_packs": ["odoo-17"]
 }

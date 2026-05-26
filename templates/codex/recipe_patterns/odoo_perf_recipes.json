@@ -1,0 +1,263 @@
+{
+  "_doc": "Falsification recipes for Odoo performance claims — used by realdata_test MCP (eval_orm_expression + consistency_check_eval) to verify perf claims mechanically. Each recipe encodes: (1) the claim shape, (2) a one-line code/data perturbation (PERTURB-TEST sentinel for grep revert), (3) the measurement command/tool hint, (4) the predicted delta with-vs-without the fix, (5) numeric tolerance, (6) a grep guard so revert can be verified post-run. Stack-detection: presence of `odoo-bin` / `__manifest__.py` in workspace. Schema matches the inverse-perturbation pattern in templates/cursor/skills/_common/claim-falsification/SKILL.md.",
+  "stack": "odoo",
+  "applicable_versions": ["12", "13", "14", "15", "16", "17", "18"],
+  "patterns": [
+    {
+      "id": "n_plus_one_search_in_loop",
+      "claim_pattern": "(?i)(?:iteration|loop)\\s+(?:over|on)\\s+(?:records?|recordset|\\w+_ids)\\s+(?:uses?|issues?|fires?)\\s+(?:a\\s+)?single\\s+quer(?:y|ies)|O\\(1\\)\\s+per\\s+record",
+      "stack": "odoo",
+      "applicable_versions": ["12", "13", "14", "15", "16", "17", "18"],
+      "injection": {
+        "type": "code_pattern",
+        "target_pattern": "for\\s+(?P<rec>\\w+)\\s+in\\s+(?P<rs>self|\\w+_ids|records):",
+        "inject_lines": "            _ = {rec}.{related_field}.display_name  # PERTURB-TEST n_plus_one",
+        "inject_position": "first_line_of_loop_body",
+        "notes": "{related_field} must be a many2one declared on the model; if loop already accesses the chain naturally, skip injection and just enable query log."
+      },
+      "measurement": {
+        "type": "query_count",
+        "command": "self.env.cr.sql_log = True; <run loop body>; self.env.cr.sql_log = False",
+        "alt_command": "with self.env.registry.cursor() as cr: cr.execute('SET log_statement = all'); <run>",
+        "tool_hint": "realdata_test.eval_orm_expression",
+        "extract": "count(SELECT statements emitted during loop)"
+      },
+      "predicted_delta": {
+        "with_fix": "query_count <= 2  # 1 batch SELECT + 1 prefetch",
+        "without_fix": "query_count >= N  # one SELECT per record (N+1)",
+        "delta_signal": "query_count - len(recordset)"
+      },
+      "tolerance": 0.1,
+      "revert_check": "grep -R 'PERTURB-TEST n_plus_one' addons/ && echo FAIL || echo OK"
+    },
+    {
+      "id": "prefetch_break_via_branching",
+      "claim_pattern": "(?i)(?:ORM|odoo)\\s+(?:auto[-_\\s]?)?prefetch(?:es)?\\s+(?:the\\s+)?(?:relational\\s+chain|many2one|x2many)",
+      "stack": "odoo",
+      "applicable_versions": ["12", "13", "14", "15", "16", "17", "18"],
+      "injection": {
+        "type": "code_pattern",
+        "target_pattern": "for\\s+(?P<rec>\\w+)\\s+in\\s+(?P<rs>self|\\w+_ids):",
+        "inject_lines": "            if {rec}.state == 'draft':  # PERTURB-TEST prefetch_break\n                {rec} = {rec}.with_context(prefetch_fields=False)\n            _ = {rec}.{related_field}.name",
+        "notes": "Branching + recordset rebinding mid-loop drops the prefetch cohort. If the original loop is already branchful, perturb by replacing first access with a `.sudo()` round-trip which also breaks prefetch."
+      },
+      "measurement": {
+        "type": "query_count",
+        "command": "before = len(self.env.cr.sql_log_count or []); <run loop>; after = len(self.env.cr.sql_log_count or [])",
+        "tool_hint": "realdata_test.eval_orm_expression",
+        "extract": "after - before"
+      },
+      "predicted_delta": {
+        "with_fix": "query_count stable at ~2 regardless of recordset size",
+        "without_fix": "query_count grows ~linearly with len(recordset)",
+        "delta_signal": "slope(query_count vs len(recordset)) >= 0.8"
+      },
+      "tolerance": 0.2,
+      "revert_check": "grep -R 'PERTURB-TEST prefetch_break' addons/ && echo FAIL || echo OK"
+    },
+    {
+      "id": "stored_compute_recursion",
+      "claim_pattern": "(?i)stored\\s+compute\\s+(?:field\\s+)?(?:completes?|runs?|finishes?)\\s+(?:in\\s+)?(?:<\\s*|under\\s+)?(?P<ms>\\d+)\\s*(?:ms|milliseconds?)",
+      "stack": "odoo",
+      "applicable_versions": ["12", "13", "14", "15", "16", "17", "18"],
+      "injection": {
+        "type": "code_pattern",
+        "target_pattern": "def\\s+_compute_(?P<field>\\w+)\\s*\\(self\\):",
+        "inject_lines": "        import time as _t; _t.sleep(2)  # PERTURB-TEST stored_compute",
+        "inject_position": "first_line_of_method_body",
+        "notes": "Inject sleep(2) at the top of the compute method body. If the claim is that the compute is NOT in the write() dependency chain, then a write() to an unrelated field should NOT trigger the sleep."
+      },
+      "measurement": {
+        "type": "wall_clock",
+        "command": "t0=time.monotonic(); rec.write({'<unrelated_field>': new_value}); dt = time.monotonic() - t0",
+        "tool_hint": "realdata_test.eval_orm_expression",
+        "extract": "dt"
+      },
+      "predicted_delta": {
+        "with_fix": "dt < 0.3  # compute not triggered by unrelated write",
+        "without_fix": "dt >= 2.0  # compute IS in dependency chain, picks up the sleep",
+        "delta_signal": "dt_perturbed - dt_baseline"
+      },
+      "tolerance": 0.3,
+      "revert_check": "grep -R 'PERTURB-TEST stored_compute' addons/ && echo FAIL || echo OK"
+    },
+    {
+      "id": "missing_index_on_where_clause",
+      "claim_pattern": "(?i)search\\s+(?:on\\s+)?(?:field\\s+)?(?P<field>\\w+)\\s+is\\s+(?:fast|indexed|O\\(log\\s+N\\))",
+      "stack": "odoo",
+      "applicable_versions": ["12", "13", "14", "15", "16", "17", "18"],
+      "injection": {
+        "type": "data_load",
+        "target_pattern": "<model>",
+        "inject_lines": "self.env['<model>'].create([{{'<field>': 'val_%d' % i for i in range(10000)}} for i in range(10000)])  # PERTURB-TEST missing_index",
+        "notes": "Load 10k synthetic rows on dev DB only. NEVER run on production. After load, run EXPLAIN ANALYZE on the same domain the claim references."
+      },
+      "measurement": {
+        "type": "query_plan",
+        "command": "EXPLAIN (ANALYZE, BUFFERS) SELECT id FROM <model>_table WHERE <field> = '<value>'",
+        "tool_hint": "realdata_test.eval_orm_expression",
+        "alt_tool": "postgres.query_readonly",
+        "extract": "first node type in plan: 'Seq Scan' vs 'Index Scan' / 'Index Only Scan' / 'Bitmap Index Scan'"
+      },
+      "predicted_delta": {
+        "with_fix": "plan contains 'Index Scan' or 'Index Only Scan' on <field>_index",
+        "without_fix": "plan contains 'Seq Scan' on <model>_table",
+        "delta_signal": "'Seq Scan' in plan_text"
+      },
+      "tolerance": 0.0,
+      "revert_check": "self.env['<model>'].search([('<field>', 'like', 'val_%')]).unlink(); grep -R 'PERTURB-TEST missing_index' addons/ && echo FAIL || echo OK"
+    },
+    {
+      "id": "sudo_in_hot_loop",
+      "claim_pattern": "(?i)no\\s+(?:ir\\.rule|record[-_\\s]rule|access[-_\\s]check)\\s+overhead|sudo\\(\\)\\s+(?:is\\s+)?safe\\s+(?:in|for)\\s+(?:hot\\s+)?loop",
+      "stack": "odoo",
+      "applicable_versions": ["12", "13", "14", "15", "16", "17", "18"],
+      "injection": {
+        "type": "static_count",
+        "target_pattern": "\\.sudo\\(\\)",
+        "inject_lines": "# PERTURB-TEST sudo_count: no code change — measure existing sudo() call sites",
+        "notes": "Static count via grep; runtime measurement via stack inspection. Sudo bypasses ir.rule SQL JOIN but loses audit trail."
+      },
+      "measurement": {
+        "type": "static_grep_plus_query_count",
+        "command": "grep -c '\\.sudo()' <module>/models/*.py; AND query_count_delta = run_with_sudo_disabled vs run_with_sudo",
+        "tool_hint": "realdata_test.eval_orm_expression",
+        "extract": "(sudo_call_sites, query_count_with_sudo, query_count_without_sudo)"
+      },
+      "predicted_delta": {
+        "with_fix": "sudo_call_sites in hot path == 0, OR query_count_diff < 5%  # rules genuinely don't apply",
+        "without_fix": "sudo_call_sites > 0 in loop body AND query_count_without_sudo > query_count_with_sudo * 1.3",
+        "delta_signal": "query_count_without_sudo / max(query_count_with_sudo, 1)"
+      },
+      "tolerance": 0.15,
+      "revert_check": "no code change — confirm by `grep -R 'PERTURB-TEST sudo_count' addons/ && echo FAIL || echo OK`"
+    },
+    {
+      "id": "xml_view_inheritance_explosion",
+      "claim_pattern": "(?i)(?:view|qweb)\\s+render(?:s?|ing)\\s+(?:in\\s+)?(?:<\\s*|under\\s+)?(?P<ms>\\d+)\\s*(?:ms|milliseconds?)",
+      "stack": "odoo",
+      "applicable_versions": ["12", "13", "14", "15", "16", "17", "18"],
+      "injection": {
+        "type": "static_count",
+        "target_pattern": "<record\\s+id=\"[^\"]+\"\\s+model=\"ir\\.ui\\.view\">[\\s\\S]*?<field\\s+name=\"inherit_id\"\\s+ref=\"(?P<parent>[^\"]+)\"",
+        "inject_lines": "# PERTURB-TEST view_inheritance: no XML change — count inheriting views via ORM",
+        "notes": "Count inheriting views: self.env['ir.ui.view'].search([('inherit_id', '=', view_id)]) recursively. Then time fields_view_get / get_view."
+      },
+      "measurement": {
+        "type": "wall_clock_plus_count",
+        "command": "view = self.env.ref('<xml_id>'); count = len(view._get_inheriting_views_arch(view.id, view.model)); t0=time.monotonic(); view.read_combined(['arch']); dt=time.monotonic()-t0",
+        "tool_hint": "realdata_test.eval_orm_expression",
+        "extract": "(count, dt)"
+      },
+      "predicted_delta": {
+        "with_fix": "dt grows sub-linearly with count  # cache hits or shallow inheritance",
+        "without_fix": "dt grows linearly: dt_ms / count > 5ms per inheriting view",
+        "delta_signal": "dt_ms / max(count, 1)"
+      },
+      "tolerance": 0.25,
+      "revert_check": "no code change — confirm by `grep -R 'PERTURB-TEST view_inheritance' addons/ && echo FAIL || echo OK`"
+    },
+    {
+      "id": "cron_job_lock_contention",
+      "claim_pattern": "(?i)(?:scheduled\\s+action|cron|ir\\.cron)\\s+(?:completes?|finishes?|runs?)\\s+(?:within|in\\s+under)\\s+(?:the\\s+)?(?:scheduled\\s+)?interval",
+      "stack": "odoo",
+      "applicable_versions": ["12", "13", "14", "15", "16", "17", "18"],
+      "injection": {
+        "type": "concurrent_trigger",
+        "target_pattern": "<record\\s+id=\"[^\"]+\"\\s+model=\"ir\\.cron\">",
+        "inject_lines": "# PERTURB-TEST cron_lock: schedule the same cron job to fire twice within 1 interval",
+        "notes": "Trigger the cron method directly from two separate cursors / two workers. Measure pg_locks for ir.cron row + the wall-clock wait of the 2nd run."
+      },
+      "measurement": {
+        "type": "wall_clock_plus_pg_locks",
+        "command": "SELECT pid, mode, granted FROM pg_locks WHERE relation = 'ir_cron'::regclass; AND wall-clock of 2nd job",
+        "tool_hint": "realdata_test.eval_orm_expression",
+        "alt_tool": "postgres.query_readonly",
+        "extract": "(lock_wait_seconds, both_jobs_completed)"
+      },
+      "predicted_delta": {
+        "with_fix": "lock_wait_seconds < 0.5 OR 2nd job exits cleanly (skip-if-busy pattern)",
+        "without_fix": "lock_wait_seconds >= job_duration  # 2nd worker blocked on row lock until 1st finishes",
+        "delta_signal": "lock_wait_seconds / job_duration_seconds"
+      },
+      "tolerance": 0.2,
+      "revert_check": "no code change — confirm by `grep -R 'PERTURB-TEST cron_lock' addons/ && echo FAIL || echo OK`"
+    },
+    {
+      "id": "report_qweb_compile_cache_miss",
+      "claim_pattern": "(?i)(?:QWeb|qweb)\\s+(?:report|template)\\s+renders?\\s+(?:quickly|fast|in\\s+<\\s*(?P<ms>\\d+)\\s*ms)",
+      "stack": "odoo",
+      "applicable_versions": ["12", "13", "14", "15", "16", "17", "18"],
+      "injection": {
+        "type": "cache_invalidation",
+        "target_pattern": "<report\\s+id=\"(?P<report_id>[^\"]+)\"",
+        "inject_lines": "self.env['ir.qweb'].clear_caches()  # PERTURB-TEST qweb_cold_cache",
+        "notes": "clear_caches() forces recompile of the QWeb template. Measure first render (cold) vs subsequent render (warm)."
+      },
+      "measurement": {
+        "type": "wall_clock_dual",
+        "command": "self.env['ir.qweb'].clear_caches(); t0=time.monotonic(); self.env.ref('<report_id>').render_qweb_pdf([rec_id]); dt_cold=time.monotonic()-t0; t1=time.monotonic(); self.env.ref('<report_id>').render_qweb_pdf([rec_id]); dt_warm=time.monotonic()-t1",
+        "tool_hint": "realdata_test.eval_orm_expression",
+        "extract": "(dt_cold, dt_warm)"
+      },
+      "predicted_delta": {
+        "with_fix": "dt_cold / dt_warm < 3.0  # compile cost amortized or eagerly warmed",
+        "without_fix": "dt_cold / dt_warm >= 5.0  # cold render 5-10x slower than warm",
+        "delta_signal": "dt_cold / max(dt_warm, 1e-6)"
+      },
+      "tolerance": 0.3,
+      "revert_check": "self.env['ir.qweb'].clear_caches() once more to re-stabilize; grep -R 'PERTURB-TEST qweb_cold_cache' addons/ && echo FAIL || echo OK"
+    },
+    {
+      "id": "mail_message_create_n_plus_one",
+      "claim_pattern": "(?i)(?:posting|sending)\\s+(?:a\\s+)?message\\s+(?:is\\s+)?O\\(1\\)\\s+per\\s+record|mail\\.message\\s+(?:create|post)\\s+(?:is\\s+)?batched",
+      "stack": "odoo",
+      "applicable_versions": ["12", "13", "14", "15", "16", "17", "18"],
+      "injection": {
+        "type": "batch_call",
+        "target_pattern": "\\.message_post\\(",
+        "inject_lines": "# PERTURB-TEST mail_n_plus_one: count mail.message INSERTs while posting to 100 records",
+        "notes": "Post the same body to 100 records, count INSERT INTO mail_message statements. Single batched INSERT vs 100 single-row INSERTs."
+      },
+      "measurement": {
+        "type": "query_count_filtered",
+        "command": "with self.env.cr.savepoint(): self.env.cr.sql_log = True; for r in recs_100: r.message_post(body='x'); inserts = count_matching('INSERT INTO mail_message', self.env.cr.sql_log); self.env.cr.sql_log = False",
+        "tool_hint": "realdata_test.eval_orm_expression",
+        "extract": "inserts"
+      },
+      "predicted_delta": {
+        "with_fix": "inserts <= 5  # batched via execute_values / single INSERT",
+        "without_fix": "inserts >= 100  # one INSERT per record (true N+1 for mail)",
+        "delta_signal": "inserts / len(recs_100)"
+      },
+      "tolerance": 0.1,
+      "revert_check": "self.env['mail.message'].search([('body', '=', '<p>x</p>')]).unlink(); grep -R 'PERTURB-TEST mail_n_plus_one' addons/ && echo FAIL || echo OK"
+    },
+    {
+      "id": "search_count_vs_search_len",
+      "claim_pattern": "(?i)search_count\\s+(?:is\\s+)?(?:faster|cheaper|better)\\s+than\\s+(?:len\\(\\s*)?\\.?search\\(",
+      "stack": "odoo",
+      "applicable_versions": ["12", "13", "14", "15", "16", "17", "18"],
+      "injection": {
+        "type": "dual_call",
+        "target_pattern": "(?:len\\(\\s*self\\.env\\[[^\\]]+\\]\\.search\\([^)]*\\)\\s*\\)|self\\.env\\[[^\\]]+\\]\\.search_count\\()",
+        "inject_lines": "# PERTURB-TEST search_count_vs_len: dual call on same domain — no code change, parallel measurement",
+        "notes": "Run BOTH `len(Model.search(domain))` and `Model.search_count(domain)` on the same large table. Compare query plans + wall time."
+      },
+      "measurement": {
+        "type": "query_plan_dual",
+        "command": "t0=time.monotonic(); n1 = len(Model.search(domain)); dt_search = time.monotonic()-t0; t1=time.monotonic(); n2 = Model.search_count(domain); dt_count = time.monotonic()-t1; assert n1 == n2",
+        "tool_hint": "realdata_test.eval_orm_expression",
+        "alt_tool": "postgres.query_readonly",
+        "extract": "(dt_search, dt_count, plan_search, plan_count)"
+      },
+      "predicted_delta": {
+        "with_fix": "dt_count < dt_search * 0.5 AND plan_count uses 'Aggregate' + 'COUNT(*)' without materializing rows",
+        "without_fix": "dt_count >= dt_search * 0.9  # claim is wrong — both plans equivalent on this domain",
+        "delta_signal": "dt_count / max(dt_search, 1e-6)"
+      },
+      "tolerance": 0.2,
+      "revert_check": "no code change — confirm by `grep -R 'PERTURB-TEST search_count_vs_len' addons/ && echo FAIL || echo OK`"
+    }
+  ]
+}

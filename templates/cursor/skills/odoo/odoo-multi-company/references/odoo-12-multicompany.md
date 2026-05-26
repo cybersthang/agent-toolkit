@@ -140,10 +140,11 @@ methods in v12 — including any multi-company helper methods you write.
 ## 7. Currency rate lookup in v12
 
 `res.currency._convert(from_amount, to_currency, company, date)` exists
-in v12 but the signature is older — verify by `<see Odoo 12 currency
-module source>`. The `company` argument controls which company's
-`res.currency.rate` rows are consulted (rates are stored per-company in
-v12 via `ir.property`).
+in v12 but the signature is older than the modern (v14+) form — read
+`odoo/odoo` 12.0 `odoo/addons/base/models/res_currency.py` directly
+when an audit hinges on the exact v12 signature. The `company` argument
+controls which company's `res.currency.rate` rows are consulted (rates
+are stored per-company in v12 via `ir.property`).
 
 Pitfall: passing the wrong company picks the wrong rate table and
 produces silent FX drift. See `references/odoo-multi-currency.md`.

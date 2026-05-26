@@ -1,5 +1,6 @@
 {
-  "description": "Odoo 16 Community / Enterprise — Python 3.10+, OWL 2.x mainstream. Reuses odoo-17 rules/memory (modern ORM + OWL patterns); fork the preset to capture v16-specific differences.",
+  "_comment": "Odoo 16 differentiation from odoo-17 base: Python 3.10 baseline, OWL 2.x rewrite mainstream, account.move refactor (account.invoice → account.move unification completed), @api.multi removed. Reuses odoo-17 rule pack as it's closer to modern era than legacy odoo-12. TODO: add templates/cursor/rules/odoo-16/ when v16-specific .mdc content is authored.",
+  "description": "Odoo 16 Community / Enterprise — Python 3.10+, OWL 2.x rewrite mainstream, @api.multi REMOVED, account.move refactor. Modern era; reuses odoo-17 rule pack.",
   "stack_label": "Odoo 16",
   "response_language": "Vietnamese",
   "stack": {
@@ -7,7 +8,11 @@
     "language_version": "3.10",
     "framework": "odoo",
     "framework_version": "16",
-    "frontend": "OWL 2.x"
+    "frontend": "OWL 2.x",
+    "_doc": "Per-stack optional path overrides — used by realdata_test MCP. Leave empty to let user set <PREFIX>_ODOO_BIN / <PREFIX>_ODOO_CONF env vars at runtime.",
+    "odoo_bin_rel": "",
+    "odoo_conf_rel": "",
+    "smoke_test_rel": ""
   },
   "addon_roots": ["addons", "custom_addons", "enterprise"],
   "mcp_servers": ["codebase", "postgres", "realdata_test"],
@@ -23,6 +28,7 @@
     "default_user": "odoo"
   },
   "rules": ["_common", "odoo-17"],
+  "_rules_comment": "TODO: differentiate from odoo-17 base when templates/cursor/rules/odoo-16/ is authored. v16 is the first major OWL2 release — patterns very close to v17.",
   "skills": ["_common", "odoo"],
   "memory_packs": ["odoo-17"]
 }

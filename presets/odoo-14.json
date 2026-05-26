@@ -1,5 +1,6 @@
 {
-  "description": "Odoo 14 Community / Enterprise — Python 3.7+, QWeb + jQuery, @api.multi era. Reuses odoo-12 rules/memory (same legacy ORM patterns); fork the preset to add v14-specific differences.",
+  "_comment": "Odoo 14 differentiation from odoo-12 base: Python 3.7 baseline, mail framework rebuilt (mail.thread/mail.activity APIs changed), assets manifest dict introduced. Legacy ORM still dominant — reuses odoo-12 rule pack. TODO: add templates/cursor/rules/odoo-14/ when v14-specific .mdc content is authored.",
+  "description": "Odoo 14 Community / Enterprise — Python 3.7+, QWeb + jQuery, rebuilt mail framework, manifest `assets` dict introduced. Legacy ORM era; reuses odoo-12 rule pack.",
   "stack_label": "Odoo 14",
   "response_language": "Vietnamese",
   "stack": {
@@ -27,6 +28,7 @@
     "default_user": "odoo"
   },
   "rules": ["_common", "odoo-12"],
+  "_rules_comment": "TODO: differentiate from odoo-12 base when templates/cursor/rules/odoo-14/ is authored. v14 still uses @api.multi-era patterns so odoo-12 rules apply.",
   "skills": ["_common", "odoo"],
   "memory_packs": ["odoo-12"]
 }

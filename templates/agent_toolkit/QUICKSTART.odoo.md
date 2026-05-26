@@ -135,6 +135,56 @@ the claim if timing doesn't shift by 2s).
 | `/adr-add <title>` | Capture WHY behind a decision |
 | `/review <scope>` | Exhaustive 3-skill code review with lock-file precedence |
 
+## Available skills
+
+14 Odoo skills ship with every Odoo preset (all version-aware — Step 0
+reads `__manifest__.py` and loads the matching `references/odoo-<N>-*.md`).
+Grouped by intent:
+
+**Core workflow** (day-to-day Spec Kit work):
+
+| Skill | One-line |
+|---|---|
+| `odoo-code-patterns` | Canonical model / wizard / view / OWL patterns per Odoo major. |
+| `odoo-code-review` | Exhaustive single-pass review with PROOF + Doubt-pass line per finding. |
+| `odoo-codebase-discovery` | MCP-first discovery via `discover_modules` / `read_manifest`. |
+| `odoo-debug-troubleshoot` | Per-version pitfall tables — fast quick-fix lookup. |
+| `odoo-tdd` | Red-Green-Refactor + perturb-test routing for Odoo modules. |
+
+**Multi-edition** (Community vs Enterprise vs multi-company):
+
+| Skill | One-line |
+|---|---|
+| `odoo-community-patterns` | Community-only conventions; flag Enterprise-only access. |
+| `odoo-enterprise-patterns` | Enterprise modules (Studio, accounting full, marketing automation). |
+| `odoo-multi-company` | Multi-company record rules + `company_dependent` fields. |
+
+**Frontend**:
+
+| Skill | One-line |
+|---|---|
+| `odoo-owl-components` | OWL components — 12 jQuery fallback, 15+ OWL 1.x, 17+ OWL framework. |
+
+**Performance**:
+
+| Skill | One-line |
+|---|---|
+| `odoo-performance` | N+1, computed-field tuning, prefetch, indexes. 10 cross-version recipes. |
+
+**Operations**:
+
+| Skill | One-line |
+|---|---|
+| `odoo-jira-workflow` | JIRA MCP tool wiring for ticket workflows. |
+| `odoo-module-scaffold` | Bootstrap a new Odoo module with the right skeleton per version. |
+
+**Discovery**:
+
+| Skill | One-line |
+|---|---|
+| `odoo-data-verification` | Real-DB ORM probes via `realdata_test` MCP. |
+| `odoo-deterministic-answers` | `canonical_decisions.json` registry workflow. |
+
 ## CLI tools
 
 | Tool | Purpose |

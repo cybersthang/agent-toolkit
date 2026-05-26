@@ -1,5 +1,6 @@
 {
-  "description": "Odoo 13 Community / Enterprise — Python 3.6+, QWeb + jQuery, @api.multi era. Reuses odoo-12 rules/memory (similar architecture); fork the preset to add v13-specific differences.",
+  "_comment": "Odoo 13 differentiation from odoo-12 base: dropped @api.one (use @api.depends/iterate self), Python 3.6 baseline. Architecture otherwise close to v12 — reuses odoo-12 rule pack until a dedicated odoo-13 rule dir exists. TODO: add templates/cursor/rules/odoo-13/ when v13-specific .mdc content is authored.",
+  "description": "Odoo 13 Community / Enterprise — Python 3.6+, QWeb + jQuery, recordset-default (no @api.one). Legacy ORM era; reuses odoo-12 rule pack — fork when v13 deltas materialize.",
   "stack_label": "Odoo 13",
   "response_language": "Vietnamese",
   "stack": {
@@ -27,6 +28,7 @@
     "default_user": "odoo"
   },
   "rules": ["_common", "odoo-12"],
+  "_rules_comment": "TODO: differentiate from odoo-12 base when templates/cursor/rules/odoo-13/ is authored. v13 still uses @api.multi-era patterns so odoo-12 rules apply.",
   "skills": ["_common", "odoo"],
   "memory_packs": ["odoo-12"]
 }

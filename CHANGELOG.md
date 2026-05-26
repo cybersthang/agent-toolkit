@@ -3,6 +3,89 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
+## [0.22.0] — TBD pending merge to master — Odoo edition coverage + 4-axis depth
+
+Q2 / Phase A release. Closes the M19 deferral from v0.21 (per-Odoo-version
+preset deep differentiation), broadens skill coverage to Community +
+Enterprise editions + OWL frontend + performance, and resolves 12 TODO
+markers left over from the v0.21 ship rush (Agent M's work).
+
+Full audit trail at [docs/AUDIT_HISTORY.md](docs/AUDIT_HISTORY.md)
+SECTION I (Round 4 + Phase A).
+
+**Added — 5 new Odoo skills** (auto-included by every Odoo preset; bring
+total Odoo skill count from 9 → **14**):
+
+- `templates/cursor/skills/odoo/odoo-community-patterns/` — Community
+  edition conventions; flag Enterprise-only modules/fields with citations
+  so the agent doesn't recommend Studio / marketing-automation patterns
+  on a Community DB. Version-aware (12 / 17 references).
+- `templates/cursor/skills/odoo/odoo-enterprise-patterns/` — Enterprise
+  edition conventions (Studio, accounting full, marketing automation,
+  documents). Cross-references invariants so Community installs flag
+  hard-coded Enterprise field access.
+- `templates/cursor/skills/odoo/odoo-multi-company/` — multi-company /
+  multi-currency record rules + `company_dependent` fields + cross-company
+  data leak audits. Version-aware.
+- `templates/cursor/skills/odoo/odoo-owl-components/` — OWL frontend
+  component patterns. Three-tier cascade: Odoo 12 jQuery fallback, 15+
+  OWL 1.x, 17+ OWL framework.
+- `templates/cursor/skills/odoo/odoo-performance/` — N+1 detection,
+  slow computed fields, prefetch context, `read_group(lazy=False)`,
+  index API, QWeb `t-cache`. **10 cross-version performance recipes**
+  shipped (`references/odoo-12-perf.md`, `odoo-17-perf.md`,
+  `odoo-18-perf.md`).
+
+**Added — 4-axis Odoo depth (Q2)**:
+
+- Citations to upstream Odoo docs in every version-specific reference
+  file (`references/odoo-<N>-*.md`).
+- Preset diff deepening — `presets/odoo-13.json` through
+  `presets/odoo-20.json` no longer schema-identical with 12/17; each
+  captures version-specific `addon_roots`, framework version, OWL flag,
+  and edition default.
+- 10 cross-version performance recipes (see above).
+- 3 new skills delivered as part of Axis-2 (multi-edition coverage):
+  `odoo-community-patterns`, `odoo-enterprise-patterns`,
+  `odoo-multi-company`.
+
+**Added — 5 default invariants** shipped with the toolkit preset
+(populated into `templates/agent_toolkit/invariants.json`):
+
+- `no-bare-python` — scripts must use venv Python, not bare `python`.
+- `no-enterprise-fields-in-community` — Enterprise-only field/module
+  access flagged when running against a Community preset.
+- `multi-company-recordset-guard` — record rules must honour
+  `company_id` constraint on multi-company models.
+- `owl-component-no-jquery` — flag jQuery use in OWL component code
+  (15+ presets).
+- `performance-no-search-in-loop` — `for x in records: self.env[...].search(...)`
+  is N+1; surface for review.
+
+**Resolved — 12 outstanding TODO markers** (Agent M / Phase A):
+
+- Stale `XXX:`, `TODO:`, and `FIXME:` markers introduced across the
+  v0.21 ship rush — see Round 4 finding R4-1 in
+  [docs/AUDIT_HISTORY.md](docs/AUDIT_HISTORY.md).
+
+**Changed**:
+
+- `README.md` — Odoo skill count claim updated 9 → 14; "What's new"
+  section added; per-category Odoo skill table.
+- `templates/agent_toolkit/QUICKSTART.odoo.md` — new "Available skills"
+  section grouping 14 skills by category.
+- `docs/AUDIT_HISTORY.md` — new SECTION I (Round 4 + Phase A) appended.
+
+**Deferred to v0.23**:
+
+- **R4-2** — full Odoo 19 / 20 preset population (currently inherits
+  from odoo-17 with OWL version delta only).
+- **R4-4** — Enterprise-edition real-data MCP probes (depends on a
+  shipped Enterprise sandbox; private overlay territory).
+- **R4-5** — performance recipe falsification harness (every recipe
+  should ship with a `claim-falsification` perturbation; current set
+  has prose recipes only).
+
 ## [0.21.0] — 2026-05-25 — security hardening + CI fix + rebuild bundle
 
 Closes 8 audit findings (Round 3 security + cross-cutting) and the

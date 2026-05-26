@@ -93,5 +93,7 @@ CREATE INDEX IF NOT EXISTS <table>_<col>_idx ON <table> ((data->>'key'));
 - `read_group(..., lazy=False)` for Python aggregators.
 - Functional / JSONB indexes go in a migration script, not the model.
 - `t-cache` keys must be stable strings — verify per-render.
-- No OWL → frontend perf is jQuery + QWeb t-cache; <see Odoo 12 release
-  notes for jQuery version> if a finding hinges on frontend bundle size.
+- No OWL → frontend perf is jQuery + QWeb t-cache. If a finding hinges
+  on the frontend bundle size or a specific jQuery API, read the exact
+  jQuery version shipped under `addons/web/static/lib/jquery/` on the
+  matching `odoo/odoo` 12.0 branch rather than assuming the major.

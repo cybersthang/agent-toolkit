@@ -1,14 +1,19 @@
 # Odoo 17 — multi-company specifics (mature `with_company` API)
 
 Load this when Step 0 detected major = **17** (or **16** transitional
-with a LOW flag, or **18/19/20** until a dedicated delta is written —
-`<see Odoo 18+ multi-company guide>` to confirm no new semantics).
+with a LOW flag, or **18/19/20** until a dedicated delta is written).
+
+> Cascading this 17 reference to 18+ is a stop-gap until a dedicated
+> delta exists. Before relying on it for an 18+ audit, re-check the
+> target major's multi-company release notes / `odoo/odoo` branch for
+> new semantics — flag findings as version-tentative if anything in the
+> code under audit hinges on 18-specific multi-company behaviour.
 
 The `with_company()` chain was introduced in **Odoo 14** and matured in
 **Odoo 15-17**. It supersedes the old `with_context(force_company=...)`
 pattern. Both technically still work in 17, but `with_company()` is the
-canonical form, and the `force_company` context key is on a deprecation
-trajectory.
+canonical form, and the `force_company` context key is legacy — always
+prefer the chain form for new code.
 
 ## 1. `with_company()` — what it actually does
 
@@ -69,11 +74,15 @@ create / write: the target record's `company_id` must be compatible
 with the parent's `company_id` (same company OR target is a
 multi-company / no-company shared record).
 
-Verification (`<see Odoo 17 _check_company implementation>`): the auto
-check fires from `_inverse_field` / `write` hooks. If a related record
-is from another company AND has a non-False `company_id`, raises
-`UserError("Some records are incompatible with the company of the
-record.")`.
+Verification: the auto check fires from `_inverse_field` / `write`
+hooks (see the `_check_company` method on `odoo/models.py` in the
+`odoo/odoo` branch matching the audited major). If a related record
+is from another company AND has a non-False `company_id`, the check
+raises a `UserError` of the form *"Some records are incompatible with
+the company of the record."* When the exact line / phrasing matters
+in an audit finding, read the method on the target branch directly
+rather than quoting from memory — the wording has been touched
+between majors.
 
 Use this instead of writing manual `if rec.partner_id.company_id != rec.company_id: raise ...` checks.
 
@@ -188,8 +197,11 @@ selection rules.
 ## 9. v17-specific hard rules
 
 - Prefer `with_company(rec.company_id)` over
-  `with_context(force_company=rec.company_id.id)` — the latter is
-  legacy and slated for removal (`<see Odoo 18+ deprecation status>`).
+  `with_context(force_company=rec.company_id.id)` — the latter is the
+  legacy v12-era switch and modern code paths (v14+) should use the
+  `with_company()` chain. Check the target Odoo version's deprecation
+  status for `force_company` if migrating legacy code, rather than
+  asserting a specific removal major in a customer-facing report.
 - `_check_company_auto = True` + `check_company=True` on `Many2one`
   fields supersedes hand-rolled company-consistency checks.
 - `default=lambda s: s.env.company` is canonical; `_company_default_get`

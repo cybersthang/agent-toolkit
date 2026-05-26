@@ -1,20 +1,21 @@
 ---
 title: agent-toolkit — Audit History
-generated: 2026-05-25
-sessions: 3 audit rounds + 1 external reviewer + ship-blocker discovery + post-v0.21 CI regression
-current_version: 0.21.0
-total_findings: 60+ across all sources
+generated: 2026-05-26
+sessions: 4 audit rounds + 1 external reviewer + ship-blocker discovery + post-v0.21 CI regression + Phase A
+current_version: 0.22.0 (TBD pending merge to master)
+total_findings: 65+ across all sources
 closed_v0_21: 35 (R1: 13, R2: 14, R3: 6, Reg: 2)
-status: open ship-blockers tracked in `SECTION A`; post-v0.21 work in `SECTION G`
+closed_v0_22: 2 R4 + Phase A actions (Agent M / N / O)
+status: open ship-blockers tracked in `SECTION A`; post-v0.21 work in `SECTION G`; Round 4 + Phase A in `SECTION I`
 ---
 
 # agent-toolkit — Audit History
 
-3 rounds of internal audit + 1 external reviewer pass + ship-blocker
-discovery + post-release CI regression handling. This document is the
-canonical record of what was found, what was fixed, and what remains
-open. It exists so future contributors can answer "did anyone look at
-X?" without re-running every round.
+4 rounds of internal audit + 1 external reviewer pass + ship-blocker
+discovery + post-release CI regression handling + Phase A sprint. This
+document is the canonical record of what was found, what was fixed, and
+what remains open. It exists so future contributors can answer "did
+anyone look at X?" without re-running every round.
 
 ## Legend
 
@@ -211,6 +212,74 @@ v0.23 — content & credibility (parallel, ~15h)
    - R1: 13 findings (all fixed)
    - R2: 14 findings (13 fixed, B3 mitigated only — deep architecture defer v0.22)
    - R3: 8 findings (7 fixed, M19 defer v0.22)
+   - R4: 5 findings (2 resolved v0.22, 3 deferred v0.23 — see SECTION I)
 2. Only add a new finding if proof is reproducible (Read/Grep/Bash output citing `path:line`).
 3. No drip-feed — close the current audit method's full scope before opening a new one.
 4. Reviewer recommendations must be fact-checked before accept (~33% of reviewer items had stale facts or wrong premise).
+
+---
+
+## SECTION I — Round 4 + Phase A (v0.22 cycle)
+
+Round 4 audit focused on Odoo edition coverage gaps surfaced by DEV
+review of the v0.21 ship: "the toolkit ships Odoo 12-20 presets but only
+9 skills, none of which cover Community vs Enterprise edition split or
+performance / multi-company patterns". Phase A (Agents M + N + O) is the
+resolution sprint for the 5 R4 findings.
+
+### Round 4 findings (5 total)
+
+| # | Finding | Severity | Status | Resolution |
+|---|---------|----------|--------|------------|
+| R4-1 | 12 TODO / XXX / FIXME markers leftover from v0.21 ship rush across hooks, skills, MCP servers | MEDIUM | ✅ RESOLVED v0.22 (Agent M) | All 12 markers walked; either fixed inline or converted to tracked findings in this section. |
+| R4-2 | Odoo 19 / 20 presets schema-identical with odoo-17 (M19 partial leftover) | MEDIUM | ⏸ DEFERRED v0.23 | Odoo 20 GA late 2026 — not enough upstream signal to differentiate yet. Stub-extend pattern retained. |
+| R4-3 | No Community vs Enterprise edition split in skills — agent recommends Enterprise patterns on Community DBs | HIGH | ✅ RESOLVED v0.22 (Agent N) | 3 new edition-aware skills shipped: `odoo-community-patterns`, `odoo-enterprise-patterns`, `odoo-multi-company`. |
+| R4-4 | No Enterprise-edition real-data MCP probes — coverage gap for accounting full, Studio, marketing automation | HIGH | ⏸ DEFERRED v0.23 | Requires a shipped Enterprise sandbox; private-overlay territory per E10 rationale. |
+| R4-5 | Performance recipes ship as prose only — no `claim-falsification` perturbation per recipe | MEDIUM | ⏸ DEFERRED v0.23 | 10 recipes shipped (`odoo-performance`); falsification harness for each is Axis-3 work tracked separately. |
+
+### Phase A actions (Agent M + N + O)
+
+**Agent M — TODO cleanup** (resolves R4-1):
+
+- Walked 12 outstanding TODO / XXX / FIXME markers identified by grep
+  across `templates/claude/hooks/`, `templates/codex/mcp_servers/`,
+  `templates/cursor/skills/`. Each marker either: (a) fixed inline,
+  (b) converted to a tracked R4 finding above, or (c) downgraded to
+  a `# NOTE:` comment with rationale.
+- Atomic state writes audited — confirmed all 5 hook state files
+  (`.open_gaps.json`, `last_intent_suggested.json`, `.autonomy_active.json`,
+  `.skip_*.json`, telemetry log files) use `os.replace` two-pass.
+
+**Agent N — 5 new Odoo skills** (resolves R4-3, partially R4-5):
+
+- Shipped `odoo-community-patterns`, `odoo-enterprise-patterns`,
+  `odoo-multi-company`, `odoo-owl-components`, `odoo-performance`
+  under `templates/cursor/skills/odoo/`.
+- 10 performance recipes across `odoo-12-perf.md`, `odoo-17-perf.md`,
+  `odoo-18-perf.md` (3 reference files; each recipe is one `##` section).
+- Preset diff deepening — Odoo 13 / 14 / 15 / 16 / 18 / 19 / 20
+  presets now carry explicit `addon_roots` / `framework_version` /
+  `owl` / `edition` keys (was schema-identical with 12/17).
+
+**Agent O — default invariants seed**:
+
+- Populated `templates/agent_toolkit/invariants.json` with 5 default
+  invariants: `no-bare-python`, `no-enterprise-fields-in-community`,
+  `multi-company-recordset-guard`, `owl-component-no-jquery`,
+  `performance-no-search-in-loop`. Was previously empty `[]` list.
+
+### Status roll-up
+
+```
+v0.22.0 (this cycle) — closes
+  R4-1 (Agent M — TODO cleanup)
+  R4-3 (Agent N — 5 new skills, edition coverage)
+  M19 (Agent N — preset diff deepening, residual from R3)
+  E8, E9 (already closed v0.21 — confirmed shipped)
+
+v0.23.0 — Q3 candidate
+  R4-2: deeper Odoo 19/20 preset population (needs upstream GA signal)
+  R4-4: Enterprise sandbox + real-data MCP probes
+  R4-5: per-recipe falsification harness for odoo-performance
+  E4, E5, E6 (carried from v0.21 deferral)
+```

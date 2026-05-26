@@ -61,6 +61,21 @@ Full release / mirror / tag procedure documented in [REBUILD.md](REBUILD.md).
   aggregator, bypass-rate alerts, hook-crash banner. Know which rules are
   being sidestepped before they rot.
 
+## What's new
+
+- **v0.22** (TBD pending merge to master): Community + Enterprise edition
+  coverage, MCP security hardening, atomic state writes. 5 new Odoo skills
+  (`odoo-community-patterns`, `odoo-enterprise-patterns`, `odoo-multi-company`,
+  `odoo-owl-components`, `odoo-performance`) → **14 Odoo skills** total.
+  10 cross-version performance recipes shipped. 5 default invariants shipped
+  with the preset. 12 outstanding TODO markers resolved. See
+  [CHANGELOG.md](CHANGELOG.md) for the full diff.
+- **v0.21**: security hardening (Round 3 — H9/H10/H11) + CI fix
+  (pytest-cov 7.x regression) + `make rebuild` reproducible bundle.
+- **v0.19**: `gap_completeness_gate` Stop hook — chặn drip-feed.
+- **v0.18**: AGENT-side disclosure sidecar (HTML + MD) auto-emitted
+  after `/implement`.
+
 ## Quick comparison
 
 |                                  | agent-toolkit | spec-kit | mattpocock/skills | ECC | Aider |
@@ -448,23 +463,55 @@ canonical decisions, and MCP servers are tuned for Odoo conventions.
 | `classifier-output-audit` | Long-tail audit for classification features (sample K rows, re-derive expected tag, find mismatch groups). |
 | `karpathy-guidelines` | Operating-principle skill (think before coding, simplicity, surgical changes, MCP-before-files). |
 
-**Odoo skills** (auto-included by every Odoo preset — 9 skills, all **version-aware**):
+**Odoo skills** (auto-included by every Odoo preset — **14 skills**, all **version-aware**):
 
 Each skill's Step 0 reads `__manifest__.py` from the target module, then
 loads the matching `references/odoo-<N>-*.md`. One skill folder covers
 Odoo 12 → 20 (and future 21+ — just add a reference file).
+
+*Core workflow* (Spec Kit + day-to-day):
 
 | Skill | What it does |
 |-------|--------------|
 | `odoo-code-review` | Exhaustive review. Cascade: 12 standalone, 17→18→19→20. |
 | `odoo-code-patterns` | Canonical patterns (model / wizard / view / OWL). Version-specific `references/odoo-<N>-patterns.md`. |
 | `odoo-codebase-discovery` | MCP discovery (`discover_modules`, `read_manifest`, …). Version-agnostic. |
-| `odoo-data-verification` | Real-DB ORM probes via `realdata_test` MCP. Version-agnostic. |
 | `odoo-debug-troubleshoot` | Quick-fix tables. Version-specific `references/odoo-<N>-pitfalls.md`. |
-| `odoo-deterministic-answers` | `canonical_decisions.json` registry workflow. Version-agnostic. |
+| `odoo-tdd` | Red-Green-Refactor + perturb-test routing. Version-specific `references/odoo-<N>-tdd-pitfalls.md`. |
+
+*Multi-edition* (v0.22 — Community / Enterprise / multi-company):
+
+| Skill | What it does |
+|-------|--------------|
+| `odoo-community-patterns` | Community-edition-only conventions; flag Enterprise-only modules/fields. Version-aware. |
+| `odoo-enterprise-patterns` | Enterprise-only conventions (studio, marketing automation, accounting full). Version-aware. |
+| `odoo-multi-company` | Multi-company / multi-currency record rules + `company_dependent` fields. Version-aware. |
+
+*Frontend* (OWL):
+
+| Skill | What it does |
+|-------|--------------|
+| `odoo-owl-components` | OWL component patterns (12 jQuery fallback, 15+ OWL 1.x, 17+ OWL framework). Version-specific. |
+
+*Performance*:
+
+| Skill | What it does |
+|-------|--------------|
+| `odoo-performance` | N+1, slow computed fields, prefetch, `read_group` tuning. 10 cross-version recipes (12 / 17 / 18 references). |
+
+*Operations*:
+
+| Skill | What it does |
+|-------|--------------|
 | `odoo-jira-workflow` | JIRA MCP tools. Version-agnostic. |
 | `odoo-module-scaffold` | New module scaffold. Version-specific `references/odoo-<N>-scaffold.md`. |
-| `odoo-tdd` | Red-Green-Refactor + perturb-test routing. Version-specific `references/odoo-<N>-tdd-pitfalls.md`. |
+
+*Discovery*:
+
+| Skill | What it does |
+|-------|--------------|
+| `odoo-data-verification` | Real-DB ORM probes via `realdata_test` MCP. Version-agnostic. |
+| `odoo-deterministic-answers` | `canonical_decisions.json` registry workflow. Version-agnostic. |
 
 **Adding support for a new Odoo major** (e.g. 21): drop 5 reference
 files (one per version-specific skill), optionally add `presets/odoo-21.json`
@@ -563,7 +610,7 @@ agent-toolkit/
 │   └── CLAUDE.md
 ├── tests/                    # toolkit-level pytest suite (installer, e2e, hooks, snapshot)
 ├── docs/
-│   ├── AUDIT_HISTORY.md      # 60+ findings across 3 audit rounds + reviewer (v0.21)
+│   ├── AUDIT_HISTORY.md      # 60+ findings across 3 audit rounds + reviewer + Round 4 (v0.21/v0.22)
 │   ├── precommit-setup.md
 │   └── troubleshooting.md
 ├── .github/workflows/test.yml # GitHub Actions matrix CI + lint + coverage
@@ -603,7 +650,7 @@ Templates use `{{KEY}}` substitution. Available keys:
 
 ## Khi Odoo 21+ ra mắt — chỉ cần thêm files
 
-Toolkit hiện đã ship **9 Odoo skills version-aware** (Odoo 12 → 20). Khi
+Toolkit hiện đã ship **14 Odoo skills version-aware** (Odoo 12 → 20). Khi
 Odoo 21 (hoặc 22, 23…) ra mắt, **không cần sửa skill body, không cần
 sửa preset gốc, không cần sửa intent_router**. Chỉ cần drop 5 file
 reference vào đúng chỗ — Step 0 của mỗi skill tự đọc `__manifest__.py`

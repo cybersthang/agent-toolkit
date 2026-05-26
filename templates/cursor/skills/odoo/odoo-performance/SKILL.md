@@ -30,7 +30,7 @@ Same protocol as `odoo-code-review`:
 | 13–16 | `references/odoo-17-perf.md` + flag LOW |
 | 17 | `references/odoo-17-perf.md` |
 | 18 | `references/odoo-18-perf.md` ← 17 |
-| 19/20 | `references/odoo-18-perf.md` ← 17 + flag MEDIUM (<see Odoo 19/20 release notes>) |
+| 19/20 | `references/odoo-18-perf.md` ← 17 + flag MEDIUM (placeholder cascade — re-check the target major's release notes; this reference may need overrides) |
 
 Skip Step 0 → wrong prefetch API / wrong cache helper. Restart.
 

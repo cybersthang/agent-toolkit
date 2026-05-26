@@ -78,6 +78,10 @@ Claude will prompt for:
 Claude writes the entry to `.agent-toolkit/invariants.json` + smoke-
 tests the hook + reports.
 
+Tip: to pull in toolkit-shipped default invariants on a later refresh,
+run `python <toolkit>/setup.py update <project> --apply --merge-invariants`
+— new ids are appended; your curated entries are never overwritten.
+
 ## Register your first probe (3 minutes)
 
 In Claude Code, type:

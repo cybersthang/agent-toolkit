@@ -201,20 +201,10 @@ def _extract_text_and_results(turn: List[Dict[str, Any]]) -> Tuple[str, str]:
     return ("\n".join(asst_parts), "\n".join(result_parts))
 
 
-def _matches(text: str, patterns: List[str]) -> Tuple[List[str], List[str]]:
-    """Return (strong_hits, weak_hits) pattern lists.
-
-    v0.6.1 logic:
-      - STRONG_PATTERNS match → block regardless of context.
-      - WEAK_PATTERNS only count when a TRACEBACK_CONTEXT signal
-        (File "...", line N | Traceback | caret) appears within
-        ±CONTEXT_WINDOW_CHARS of the match.
-
-    v0.20.0 addition: caller uses strong/weak split to decide block vs warn
-    when no tool_use blocks are present in the turn (T13 context-aware).
-
-    Custom `patterns` arg (project debug.json override) are treated as
-    STRONG (no context check) — DEV explicitly opted in.
+def _classify_matches(text: str, patterns: List[str]) -> Tuple[List[str], List[str]]:
+    """v0.21 T13: return (strong_hits, weak_hits) split for context-aware
+    block/warn decision in main(). STRONG = always block; WEAK = block
+    only when turn has tool_use evidence.
     """
     strong: List[str] = []
     weak: List[str] = []
@@ -247,6 +237,25 @@ def _matches(text: str, patterns: List[str]) -> Tuple[List[str], List[str]]:
         except re.error:
             continue
     return custom, []
+
+
+def _matches(text: str, patterns: List[str]) -> List[str]:
+    """Return merged list of all pattern hits (backward-compat with v0.6.1).
+
+    v0.6.1 logic:
+      - STRONG_PATTERNS match → count immediately (clear runtime shape).
+      - WEAK_PATTERNS only count when a TRACEBACK_CONTEXT signal
+        (File "...", line N | Traceback | caret) appears within
+        ±CONTEXT_WINDOW_CHARS of the match.
+
+    Custom `patterns` arg (project debug.json override) are treated as
+    STRONG (no context check) — DEV explicitly opted in.
+
+    Use `_classify_matches()` if you need the strong/weak split (e.g. for
+    context-aware enforcement decisions).
+    """
+    strong, weak = _classify_matches(text, patterns)
+    return strong + weak
 
 
 def _has_skip_marker(text: str) -> bool:
@@ -335,7 +344,7 @@ def main() -> int:
             pass
 
     patterns = cfg.get("patterns") or DEFAULT_PATTERNS
-    strong_hits, weak_hits = _matches(tool_text + "\n" + asst_text, patterns)
+    strong_hits, weak_hits = _classify_matches(tool_text + "\n" + asst_text, patterns)
     all_hits = strong_hits + weak_hits
     if not all_hits:
         _exit_allow()

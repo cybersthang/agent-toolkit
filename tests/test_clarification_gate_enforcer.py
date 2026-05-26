@@ -31,9 +31,25 @@ def _run_hook(workspace: Path, envelope: dict, env_extra: dict = None) -> subpro
     env = os.environ.copy()
     env.pop("AGENT_TOOLKIT_DISABLE", None)
     env.pop("AGENT_TOOLKIT_STRICT", None)
+    # v0.21: tests previously used `AGENT_TOOLKIT_STRICT=1` opt-in; flipped
+    # to `AGENT_TOOLKIT_NO_STRICT=1` opt-out. Default behavior is now strict.
+    env.pop("AGENT_TOOLKIT_NO_STRICT", None)
     if env_extra:
         env.update(env_extra)
     envelope.setdefault("cwd", str(workspace))
+    # v0.21: _extract_response_text reads from transcript_path (JSONL), not
+    # inline `response` key. Convert legacy test envelopes for backward
+    # compat with the existing test corpus.
+    if "response" in envelope and "transcript_path" not in envelope:
+        response_text = envelope.pop("response")
+        transcript_path = workspace / "_test_transcript.jsonl"
+        with transcript_path.open("w", encoding="utf-8") as f:
+            f.write(json.dumps({"role": "user", "content": "test"}) + "\n")
+            f.write(json.dumps({
+                "role": "assistant",
+                "content": [{"type": "text", "text": response_text}],
+            }) + "\n")
+        envelope["transcript_path"] = str(transcript_path)
     return subprocess.run(
         [PY, str(HOOK)],
         input=json.dumps(envelope),

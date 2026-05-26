@@ -6,9 +6,9 @@ agent-toolkit follows semver. Security fixes target the latest minor release lin
 
 | Version | Supported |
 |---------|-----------|
-| 0.12.x | ✓ active |
-| 0.11.x | ✓ critical fixes only |
-| ≤ 0.10.x | ✗ — upgrade |
+| 0.21.x  | ✓ active |
+| 0.19.x  | ✓ critical fixes only |
+| ≤ 0.18.x | ✗ — upgrade |
 
 ## Reporting a vulnerability
 

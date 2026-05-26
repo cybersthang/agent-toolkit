@@ -167,6 +167,12 @@ def _emit_block(workspace: Path, reason: str, categories: List[str]) -> None:
                         detail=",".join(categories)[:200])
     except Exception:
         pass
+    # v0.21 E6 (UX improvement) — append structured docs reference + bypass tail.
+    reason = (
+        f"{reason}\n"
+        "  · See docs: docs/hooks/evidence_audit.md\n"
+        "  · Bypass once: `probe-skip: all <reason>` or `[assumption]` tag in response"
+    )
     print(json.dumps({"decision": "block", "reason": reason}, ensure_ascii=False))
     sys.exit(0)
 

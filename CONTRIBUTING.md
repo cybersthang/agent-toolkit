@@ -42,7 +42,7 @@ python -m pip install --upgrade pip pytest
 mkdir /tmp/toolkit-smoke
 python setup.py init /tmp/toolkit-smoke --preset generic --yes --dry-run
 
-# Run the test suite (513 tests as of v0.12.0; ~64s on a modern laptop)
+# Run the test suite (587 tests as of v0.21.0; ~50s on a modern laptop)
 python -m pytest tests/ --no-cov
 
 # Optional: lint
@@ -50,7 +50,21 @@ python -m pip install ruff
 ruff check setup.py lib/ tests/
 ```
 
-The toolkit is intentionally stdlib-only at runtime (`lib/installer.py` docstring documents this). Dev-time deps live in `pytest` and `ruff` — that's it.
+**Faster path — `make`**: the repo ships a `Makefile` that wraps the
+common targets:
+
+```bash
+make install   # pip install pytest pytest-cov ruff (no version pins needed —
+               # see docs/AUDIT_HISTORY.md F7 for why pytest-cov 7.x works)
+make test      # full pytest suite, no coverage gate
+make coverage  # pytest with --cov-fail-under=70 (CI parity)
+make lint      # ruff check
+make rebuild   # full CI-equivalent sequence (install + lint + test + smoke + cov)
+```
+
+Or pin everything via `pip install -r requirements-dev.txt`.
+
+The toolkit is intentionally stdlib-only at runtime (`lib/installer.py` docstring documents this). Dev-time deps live in `pytest`, `pytest-cov`, and `ruff` — that's it.
 
 ## Code style
 

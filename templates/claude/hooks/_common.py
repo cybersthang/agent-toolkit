@@ -300,17 +300,28 @@ def parse_expires_at(ts_str: str) -> "Optional[Any]":
     return None
 
 
-def is_strict_mode() -> bool:
-    """v0.20.0 — fail-CLOSED by default. Set AGENT_TOOLKIT_NO_STRICT=1
-    to revert to fail-open (legacy dev-friendly behavior).
+def is_fail_closed_mode() -> bool:
+    """v0.21 — hook CRASH policy. Returns True (fail-closed: exit 1) by
+    default. Set AGENT_TOOLKIT_NO_STRICT=1 to revert to fail-open
+    (legacy dev-friendly behavior — exit 0 on crash).
 
-    Breaking change from v0.9.0: the old AGENT_TOOLKIT_STRICT=1 opt-in
-    is replaced by AGENT_TOOLKIT_NO_STRICT=1 opt-out. Existing installs
-    that relied on fail-open behavior MUST set AGENT_TOOLKIT_NO_STRICT=1
-    — hook crashes will now block instead of silently allowing.
-    See QUICKSTART.odoo.md §Breaking change v0.20.
+    Affects ONLY `run_main_safe()` crash handling. Does NOT override
+    `enforce_mode.json` per-hook config — that remains opt-in via
+    `is_strict_mode()`.
     """
     return os.environ.get("AGENT_TOOLKIT_NO_STRICT") != "1"
+
+
+def is_strict_mode() -> bool:
+    """Phase E v0.9.0 — CI enforce-override opt-in. Returns True only
+    when `AGENT_TOOLKIT_STRICT=1` env var set. Used by `get_enforce_mode`
+    to force ALL hooks to block-mode regardless of `enforce_mode.json`
+    config (CI safety net).
+
+    v0.21 split: hook crash policy moved to `is_fail_closed_mode()`.
+    This function preserves original semantic for backward compat.
+    """
+    return os.environ.get("AGENT_TOOLKIT_STRICT") == "1"
 
 
 def get_enforce_mode(workspace: Path, hook_name: str,
@@ -468,8 +479,9 @@ def run_main_safe(main_fn) -> int:
                             detail=type(exc).__name__[:50])
         except Exception:
             pass
-        # Phase E: STRICT mode → propagate exit 1; default fail-open → exit 0
-        if is_strict_mode():
+        # v0.21: fail-closed by default (is_fail_closed_mode=True);
+        # AGENT_TOOLKIT_NO_STRICT=1 reverts to legacy fail-open.
+        if is_fail_closed_mode():
             return 1
         return 0
 

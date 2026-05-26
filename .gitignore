@@ -41,3 +41,14 @@ presets/*-private.json
 .agent-toolkit/.hook_crash_log.json
 .agent-toolkit/.bypass_next_edit.json
 .agent-toolkit/.autonomy_active.json
+.agent-toolkit/.last_intent_suggested.json
+.agent-toolkit/.skip_clarification_next.json
+.agent-toolkit/.skip_git_guard_next.json
+.agent-toolkit/.skip_debug_sentry_next.json
+.agent-toolkit/.open_gaps.json
+.agent-toolkit/.stop_audit_count.json
+
+# Setup.py update auto-generated backup files. Consumer projects need to
+# inherit this pattern — see lib/installer.py post-install hook (v0.21).
+*.bak.*
+.bak.*

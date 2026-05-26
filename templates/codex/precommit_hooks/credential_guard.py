@@ -19,6 +19,7 @@ Exits 0 if clean, 1 if violation. Bypass: `git commit --no-verify`.
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import List, Tuple
@@ -58,25 +59,58 @@ PATTERNS: List[Tuple[str, re.Pattern]] = [
 _ENTROPY_THRESHOLD = 4.0
 _ENTROPY_MIN_LENGTH = 20
 
+# v0.21 M17/M18 (precommit fix) — `xxx` added to cover the common 3-letter
+# convention; previous substring match accidentally caught it via overlap
+# with longer markers, the tightened match needs it explicit.
 PLACEHOLDER_MARKERS = (
-    "<your", "xxxx", "yyyy", "zzzz", "dummy", "example", "placeholder",
+    "<your", "xxx", "xxxx", "yyyy", "zzzz", "dummy", "example", "placeholder",
     "changeme", "your-", "todo", "fixme", "n/a", "redacted",
 )
 
 
 def _looks_placeholder(value: str) -> bool:
-    low = value.lower()
-    return any(m in low for m in PLACEHOLDER_MARKERS)
+    # v0.21 M17/M18 (precommit fix)
+    # Previously substring-matched any marker anywhere in the value, so a real
+    # token like `sk-ant-realkey-fixme-later-xyz` bypassed the scan because it
+    # contained "fixme". Tighten to whole-value / boundary semantics:
+    #   - exact whole-value match (e.g. "placeholder", "dummy", "xxxx")
+    #   - short value (<=30 chars) starting/ending with a marker
+    #     (e.g. "your-token-here", "changeme-now")
+    #   - bracket placeholder like "<your-key>"
+    low = value.lower().strip()
+    if low in PLACEHOLDER_MARKERS:
+        return True
+    if len(low) <= 30 and any(
+        low.startswith(m) or low.endswith(m) for m in PLACEHOLDER_MARKERS
+    ):
+        return True
+    if low.startswith("<") and low.endswith(">"):
+        return True
+    return False
 
 
 def _check_file(rel_path: str) -> List[str]:
     p = REPO_ROOT / rel_path
     if not p.exists() or p.is_dir():
         return []
-    # Skip explicit `.example` and gitignored env files (they're not committed
-    # anyway; pre-commit shouldn't see them unless tracking changed).
-    if rel_path.endswith(".example") or rel_path.endswith(".env"):
+    # v0.21 M17/M18 (precommit fix)
+    # Skip explicit `.example` files (placeholder values by convention) and
+    # any file that's actually gitignored. Previously this short-circuited on
+    # any `.env` suffix, which silently bypassed tracked `app/.env` mistakes —
+    # a frequent leak source. Now we only skip when git confirms the file is
+    # ignored; tracked `.env` files still get scanned.
+    if rel_path.endswith(".example"):
         return []
+    try:
+        result = subprocess.run(
+            ["git", "check-ignore", "--quiet", rel_path],
+            cwd=str(REPO_ROOT),
+            timeout=5,
+        )
+        if result.returncode == 0:  # gitignored → safe to skip
+            return []
+    except (subprocess.SubprocessError, OSError):
+        pass  # fail-open: scan anyway if git unavailable
     try:
         text = p.read_text(encoding="utf-8-sig", errors="replace")
     except OSError:

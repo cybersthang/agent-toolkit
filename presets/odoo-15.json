@@ -1,5 +1,6 @@
 {
-  "description": "Odoo 15 Community / Enterprise — Python 3.8+, transitional (QWeb + early OWL 1.x). Reuses odoo-12 rules/memory (legacy ORM still dominant); fork the preset to add OWL-specific rules.",
+  "_comment": "Odoo 15 differentiation from odoo-12 base: Python 3.8 baseline, OWL 1.x introduced ALONGSIDE legacy QWeb+jQuery (transitional release), QWeb component split started. Legacy ORM still dominant — reuses odoo-12 rule pack but flag OWL-specific code via skill references. TODO: add templates/cursor/rules/odoo-15/ for OWL 1.x specifics.",
+  "description": "Odoo 15 Community / Enterprise — Python 3.8+, TRANSITIONAL: QWeb+jQuery legacy + OWL 1.x intro. Legacy ORM dominant; reuses odoo-12 rule pack — flag OWL component code separately.",
   "stack_label": "Odoo 15",
   "response_language": "Vietnamese",
   "stack": {
@@ -27,6 +28,7 @@
     "default_user": "odoo"
   },
   "rules": ["_common", "odoo-12"],
+  "_rules_comment": "TODO: differentiate from odoo-12 base when templates/cursor/rules/odoo-15/ is authored. v15 is transitional — most backend ORM still v12-era, only OWL frontend new.",
   "skills": ["_common", "odoo"],
   "memory_packs": ["odoo-12"]
 }

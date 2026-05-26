@@ -3,6 +3,189 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
+## [0.22.0] — TBD pending merge to master — Odoo edition coverage + 4-axis depth
+
+Q2 / Phase A release. Closes the M19 deferral from v0.21 (per-Odoo-version
+preset deep differentiation), broadens skill coverage to Community +
+Enterprise editions + OWL frontend + performance, and resolves 12 TODO
+markers left over from the v0.21 ship rush (Agent M's work).
+
+Full audit trail at [docs/AUDIT_HISTORY.md](docs/AUDIT_HISTORY.md)
+SECTION I (Round 4 + Phase A).
+
+**Added — 5 new Odoo skills** (auto-included by every Odoo preset; bring
+total Odoo skill count from 9 → **14**):
+
+- `templates/cursor/skills/odoo/odoo-community-patterns/` — Community
+  edition conventions; flag Enterprise-only modules/fields with citations
+  so the agent doesn't recommend Studio / marketing-automation patterns
+  on a Community DB. Version-aware (12 / 17 references).
+- `templates/cursor/skills/odoo/odoo-enterprise-patterns/` — Enterprise
+  edition conventions (Studio, accounting full, marketing automation,
+  documents). Cross-references invariants so Community installs flag
+  hard-coded Enterprise field access.
+- `templates/cursor/skills/odoo/odoo-multi-company/` — multi-company /
+  multi-currency record rules + `company_dependent` fields + cross-company
+  data leak audits. Version-aware.
+- `templates/cursor/skills/odoo/odoo-owl-components/` — OWL frontend
+  component patterns. Three-tier cascade: Odoo 12 jQuery fallback, 15+
+  OWL 1.x, 17+ OWL framework.
+- `templates/cursor/skills/odoo/odoo-performance/` — N+1 detection,
+  slow computed fields, prefetch context, `read_group(lazy=False)`,
+  index API, QWeb `t-cache`. **10 cross-version performance recipes**
+  shipped (`references/odoo-12-perf.md`, `odoo-17-perf.md`,
+  `odoo-18-perf.md`).
+
+**Added — 4-axis Odoo depth (Q2)**:
+
+- Citations to upstream Odoo docs in every version-specific reference
+  file (`references/odoo-<N>-*.md`).
+- Preset diff deepening — `presets/odoo-13.json` through
+  `presets/odoo-20.json` no longer schema-identical with 12/17; each
+  captures version-specific `addon_roots`, framework version, OWL flag,
+  and edition default.
+- 10 cross-version performance recipes (see above).
+- 3 new skills delivered as part of Axis-2 (multi-edition coverage):
+  `odoo-community-patterns`, `odoo-enterprise-patterns`,
+  `odoo-multi-company`.
+
+**Added — 5 default invariants** shipped with the toolkit preset
+(populated into `templates/agent_toolkit/invariants.json`):
+
+- `no-bare-python` — scripts must use venv Python, not bare `python`.
+- `no-enterprise-fields-in-community` — Enterprise-only field/module
+  access flagged when running against a Community preset.
+- `multi-company-recordset-guard` — record rules must honour
+  `company_id` constraint on multi-company models.
+- `owl-component-no-jquery` — flag jQuery use in OWL component code
+  (15+ presets).
+- `performance-no-search-in-loop` — `for x in records: self.env[...].search(...)`
+  is N+1; surface for review.
+
+**Resolved — 12 outstanding TODO markers** (Agent M / Phase A):
+
+- Stale `XXX:`, `TODO:`, and `FIXME:` markers introduced across the
+  v0.21 ship rush — see Round 4 finding R4-1 in
+  [docs/AUDIT_HISTORY.md](docs/AUDIT_HISTORY.md).
+
+**Changed**:
+
+- `README.md` — Odoo skill count claim updated 9 → 14; "What's new"
+  section added; per-category Odoo skill table.
+- `templates/agent_toolkit/QUICKSTART.odoo.md` — new "Available skills"
+  section grouping 14 skills by category.
+- `docs/AUDIT_HISTORY.md` — new SECTION I (Round 4 + Phase A) appended.
+
+**Deferred to v0.23**:
+
+- **R4-2** — full Odoo 19 / 20 preset population (currently inherits
+  from odoo-17 with OWL version delta only).
+- **R4-4** — Enterprise-edition real-data MCP probes (depends on a
+  shipped Enterprise sandbox; private overlay territory).
+- **R4-5** — performance recipe falsification harness (every recipe
+  should ship with a `claim-falsification` perturbation; current set
+  has prose recipes only).
+
+## [0.21.0] — 2026-05-25 — security hardening + CI fix + rebuild bundle
+
+Closes 8 audit findings (Round 3 security + cross-cutting) and the
+post-v0.20 GitHub-Actions-all-cells-red regression. Public-readiness
+release: `make rebuild` from a fresh clone produces a reproducible
+green state across Linux/macOS/Windows × Python 3.8/3.10/3.12.
+
+Full audit history (3 rounds + reviewer + ship-blockers) is now
+documented at [docs/AUDIT_HISTORY.md](docs/AUDIT_HISTORY.md).
+
+**Added**:
+- `Makefile` — one-command targets: `make install`, `make test`,
+  `make coverage`, `make smoke`, `make dry-run`, `make rebuild`,
+  `make clean`. `make rebuild` mirrors the full CI sequence.
+- `REBUILD.md` — maintainer guide for clone → verify → push → tag →
+  release. Documents the GitHub-mirror workflow including how to push
+  the canonical GitLab `master` to a GitHub `main` default branch.
+- `.gitlab-ci.yml` — GitLab CI mirror of `.github/workflows/test.yml`.
+  3 stages: `test` (matrix Py3.8/3.10/3.12), `lint` (ruff), `coverage`
+  (dedicated Py3.8 job enforcing `--cov-fail-under=70`).
+- `docs/AUDIT_HISTORY.md` — canonical record of every audit finding +
+  its disposition. Imported and sanitized from internal `audit_findings_consolidated.md`.
+- `.github/workflows/test.yml` `coverage` job — Linux + Python 3.8 only,
+  the one deterministic place coverage gate runs.
+
+**Security fixes** (Round 3):
+- **H9** — `is_production_like(database)` now uses "prod-marker wins"
+  semantics. Previous logic short-circuited on a staging/test/clone
+  marker so a DB named `prod_clone_for_load_test` slipped through as
+  non-prod. `templates/codex/mcp_servers/realdata_test_server.py:115-127`.
+- **H10** — `allow_production_like` override no longer reads from MCP
+  `arguments` dict (agent-controllable). Moved to env var only, so a
+  human operator must export it in the terminal.
+- **H11** — `run_orm_eval_once` dropped `shell=True`. The previous
+  invocation built a single shell command string from agent-controlled
+  `expression` input, which opened the blacklist-bypass door. Now uses
+  argv list + `subprocess.input=` stdin for the read-only ORM script.
+- **M17** — `credential_guard.py` no longer blanket-skips `.env` files
+  by extension. Now uses `git check-ignore --quiet` so tracked `.env`
+  files (accidental commits — frequent leak source per GitGuardian
+  2024) still get scanned.
+- **M18** — `_looks_placeholder` tightened from substring match to
+  whole-value / boundary match. Previously `sk-ant-realkey-fixme-later-xyz`
+  bypassed the scan because it contained "fixme".
+
+**CI / build fixes**:
+- **F7 (blocker)** — Root cause: `pytest-cov` 7.x changed the
+  subprocess-coverage activation env var (`COV_CORE_SOURCE` →
+  `COVERAGE_PROCESS_START`). `test_e2e.py` spawns `setup.py` via
+  `subprocess.run`; pytest-cov 5.x captured that subprocess coverage,
+  7.x silently dropped it → `setup.py` measured at 17% on Python
+  3.10/3.12 vs 85% on 3.8. With the default `--cov-fail-under=70`
+  this tripped CI on every matrix cell even with 587 PASS.
+  **Root-cause fix (no version pin)**: (1) `.coveragerc` now uses
+  `parallel = True` + `concurrency = multiprocessing` so each subprocess
+  writes its own data file, (2) `Makefile coverage` target + CI workflows
+  export `COVERAGE_PROCESS_START=<repo>/.coveragerc` to activate
+  pytest-cov 7.x's `.pth` subprocess-tracking shim, (3) coverage gate
+  moved to a dedicated `coverage` job on Linux + **Python 3.12**,
+  (4) `--cov-fail-under` removed from `pytest.ini` default addopts
+  (coverage still reported via `--cov-report=term-missing`).
+  Verified PASS across the full matrix without any pytest-cov pin:
+  Py3.8 + cov5.x = 87.30%, Py3.10 + cov7.x = 87.73%, Py3.12 + cov6.x = 88.15%.
+- **F1** — `.coveragerc` `source = setup.py` (literal path, unresolvable)
+  → `source = setup` (module name). Coverage now correctly tracks
+  `setup.py` via `tests/test_setup.py` import. Local total: 13.40% → 87%.
+- **F3** — Added `.gitlab-ci.yml` mirror so GitLab MRs get a native
+  pipeline + coverage badge.
+- **A3** — `setup.py:write_gitignore` now injects `.bak.*` + `*.bak.*`
+  into consumer projects so the `.bak.<timestamp>` backups created by
+  `setup.py update` stop accumulating in working trees.
+- **L1** — `setup.py update` is now atomic. Two-pass: write to
+  `<file>.tmp` + `os.replace` + per-file `.bak.<timestamp>` backup. A
+  mid-run failure no longer leaves a half-installed project.
+- **L2** — `recipe_to_probe_script.py` generated scripts now document
+  the env-var precedence (`HOTPOT_BASE_URL` > `TOOLKIT_TEST_URL` >
+  localhost fallback) and emit a `[probe] WARN` to stderr when falling
+  back to localhost, suppressible via `TOOLKIT_TEST_ALLOW_LOCALHOST=1`.
+
+**Trigger / branch coverage**:
+- `.github/workflows/test.yml` and `.gitlab-ci.yml` now trigger on
+  release-line branches (regex `[0-9]+.[0-9]+`, e.g. `1.0`) in
+  addition to `main` / `master`. Closes W7 (dev branches silently
+  skipping CI).
+
+**Docs**:
+- README CI badge added (placeholder GitHub org — update via
+  `sed -i "s|GITHUB_OWNER_PLACEHOLDER|<YOUR_ORG>|g" README.md` after
+  pushing the mirror).
+- `docs/AUDIT_HISTORY.md` indexes 60+ findings across 3 internal
+  rounds + reviewer + ship-blocker discovery + post-release CI regression.
+
+**Deferred to v0.22**:
+- **M19** — preset 13-20 differentiation (currently reuse 12/17
+  patterns; Odoo 16+ OWL framework dirs not captured).
+- **B3 (deep)** — Stop chain + PostToolUse timing architecture rewrite
+  (mitigated via `run_main_safe` wrapper, full redesign deferred).
+- **E4 / F2 / F5** — SQLite telemetry persistence + per-fire timing
+  benchmark.
+
 ## [0.19.0] — 2026-05-24 — gap-completeness-gate Stop hook (chặn drip-feed)
 
 Closes the **drip-feed anti-pattern** captured in memory

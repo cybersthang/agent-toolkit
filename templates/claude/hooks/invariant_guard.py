@@ -394,6 +394,9 @@ def _format_reason(blockers: List[Dict[str, Any]], warns: List[Dict[str, Any]]) 
         "tiếp theo + nêu lý do, rồi user chạy lại edit. Đổi invariant lâu dài: "
         "/inv-add với severity mới hoặc /adr-add ghi nhận quyết định mới."
     )
+    # v0.21 E6 (UX improvement) — structured docs reference + bypass tail.
+    lines.append("  · See docs: docs/hooks/invariant_guard.md")
+    lines.append("  · Bypass once: `bypass-invariant: <id>` in next user prompt")
     return "\n".join(lines)
 
 

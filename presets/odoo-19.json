@@ -1,5 +1,6 @@
 {
-  "description": "Odoo 19 Community / Enterprise — Python 3.11+, OWL framework. Reuses odoo-17 rules/memory; fork the preset for v19-specific differences.",
+  "_comment": "Odoo 19 differentiation from odoo-17 base: Python 3.11+ minimum (3.12 recommended per upstream), controller @http.route(type='jsonrpc') renamed from type='json', Domain class + 'any!' operator, declarative _constraints/_indexes class attributes, first-class AI server actions. Reuses odoo-17 rule pack — see templates/cursor/skills/odoo/odoo-code-patterns/references/odoo-19-patterns.md for full delta list.",
+  "description": "Odoo 19 Community / Enterprise — Python 3.11+, OWL, type='jsonrpc' route, Domain API, declarative _constraints. Reuses odoo-17 rule pack — see odoo-19-patterns.md for deltas.",
   "stack_label": "Odoo 19",
   "response_language": "Vietnamese",
   "stack": {
@@ -7,7 +8,11 @@
     "language_version": "3.11",
     "framework": "odoo",
     "framework_version": "19",
-    "frontend": "OWL framework"
+    "frontend": "OWL framework",
+    "_doc": "Per-stack optional path overrides — used by realdata_test MCP. Leave empty to let user set <PREFIX>_ODOO_BIN / <PREFIX>_ODOO_CONF env vars at runtime.",
+    "odoo_bin_rel": "",
+    "odoo_conf_rel": "",
+    "smoke_test_rel": ""
   },
   "addon_roots": ["addons", "custom_addons", "enterprise"],
   "mcp_servers": ["codebase", "postgres", "realdata_test"],
@@ -23,6 +28,7 @@
     "default_user": "odoo"
   },
   "rules": ["_common", "odoo-17"],
+  "_rules_comment": "TODO: differentiate from odoo-17 base when templates/cursor/rules/odoo-19/ is authored. v19 deltas (jsonrpc route, Domain API, declarative constraints) covered in skill references only.",
   "skills": ["_common", "odoo"],
   "memory_packs": ["odoo-17"]
 }

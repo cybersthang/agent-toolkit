@@ -940,6 +940,11 @@ def write_gitignore(target):
         '.claude/settings.local.json',
         '__pycache__/',
         '*.pyc',
+        # A3: `setup.py update` creates `.bak.<timestamp>` files next to
+        # each rewritten file (two-pass atomic apply, see L1). Without this
+        # rule consumer projects accumulate backups in working tree forever.
+        '*.bak.*',
+        '.bak.*',
     ]
     if gi.exists():
         existing = gi.read_text(encoding='utf-8')

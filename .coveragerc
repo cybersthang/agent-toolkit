@@ -1,10 +1,16 @@
-# Coverage scope note (R3 v0.11.0):
-# This config measures IMPORT-based coverage only. The 97%+ number you see
-# applies to `lib/installer.py` — code directly imported by pytest. Hook
-# templates (`templates/claude/hooks/*.py`) are NOT measured here even
-# though tests/test_hooks.py exercises them: tests spawn each hook as a
+# Coverage scope note (R3 v0.11.0, updated F1):
+# This config measures IMPORT-based coverage only. The numbers reported
+# apply to modules pytest actually imports. Hook templates
+# (`templates/claude/hooks/*.py`) are NOT measured here even though
+# tests/test_hooks.py exercises them: tests spawn each hook as a
 # subprocess (subprocess.run), and Python coverage's tracker only sees
 # modules imported by the running process.
+#
+# F1 fix (v0.21): `source` entry was `setup.py` (a literal path) — coverage
+# treats `source =` entries as module names or dirs, so `setup.py` failed
+# to resolve and the warning `Module setup.py was never imported` appeared
+# even when tests/test_setup.py DID import the module. Switched to `setup`
+# (module name) — now coverage tracks setup.py via import in test_setup.py.
 #
 # Hook behaviour IS still tested — see tests/test_hooks.py (444+ test cases
 # covering invariant_guard / evidence_audit / session_brief / intent_router /
@@ -13,14 +19,22 @@
 # `lib/` + `setup.py` surface; treat the test_hooks.py file as evidence of
 # hook behaviour coverage.
 #
-# Proper subprocess coverage (COVERAGE_PROCESS_START + sitecustomize +
-# parallel data file combine) is non-trivial under pytest-cov and deferred
-# to a future patch. See `tests/sitecustomize.py` for the half-built shim.
+# F7 update (v0.21): subprocess coverage is now properly captured —
+# `tests/test_e2e.py` spawns `setup.py` via subprocess.run, and with
+# `parallel = True` + `concurrency = multiprocessing` plus the
+# `COVERAGE_PROCESS_START` env var (set by Makefile + CI), each subprocess
+# writes its own `.coverage.<pid>.<rand>` data file. pytest-cov then runs
+# `coverage combine` at session end. Tested with pytest-cov 5.x AND 7.x.
+# Without this config, pytest-cov 7.x reports setup.py at 17% instead of 85%.
 [run]
 source =
-    setup.py
+    setup
     lib
 branch = True
+# parallel + concurrency required to capture subprocess setup.py runs
+# from test_e2e.py with pytest-cov 7.x (see F7 in docs/AUDIT_HISTORY.md).
+parallel = True
+concurrency = multiprocessing
 omit =
     tests/*
     lib/plugins.py

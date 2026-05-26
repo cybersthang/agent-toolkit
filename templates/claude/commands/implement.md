@@ -1,5 +1,5 @@
 ---
-description: Spec Kit Phase 4 — IMPLEMENT. DEV authorizes the agent to execute tasks.md autonomously. Auto-chain: /analyze (HALT on BLOCK) → autonomy ON → execute tasks one-by-one → /verify (real-data probes) → report back to DEV. Replaces the old `/go` command. Default autonomy `+4h`, override with `--until`.
+description: Spec Kit Phase 4 — IMPLEMENT. DEV authorizes the agent to execute tasks.md autonomously. Auto-chain: /analyze (HALT on BLOCK) → autonomy ON → execute tasks one-by-one → /verify (real-data probes) → report back to DEV. Replaces the old `/go` command. Default autonomy `+1h` (v0.21 E5 — narrower risk window; DEV opt-in cho longer runs via `--until`).
 allowed-tools: Read, Write, Edit, Bash
 argument-hint: "<spec-slug> [--until +Xh|+Xd|eod|tomorrow|YYYY-MM-DD HH:MM] [--no-evals] [--force]"
 ---
@@ -29,8 +29,12 @@ Tất cả trong cùng phiên autonomy. DEV không phải confirm giữa các b�
 
 1. **Parse `$ARGUMENTS`**:
    - Token 1 = `<spec-slug>` (bắt buộc).
-   - `--until <value>`: `+4h`, `+30m`, `+1d`, `+2h30m`, `eod`, `tomorrow`,
-     `eow`, ISO `2026-05-17 18:00`. Default `+4h`.
+   - `--until <value>`: `+1h`, `+30m`, `+4h`, `+1d`, `+2h30m`, `eod`,
+     `tomorrow`, `eow`, ISO `2026-05-17 18:00`. Default `+1h` (v0.21 E5 —
+     reduced from `+4h` to narrow the risk window; DEV must opt-in via
+     `--until +4h` (hoặc lớn hơn) cho long-running implement sessions.
+     Rationale: hầu hết feature implement < 1h; autonomy expired chỉ buộc
+     DEV ấn lại `/implement <slug>` — không mất tiến độ.).
    - `--no-evals`: skip acceptance_evals requirement (rare).
    - `--force`: bypass status checks (rare).
 

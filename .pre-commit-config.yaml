@@ -1,0 +1,56 @@
+# v0.21 F7: catches CI-fail-post-push regression by running toolkit test suite before commit
+#
+# Why this file exists
+# --------------------
+# Finding F7 in `.codex/audit_findings_consolidated.md` (consumer side):
+# recurring pattern where the agent ran a SUBSET of tests, claimed "done",
+# pushed — then GitHub Actions failed because the full suite tripped a
+# different code path. This hook closes that gap by running the SAME
+# pytest invocation CI runs (`.github/workflows/test.yml` step "Run
+# pytest suite") on every local commit that touches code / templates /
+# tests / setup.py.
+#
+# This is the AGENT-TOOLKIT'S OWN pre-commit config (not the template
+# installed into downstream projects — that one lives at
+# `templates/pre-commit-config.yaml.tmpl` and mirrors invariant_guard).
+#
+# Setup (one-time, per clone)
+# ---------------------------
+#   pip install pre-commit
+#   pre-commit install --hook-type pre-commit
+#
+# See `docs/precommit-setup.md` for full instructions and venv notes.
+#
+# Notes
+# -----
+# * `--no-cov` skips coverage measurement (pytest.ini enforces 70%
+#   coverage by default — too slow for every commit; CI still enforces).
+# * `language: system` + `python -m pytest` uses whichever Python is
+#   active in the shell that runs `git commit`. DEV must activate the
+#   project venv before committing (see docs).
+# * `pass_filenames: false` — pytest discovers test files itself; we
+#   never want to pass `templates/foo.py` as a pytest arg.
+# * `files:` regex limits the trigger to changes that can plausibly
+#   break tests (Python code, JSON fixtures, template files). Doc-only
+#   commits (README, CHANGELOG, *.md outside templates) skip the hook.
+
+repos:
+  - repo: local
+    hooks:
+      - id: pytest-toolkit-tests
+        name: Run toolkit test suite (catches CI-fail-post-push regression)
+        description: |
+          Run `python -m pytest tests/ --no-cov -q` before allowing a
+          commit that touches code/tests/templates/setup.py. Mirrors
+          the CI step in `.github/workflows/test.yml` so a green local
+          commit means a green CI run (for the test job at least).
+        entry: python -m pytest tests/ --no-cov -q
+        language: system
+        pass_filenames: false
+        always_run: false
+        stages: [pre-commit]
+        # Trigger only when files that can affect test outcomes change.
+        # Doc-only commits (top-level *.md, CHANGELOG, LICENSE) skip.
+        files: '^(templates/|tests/|lib/|setup\.py$|pytest\.ini$|presets/).*'
+        types_or: [python, json, yaml, text]
+        verbose: true

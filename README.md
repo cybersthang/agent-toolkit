@@ -38,7 +38,7 @@ Full release / mirror / tag procedure documented in [REBUILD.md](REBUILD.md).
 
 ## Why agent-toolkit?
 
-- 🛡️ **Mechanical enforcement, not honor system.** 29 hooks DENY at the
+- 🛡️ **Mechanical enforcement, not honor system.** 27 hooks DENY at the
   Claude Code harness level — invariant strips, claim-without-proof,
   destructive git (`git_guardrails` blocks commit/push/add until DEV
   explicitly authorizes), hallucinated progress, **unresolved gaps on
@@ -182,7 +182,7 @@ DEV: (reads tasks.md, OK) /implement log-request-slowness
 Toolkit is in **active daily use** on a production Odoo 12 Enterprise
 workspace since 2026-Q1. Hook telemetry shows ~57
 fire-events per session avg, ~26% block rate, ~3.5% bypass rate.
-**29 hooks** active, **587 unit tests** in CI (matrix: Ubuntu / macOS /
+**27 hooks** active, **607 unit tests** in CI (matrix: Ubuntu / macOS /
 Windows × Python 3.8 / 3.10 / 3.12 — all green).
 
 > 🤖 **AI agents installing into a project**: Read
@@ -928,7 +928,7 @@ Preset khác: `odoo-17`, `generic`. Thêm preset mới (Django/Rails/Go) chỉ l
 
 ### Tại sao dùng agent-toolkit?
 
-- 🛡️ **Enforce cơ học, không phải honor-system.** 28 hook DENY ở
+- 🛡️ **Enforce cơ học, không phải honor-system.** 27 hook DENY ở
   Claude Code harness — strip invariant, claim không proof, git
   destructive, fake progress đều bị chặn.
 - 🔬 **Verify trên data thật hoặc không ship.** `/verify` chạy MCP probe
@@ -974,7 +974,7 @@ deviation + trade-off + follow-up + confidence để DEV review trước merge.
 
 Toolkit đang **dùng thực tế hằng ngày** trên một production Odoo 12
 Enterprise workspace từ 2026-Q1. Hook telemetry trung bình ~57 fire-event/session,
-~26% block, ~3.5% bypass. **29 hook** active, **587 unit test** trên CI
+~26% block, ~3.5% bypass. **27 hook** active, **607 unit test** trên CI
 (matrix: Ubuntu / macOS / Windows × Python 3.8 / 3.10 / 3.12 — all green).
 
 ### Liên hệ tác giả

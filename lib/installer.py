@@ -6,8 +6,9 @@ import json
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 # Toolkit version. Bump when schema_version of agent-toolkit.config.json
@@ -196,6 +197,115 @@ def render_text(text: str, ctx: Dict[str, Any]) -> str:
 def render_into(src: Path, dst: Path, ctx: Dict[str, Any]):
     text = src.read_text(encoding='utf-8')
     dst.write_text(render_text(text, ctx), encoding='utf-8')
+
+
+# ----------------------------------------------------- invariants merge ---
+def _atomic_write_json(path: Path, data: Any) -> None:
+    """Atomic JSON write via temp file + os.replace.
+
+    Mirrors `templates/claude/hooks/_common.py:atomic_write_json` but kept
+    here so the installer stays self-contained (the hooks file is shipped
+    INTO target projects, not imported from this side). Worst case: a
+    partial write leaves the original `path` untouched and the temp file
+    behind for the OS to GC.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path: Optional[str] = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode='w', encoding='utf-8', delete=False,
+            dir=str(path.parent), prefix=f'.{path.name}.', suffix='.tmp',
+        ) as tmp:
+            json.dump(data, tmp, ensure_ascii=False, indent=2)
+            tmp.write('\n')
+            tmp_path = tmp.name
+        os.replace(tmp_path, str(path))
+    except OSError:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+        raise
+
+
+def merge_invariants(
+    project_data: Optional[Dict[str, Any]],
+    template_data: Dict[str, Any],
+) -> Tuple[Dict[str, Any], List[str], List[str]]:
+    """Merge template invariants into project data, dedup'd by `id`.
+
+    Strategy:
+    - Preserve project's metadata keys (`_doc`, `_schema`, `_workflow`,
+      `version`, plus any other private/meta fields the project added).
+    - For each invariant in `template_data['invariants']`, append to the
+      project's `invariants` list UNLESS an entry with the same `id`
+      already exists (project entry wins — never overwrite curated edits).
+    - When `project_data` is None (file didn't exist), seed from template
+      metadata and add all template invariants.
+
+    Returns `(merged_dict, added_ids, skipped_ids)` so the caller can
+    surface a human-readable diff.
+    """
+    tmpl_invs: List[Dict[str, Any]] = list(template_data.get('invariants') or [])
+
+    if project_data is None:
+        merged = dict(template_data)
+        merged['invariants'] = list(tmpl_invs)
+        return merged, [inv.get('id', '<no-id>') for inv in tmpl_invs], []
+
+    merged = dict(project_data)
+    existing_invs: List[Dict[str, Any]] = list(merged.get('invariants') or [])
+    existing_ids = {inv.get('id') for inv in existing_invs if inv.get('id')}
+
+    added: List[str] = []
+    skipped: List[str] = []
+    for inv in tmpl_invs:
+        inv_id = inv.get('id')
+        if not inv_id:
+            # Defensive: a malformed template entry without `id` — skip
+            # rather than risk shipping a phantom duplicate on next run.
+            skipped.append('<no-id>')
+            continue
+        if inv_id in existing_ids:
+            skipped.append(inv_id)
+            continue
+        existing_invs.append(inv)
+        existing_ids.add(inv_id)
+        added.append(inv_id)
+
+    merged['invariants'] = existing_invs
+    # If project file lacked metadata fields, backfill from template so
+    # the hook + docs render correctly. Project values always win.
+    for meta_key in ('_doc', '_schema', '_workflow', 'version'):
+        if meta_key not in merged and meta_key in template_data:
+            merged[meta_key] = template_data[meta_key]
+    return merged, added, skipped
+
+
+def merge_invariants_file(
+    project_path: Path,
+    template_path: Path,
+) -> Tuple[List[str], List[str]]:
+    """Read project + template invariants files, write merged result.
+
+    Returns `(added_ids, skipped_ids)`. Atomic write via temp + os.replace.
+    `project_path` need not exist — when absent, the template is copied
+    verbatim (same path as `merge_invariants` with project_data=None).
+    Raises FileNotFoundError if template is missing (toolkit bug, not
+    user error).
+    """
+    if not template_path.exists():
+        raise FileNotFoundError(
+            f'template invariants not found: {template_path}'
+        )
+    template_data = json.loads(template_path.read_text(encoding='utf-8'))
+    project_data: Optional[Dict[str, Any]] = None
+    if project_path.exists():
+        project_data = json.loads(project_path.read_text(encoding='utf-8'))
+    merged, added, skipped = merge_invariants(project_data, template_data)
+    _atomic_write_json(project_path, merged)
+    return added, skipped
 
 
 # ----------------------------------------------------- detect ---

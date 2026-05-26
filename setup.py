@@ -73,6 +73,7 @@ from installer import (  # noqa: E402
     load_preset, render_text, detect_python, detect_psql, encode_claude_project_path,
     confirm, info, warn, ok,
     resolve_preset, git_dirty_status,
+    merge_invariants_file,
 )
 
 
@@ -472,9 +473,11 @@ def cmd_update(args):
     # (canonical_decisions.json, .agent-toolkit/invariants.json...).
     # Default OFF so curated state survives.
     args.force = bool(getattr(args, 'force', False))
+    args.merge_invariants = bool(getattr(args, 'merge_invariants', False))
     mode_label = 'APPLY' if not args.dry_run else 'DRY-RUN'
     info(f'Updating using saved preset: {args.preset}')
-    info(f'  mode={mode_label}  backup={args.backup}  force={args.force}')
+    info(f'  mode={mode_label}  backup={args.backup}  force={args.force}'
+         f'  merge_invariants={args.merge_invariants}')
 
     # Tier 3: git-aware safety. Refuse to apply over a dirty working tree
     # unless user passes --force-dirty or the project isn't a git repo.
@@ -488,6 +491,48 @@ def cmd_update(args):
             )
 
     cmd_init(args)
+
+    # Post-init: opt-in merge of default invariants. Runs AFTER `cmd_init`
+    # so the SKIP_EXISTS-preserved project file is still on disk; we then
+    # merge new template entries by id (project wins on collision). In
+    # dry-run mode we just preview which ids would be added/skipped.
+    if args.merge_invariants:
+        _run_merge_invariants(target, dry_run=args.dry_run)
+
+
+def _run_merge_invariants(target: Path, dry_run: bool) -> None:
+    """Merge `templates/agent_toolkit/invariants.json` into the project's
+    `.agent-toolkit/invariants.json` (dedup by id, project wins).
+
+    Split out so cmd_update stays under the LOC budget cap. In dry-run we
+    compute the diff in-memory without writing.
+    """
+    template_path = TEMPLATES / 'agent_toolkit' / 'invariants.json'
+    project_path = target / '.agent-toolkit' / 'invariants.json'
+    if not template_path.exists():
+        warn(f'[merge-invariants] template missing: {template_path}; skipping')
+        return
+    if dry_run:
+        from installer import merge_invariants  # local import keeps top tidy
+        tmpl_data = json.loads(template_path.read_text(encoding='utf-8'))
+        proj_data = None
+        if project_path.exists():
+            proj_data = json.loads(project_path.read_text(encoding='utf-8'))
+        _, added, skipped = merge_invariants(proj_data, tmpl_data)
+        info(f'[dry-run] merge-invariants → +{len(added)} new, '
+             f'{len(skipped)} skip (existing id)')
+        for inv_id in added:
+            print(f'  NEW       invariant: {inv_id}')
+        for inv_id in skipped:
+            print(f'  SKIP_DUP  invariant: {inv_id}')
+        info('[dry-run] Run with --apply --merge-invariants to write')
+        return
+    added, skipped = merge_invariants_file(project_path, template_path)
+    ok(f'merge-invariants: +{len(added)} new, {len(skipped)} skip')
+    for inv_id in added:
+        info(f'  added: {inv_id}')
+    for inv_id in skipped:
+        info(f'  skipped (already present): {inv_id}')
 
 
 # -----------------------------------------------------------------------
@@ -1003,6 +1048,15 @@ def main():
     sp.add_argument('--force-dirty', action='store_true',
                     help='Apply even when git working tree is dirty. '
                          'Default OFF — refuse to overwrite uncommitted changes.')
+    sp.add_argument('--merge-invariants', action='store_true',
+                    help='Auto-merge default invariants from the toolkit '
+                         'template into the project\'s '
+                         '.agent-toolkit/invariants.json (dedup by id; '
+                         'project entries always win). Without this flag, '
+                         '`update` preserves the project file untouched. '
+                         'Use after toolkit ships new default invariants '
+                         '(e.g. v0.22+ five-rule seed). Atomic write; '
+                         'safe to re-run (idempotent — skips existing ids).')
     sp.set_defaults(func=cmd_update)
 
     sp = sub.add_parser('list-presets', help='list available presets')

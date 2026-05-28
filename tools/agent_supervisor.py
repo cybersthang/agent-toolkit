@@ -261,7 +261,16 @@ def discover_sub_agent_transcripts(workspace: Path,
     """List sub-agent `.jsonl` transcripts in the project's transcript dir
     that (a) appeared/were modified AFTER the wave was emitted and (b) are
     NOT the main-session transcript. Per D1 we do not bridge agent_id →
-    session_id in Phase 1 — DEV correlates via the filename in notify."""
+    session_id in Phase 1 — DEV correlates via the filename in notify.
+
+    v0.27 (B2 fix, field-verified 2026-05-28): Claude Code writes sub-agent
+    transcripts under `<projectsRoot>/<encoded>/<sessionUUID>/subagents/
+    agent-<hash>.jsonl`, NOT flat in `<projectsRoot>/<encoded>/`. The
+    previous implementation globbed only the top level, so it never saw
+    any sub-agent — silent no-op against the real layout. We now glob:
+      - `*/subagents/*.jsonl`  (real layout)
+      - plus any top-level `*.jsonl` MINUS the main session  (back-compat
+        in case a future Claude Code revision moves them flat again)."""
     if projects_root is None:
         projects_root = Path.home() / ".claude" / "projects"
     enc = encode_project_path(workspace)
@@ -270,7 +279,24 @@ def discover_sub_agent_transcripts(workspace: Path,
         return []
     main = find_active_transcript(workspace, projects_root=projects_root)
     created = int((manifest or {}).get("created_ts") or 0)
+    seen: set = set()
     out: List[Path] = []
+
+    # Primary: nested layout `<sessionUUID>/subagents/agent-*.jsonl`.
+    for p in proj.glob("*/subagents/*.jsonl"):
+        try:
+            mtime = p.stat().st_mtime
+        except OSError:
+            continue
+        if created and mtime < created:
+            continue
+        key = str(p.resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(p)
+
+    # Back-compat: flat layout (older Claude Code, or future change).
     for p in proj.glob("*.jsonl"):
         try:
             mtime = p.stat().st_mtime
@@ -280,6 +306,10 @@ def discover_sub_agent_transcripts(workspace: Path,
             continue
         if main is not None and p.resolve() == main.resolve():
             continue
+        key = str(p.resolve())
+        if key in seen:
+            continue
+        seen.add(key)
         out.append(p)
     return out
 

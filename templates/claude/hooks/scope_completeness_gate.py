@@ -39,8 +39,9 @@ Whole-gate single-shot bypass (D5): prior prompt `bypass-scope-gate:
 this hook consumes it on Stop.
 
 Enforce mode via `get_enforce_mode(workspace, "scope_completeness_gate")`:
-  - `block` (default — D2, matches gap gate / feedback_exhaustive_analysis)
-  - `warn`  (allow + stderr nudge)
+  - `warn`  (default v0.27 — surface pending items but don't block; cuts
+             paralysis from stacked Stop gates)
+  - `block` (opt-in via enforce_mode.json — D2, strict mode)
   - `off`   (silent allow)
 
 Fails open on any unexpected error (wrapped by run_main_safe).
@@ -504,7 +505,9 @@ def _main() -> int:
 
     atomic_write_json(manifest_path, manifest)
 
-    mode = get_enforce_mode(workspace, HOOK_NAME, default="block")
+    # v0.27 default flipped block → warn. DEV opts back into block via
+    # enforce_mode.json or AGENT_TOOLKIT_STRICT=1.
+    mode = get_enforce_mode(workspace, HOOK_NAME, default="warn")
     if mode == "off":
         return _exit_allow(detail=f"off;pending={len(pending)}")
     if mode == "warn":

@@ -1,5 +1,5 @@
 {
-  "_doc": "Phase D v0.9.0 — config-driven enforce mode for hooks that support warn/block toggle. Strict mode env var AGENT_TOOLKIT_STRICT=1 globally overrides → block.",
+  "_doc": "Phase D v0.9.0 — config-driven enforce mode for hooks that support warn/block toggle. Strict mode env var AGENT_TOOLKIT_STRICT=1 globally overrides → block. v0.27: stop-gate defaults flipped block→warn to reduce paralysis from stacked Stop hooks. evidence_audit (claims without proof) and invariant_guard (must-keep regex) remain the only hard blockers.",
   "_schema": {
     "default": "warn|block — applied when per_hook entry not present",
     "per_hook": {
@@ -14,6 +14,9 @@
     "spec_drift_advisory": "warn",
     "implement_orchestrator": "warn",
     "clarification_gate_enforcer": "block",
-    "scope_completeness_gate": "block"
-  }
+    "gap_completeness_gate": "warn",
+    "scope_completeness_gate": "warn",
+    "post_edit_verify_gate": "warn"
+  },
+  "_strict_profile_doc": "To re-enable strict gates per ADR-006/007, copy enforce_mode.strict.example.json instead, or set AGENT_TOOLKIT_STRICT=1 (overrides everything to block)."
 }

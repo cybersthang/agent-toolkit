@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-"""PreToolUse hook — parallel-subagent conflict guard (v0.25.0).
+"""PreToolUse hook — parallel-subagent conflict guard (v0.25.0, status
+DEGRADED v0.27 — see KNOWN LIMITATION below).
 
 When the main agent has declared a wave of concurrent sub-agents via
 `tools/parallel_wave.py emit` (writing `.agent-toolkit/.parallel_wave.json`),
@@ -13,6 +14,22 @@ Rule (D8): for the incoming PreToolUse envelope:
 A file F is "in zone Z" when it matches any pattern in `Z.owned` (D4 smart
 match: glob with `*`, dir-prefix with trailing `/`, else exact path). If
 F ∈ Z and `envelope.agent_id != Z.agent_id` → BLOCK.
+
+KNOWN LIMITATION (B2, field-verified 2026-05-28, v0.27 audit):
+  Claude Code currently does NOT include `agent_id` in PreToolUse /
+  PostToolUse envelopes — it only appears in SubagentStart / SubagentStop
+  events. See anthropics/claude-code#40140 (feature request open). Effect:
+  `envelope.agent_id` is None for every Edit/Write call, so the guard
+  treats every edit as the "main agent" and cross-zone edits from
+  sub-agents are NOT blocked in real-world Claude Code today. The guard
+  remains correct + tested for the *future* envelope shape via synthetic
+  fixtures; it is currently advisory at runtime.
+  Mitigations until upstream adds the field:
+    1. Treat parallel-batching as conventional/honor-system, not enforced.
+    2. Use `tools/parallel_wave.py emit` to declare zones so DEV review
+       can spot violations in the transcript even if the guard didn't fire.
+    3. Watch the linked issue and remove this limitation block once the
+       field lands.
 
 Silent allow (exit 0, zero output) when:
   - Kill-switch `AGENT_TOOLKIT_DISABLE=1`.

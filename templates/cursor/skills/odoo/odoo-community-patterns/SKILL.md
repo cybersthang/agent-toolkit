@@ -17,9 +17,14 @@ the bug on a vanilla Community install.
 > claims should be re-checked against the target Odoo version's release
 > notes before being cited in a customer-facing report.
 
-## 0. Edition detection (MANDATORY first step)
+## 0. Edition + version detection (MANDATORY first step)
 
-Full method in `references/community-vs-enterprise-detection.md`:
+This skill is **both** edition-aware (Community vs Enterprise) **and**
+version-aware (v12 vs v17+ differ on sale→invoice fields, stock.move
+reservation, website routing).
+
+**Edition detection** — full method in
+`references/community-vs-enterprise-detection.md`:
 
 ```python
 def _is_enterprise(self):
@@ -28,6 +33,22 @@ def _is_enterprise(self):
         ('state', '=', 'installed'),
     ], limit=1))
 ```
+
+**Version detection** — same protocol as `odoo-code-review` /
+`odoo-code-patterns`: read `__manifest__.py` via `codebase.read_manifest`,
+parse `version` field with regex `^(\d+)\.0\.`. Fallback signals:
+`@api.multi` → ≤13; `account.invoice` model present → ≤13 (replaced by
+`account.move` in v14+); `stock.move.move_orig_ids` reservation field
+naming changed v15+; website QWeb-only renderer differs pre-v15.
+
+Per-version routing (Community-edition patterns):
+
+| Detected major | Routing |
+|---|---|
+| 12 | All flows use `account.invoice` (not `account.move`); HIGH applicability of patterns below as written |
+| 13 | Transitional — `account.invoice` deprecated, `account.move` partial. Patterns below apply with MEDIUM confidence; verify model name before write |
+| 14-16 | `account.move` mainstream. Apply patterns with HIGH confidence |
+| 17+ | Add OWL refactor caveats from `odoo-owl-17-refactor` for website controllers |
 
 | Topic | Reference |
 |---|---|

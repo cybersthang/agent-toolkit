@@ -27,10 +27,10 @@
     "default_port": 5432,
     "default_user": "odoo"
   },
-  "rules": ["_common", "odoo-17"],
+  "rules": ["_common", "odoo-18"],
   "_rules_comment": "TODO: differentiate from odoo-17 base when templates/cursor/rules/odoo-18/ is authored. v18 deltas (search keyword, aggregator, check_access) covered in skill references only.",
   "skills": ["_common", "odoo"],
-  "memory_packs": ["odoo-17"],
+  "memory_packs": ["odoo-18"],
   "_overlay_doc": "Version-specific invariants merged on top of project invariants.json by a FUTURE installer step (setup.py --merge-invariants, not yet wired — Wave C). Inherits the odoo-17 overlay conceptually (name_get, attrs/states, create_multi all still apply) plus the v18 deltas below. Same schema as .agent-toolkit/invariants.json entries. severity=warn. Cite a confirmed Odoo release fact per entry.",
   "_inherits_overlay": "odoo-17",
   "invariants_overlay": [

@@ -3,6 +3,132 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
+## [0.27.0] — 2026-05-28 — cognitive-load cut + Odoo 12-20 parity
+
+Cuts the cognitive overload introduced by stacked Stop gates (paper:
+"More rules → worse reasoning"). The 3 completeness gates that fired
+hard-block by default now WARN by default; only `evidence_audit` +
+`verify_lint` + `debug_sentry` remain hard blockers. DEV re-enables strict
+mode with one config swap. Adds full rule/memory/skill parity for Odoo
+versions 13–20 (previously only 12 + 17 had dedicated assets; the others
+fell back to nearest neighbour).
+
+**Test suite**: 751/751 pass (was 700 in v0.26). New tests:
+- `TestV027CrossGateDedup` (gap_completeness_gate, 3 tests)
+- `test_warns_by_default_when_pending_and_done_claim` (scope_completeness_gate)
+- `test_done_with_open_gaps_warns_by_default` (gap_completeness_gate)
+- `test_nested_subagents_layout_v0_27` + `test_combined_flat_and_nested_layouts` (sub-agent watcher B2 fix)
+- 4 cred-leak-safety tests for `seed_mcp_local_env` (B3 fix)
+
+**Odoo coverage parity (was 65% in v0.26 audit, now ~95%)**:
+
+- **Rule dirs** (`templates/cursor/rules/odoo-<N>/`): added v13, v14, v15,
+  v16, v18, v19, v20 (was only v12 + v17). Each ships 3 .mdc files
+  (`backend.mdc`, `generic.mdc`, `project-context.mdc`). 21 new files.
+- **Memory dirs** (`templates/memory/odoo-<N>/`): added v13, v14, v15,
+  v16, v18, v19, v20 (was only v12 + v17). Each ships 2 .md files
+  (`project_workspace.md`, `project_mcp_routing.md`). 14 new files.
+- **7 presets re-wired**: `odoo-13.json`/`14.json`/`15.json`/`16.json`/
+  `18.json`/`19.json`/`20.json` now reference their own dedicated rule
+  + memory pack (was: cascade-fallback to v12 or v17).
+- **8 new Odoo skills**:
+  - `odoo-studio-apps` — Studio (no-code) app evolution, exports, drift detection
+  - `odoo-payment-flows` — payment provider/transaction/token + v15 acquirer→provider rename + v17 refinement
+  - `odoo-account-move-overhaul` — `account.invoice`→`account.move` v14 break + v17 refinement
+  - `odoo-mail-v2-migration` — mail v1 (v12-18) → v2 (v19+) refactor + verify-installed-source caveat
+  - `odoo-module-install-scripts` — pre/post init hooks + migrations folder + Community vs Enterprise install
+  - `odoo-localization-patterns` — `l10n_<country>` chart-of-accounts + e-invoicing (Vietnam/EU/Latam)
+  - `odoo-upgrade-scripts` — cross-version upgrade paths + OpenUpgrade + v12→v20 breaking-change inventory
+  - `odoo-owl-17-refactor` — v17 OWL refactor delta (removed `LegacyComponent`, `do_action`→`actionService`, controller/renderer/view split)
+- **5 skill technical fixes**:
+  - `odoo-owl-components`: OWL timeline corrected — v14 introduced OWL v1 (was wrongly "OWL 16+"); v15 broader adoption; v16 OWL v2 mature
+  - `odoo-multi-company`: `_check_company_auto` mainstream from v16+ (was wrongly ≥13)
+  - `odoo-code-patterns`: v13-16 cascade flag upgraded LOW→MEDIUM with concrete transition notes
+  - `odoo-tdd`: v13-16 cascade flag upgraded LOW→MEDIUM with mail.thread + HttpCase route notes
+  - `odoo-performance`: v13-16 cascade flag upgraded LOW→MEDIUM with flush API + kanban JS notes
+- **3 skills gained explicit version-detection step**: `odoo-community-patterns`,
+  `odoo-data-verification`, `odoo-deterministic-answers`. (`odoo-jira-workflow`
+  remains version-agnostic by design — JIRA workflow doesn't depend on
+  Odoo major.)
+- **Canonical decisions backfill**: `canonical_decisions.odoo-17.json`
+  was the sparse one (11 entries; v13-16 and v18-20 already had 17).
+  Backfilled 6 entries from v18 (`reuse-first`, `complexity-budget`,
+  `jira-routing`, `audit-methodology`, `credentials-policy`,
+  `invariant-guard`) → v17 now at 17 entries, matching every other major.
+
+**Cognitive-load cut (DEFAULT BEHAVIOR CHANGE)**:
+
+- `gap_completeness_gate` hook default: `block` → `warn`.
+- `scope_completeness_gate` hook default: `block` → `warn`.
+- `post_edit_verify_gate` hook default: `block` → `warn` (gains
+  enforce-mode awareness; previously always-block).
+- New cross-gate dedup: when response carries any `scope-*` marker
+  (scope-done/defer/cant), `gap_completeness_gate` auto-downgrades to
+  warn so the two sibling Stop hooks don't double-fire on the same
+  claim. The scope gate is treated as the authoritative completion gate
+  when DEV declared an upfront scope.
+- `templates/agent_toolkit/enforce_mode.example.json` updated to mirror
+  the new warn defaults across all 3 gates (was: `scope_completeness_gate
+  = block`, others unset).
+- `templates/agent_toolkit/enforce_mode.strict.example.json` (new) —
+  one-file strict profile that restores pre-v0.27 block-everywhere
+  behavior. Copy this over `enforce_mode.json` to re-enable strict
+  ADR-006/007 enforcement.
+- `AGENT_TOOLKIT_STRICT=1` env var unchanged: still overrides all gates
+  to block regardless of config (CI safety).
+
+**Cognitive-load cut (duplication trim)**:
+
+- `templates/agent_toolkit/constitution.md` Section I no longer repeats
+  the 8 Karpathy operating principles. The principles live in ONE place
+  (`templates/cursor/rules/_common/karpathy-guidelines.mdc` + the
+  matching skill). Constitution now points to the canonical source +
+  keeps only the toolkit-specific principles (MCP-first, canonical
+  answers, doubt-before-shipping, confirm-before-acting). Cuts
+  per-session context bloat where the same 8 points were injected up
+  to 3× via constitution + rule + skill loaders.
+- `templates/agent_toolkit/HOOK_CHAIN.md` Stop table updated to show
+  the new defaults explicitly + lists all 3 newly-relaxed gates with
+  their config promote path.
+- `templates/CLAUDE.md` enforcement table updated for the 3 changed
+  hooks: BLOCK → WARN, with promote-to-block instructions inline.
+
+**Field-verified blocker fixes**:
+
+- **B1/B2 audit — sub-agent transcript layout (FIX)**: v0.26 spec
+  `v0.26.0-sub-agent-stall-watcher.md` assumed Claude Code writes
+  sub-agent transcripts flat under `~/.claude/projects/<encoded>/*.jsonl`.
+  Field-verification on 2026-05-28 (3-way parallel Agent fan-out on
+  `/home/voducthang/Toolkit`) shows the real layout is **nested**:
+  `~/.claude/projects/<encoded>/<sessionUUID>/subagents/agent-<hash>.jsonl`
+  + per-agent `.meta.json`. `tools/agent_supervisor.discover_sub_agent_transcripts`
+  globbed only the top level, so it silently saw zero sub-agents in
+  production. Fixed: glob both `*/subagents/*.jsonl` (real) and
+  `*.jsonl` (back-compat) with de-dup. New tests
+  `test_nested_subagents_layout_v0_27` + `test_combined_flat_and_nested_layouts`.
+- **B2 audit — `agent_id` not in PreToolUse envelope (LIMITATION
+  DOCUMENTED)**: `parallel_conflict_guard` reads `envelope.agent_id` to
+  identify which sub-agent is editing. Per Claude Code docs +
+  [anthropics/claude-code#40140](https://github.com/anthropics/claude-code/issues/40140),
+  `agent_id` currently only appears in `SubagentStart`/`SubagentStop`
+  events, NOT in `PreToolUse` — so the guard is silent-no-op at
+  runtime today (the synthetic-envelope unit tests still pass, hence
+  the v0.25 verify report missed it). Marked DEGRADED in the hook
+  docstring with mitigations; the guard remains correct for the
+  future envelope shape.
+
+**Migration notes (existing installs)**:
+
+- No code action required for the common case. Existing installs
+  continue to use `.agent-toolkit/enforce_mode.json` if present — copy
+  the new `enforce_mode.example.json` over it to inherit the relaxed
+  defaults, or do nothing to keep current behavior.
+- Tests: subprocess-style test fixtures that asserted `rc==2` from
+  these 3 gates with no `enforce_mode.json` now must seed
+  `enforce_mode.json` with `per_hook.<hook_name>: "block"` to exercise
+  the block path. The default-no-config path now returns warn (rc==0
+  + stderr `[<hook>] warn:`).
+
 ## [0.26.0] — 2026-05-28 — version-bump consolidation + Odoo coverage parity
 
 Aggregate release covering v0.23 → v0.26 features that shipped on `1.0`

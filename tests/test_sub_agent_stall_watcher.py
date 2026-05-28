@@ -106,6 +106,50 @@ class TestDiscovery:
         found = sup.discover_sub_agent_transcripts(ws, manifest, projects_root=proj_root)
         assert found == []
 
+    def test_nested_subagents_layout_v0_27(self, ws, tmp_path):
+        """v0.27 B2 fix — Claude Code's real layout is
+        `<proj>/<sessionUUID>/subagents/agent-<hash>.jsonl`, NOT flat.
+        Field-verified 2026-05-28 on /home/voducthang/Toolkit session."""
+        _seed_manifest(ws, created_offset=-120)
+        manifest = json.loads(
+            (ws / ".agent-toolkit/.parallel_wave.json").read_text(encoding="utf-8"))
+        proj_root = tmp_path / "projects-root"
+        proj_dir = _projects_dir(proj_root, ws)
+        # Main session at top level (real layout).
+        _make_jsonl(proj_dir, "session-uuid-mainjsonl", age_seconds=5)
+        # Sub-agents nested under session subdir.
+        sess_dir = proj_dir / "session-uuid-deadbeef"
+        subagents_dir = sess_dir / "subagents"
+        subagents_dir.mkdir(parents=True)
+        sub_a = _make_jsonl(subagents_dir, "agent-aaa111", age_seconds=30)
+        sub_b = _make_jsonl(subagents_dir, "agent-bbb222", age_seconds=60)
+        found = sup.discover_sub_agent_transcripts(ws, manifest, projects_root=proj_root)
+        found_paths = {str(p) for p in found}
+        assert str(sub_a) in found_paths, f"sub_a not found in {found_paths}"
+        assert str(sub_b) in found_paths, f"sub_b not found in {found_paths}"
+
+    def test_combined_flat_and_nested_layouts(self, ws, tmp_path):
+        """Mix-mode safety: if a future Claude Code revision writes some
+        sub-agents flat and some nested (or during migration), both are
+        discovered without duplicates."""
+        _seed_manifest(ws, created_offset=-120)
+        manifest = json.loads(
+            (ws / ".agent-toolkit/.parallel_wave.json").read_text(encoding="utf-8"))
+        proj_root = tmp_path / "projects-root"
+        proj_dir = _projects_dir(proj_root, ws)
+        # Main + 1 flat sub + 1 nested sub.
+        _make_jsonl(proj_dir, "main", age_seconds=1)  # newest = main
+        flat_sub = _make_jsonl(proj_dir, "sub-flat", age_seconds=30)
+        nested_dir = proj_dir / "session-uuid" / "subagents"
+        nested_dir.mkdir(parents=True)
+        nested_sub = _make_jsonl(nested_dir, "agent-nested", age_seconds=45)
+        found = sup.discover_sub_agent_transcripts(ws, manifest, projects_root=proj_root)
+        found_paths = {str(p) for p in found}
+        assert str(flat_sub) in found_paths
+        assert str(nested_sub) in found_paths
+        # No dups.
+        assert len(found) == len(set(found_paths))
+
 
 # -------- TestDetect (us2) ----------------------------------------------
 

@@ -1,21 +1,41 @@
 ---
 name: odoo-owl-components
-description: OWL 2.x reactive component patterns for Odoo 16+ — lifecycle pitfalls (setup vs onMounted), reactive state mutations (useState vs ref), sub-component communication (props down, events up), t-on event binding, template inheritance via Component.template. Each pattern carries a falsification recipe. OWL does NOT exist in Odoo 12 — code-review must flag Odoo 12 codebases out of scope. Open whenever the user says "OWL", "owl component", "useState", "useEffect", "onMounted", or when editing a `.js` file with `/** @odoo-module **/` header.
+description: OWL reactive component patterns for Odoo 14+ — lifecycle (setup vs onMounted), reactive state (useState vs ref), props-down/events-up, t-on binding, template inheritance. Falsification recipes per pattern. Skill is version-aware: OWL v1 (14-15) coexists with jQuery/QWeb; OWL v2 mature 16+; v17 introduced a deeper refactor (see sibling `odoo-owl-17-refactor` skill). OWL does NOT exist in Odoo 12/13 — code-review must flag those codebases out of scope. Open when user says "OWL", "owl component", "useState", "useEffect", "onMounted", or when editing a `.js` file with `/** @odoo-module **/` header.
 ---
 
-# Odoo — OWL 2.x component patterns
+# Odoo — OWL component patterns (v14+ ; OWL v2 default 16+)
 
-OWL is Odoo's reactive frontend, default in 16+. **OWL does NOT exist in
-Odoo 12** — if Step 0 detects 12, exit; use
-`odoo-code-patterns/references/odoo-12-patterns.md` (jQuery widgets).
-Module-agnostic. Confidence: **H** stable across OWL 2.x; **M** may
-shift 16/17/18 — `<see Odoo Frontend Framework docs>`.
+OWL is Odoo's reactive frontend. Timeline:
+
+- **Odoo 12, 13** — no OWL. jQuery + QWeb only. This skill exits.
+- **Odoo 14** — OWL v1 INTRODUCED; coexists with jQuery/QWeb widgets.
+  Pick the framework matching the existing widget before patching;
+  don't mix.
+- **Odoo 15** — broader OWL adoption + legacy kanban JS removed. Still
+  mixed (some QWeb/jQuery widgets remain). New components prefer OWL.
+- **Odoo 16** — OWL v2 mature; web client mostly OWL. Patterns below
+  are stable from here on.
+- **Odoo 17+** — additional refactor (removed `LegacyComponent`,
+  `do_action` → `actionService`, controller/renderer/view split, etc.).
+  For v17+ specifics see sibling skill `odoo-owl-17-refactor`.
+
+Module-agnostic. Confidence: **H** stable across OWL 2.x (16+); **M**
+when on 14/15 (OWL v1 — some lifecycle hooks named differently); v17+
+adds new APIs — cross-check `odoo-owl-17-refactor` before patching.
 
 ## 0. Version detection (MANDATORY)
 
-Read `__manifest__.py` via `codebase.read_manifest`. If major = **12** →
-STOP. Signal for "OWL in scope?": grep for `/** @odoo-module **/` in
-any `static/src/**/*.js`.
+Read `__manifest__.py` via `codebase.read_manifest`. Behaviour by major:
+
+| Major | Action |
+|---|---|
+| 12, 13 | STOP — OWL not present. Use `odoo-code-patterns/references/odoo-12-patterns.md` (jQuery widgets). |
+| 14, 15 | OWL v1 — apply patterns below; flag MEDIUM since some APIs (e.g. `mounted()` instead of `onMounted()`) differ. Check which framework the target widget uses before patching. |
+| 16     | OWL v2 mature — apply patterns below directly. |
+| 17, 18, 19, 20 | OWL v2 + v17 refactor. Apply patterns below AND consult `odoo-owl-17-refactor` for removed-symbol checks. |
+
+Signal for "OWL in scope?": grep for `/** @odoo-module **/` in any
+`static/src/**/*.js`.
 
 | Topic | Reference |
 |---|---|

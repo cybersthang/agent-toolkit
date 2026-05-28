@@ -9,6 +9,34 @@ The `realdata_test` MCP runs read-only ORM expressions against the configured DB
 
 The same surface works for Odoo 12 → 20. Differences across versions (e.g. `@api.multi` decorator on the method being probed, `name_get` vs `_compute_display_name`, `aggregator=` vs `group_operator=`) only affect how you *write* the expression — they don't change how to verify it.
 
+## 0. Version detection (MANDATORY before composing the expression)
+
+Even though the *verification mechanism* is version-agnostic, the
+*expression you write* is highly version-specific. Quick model/field
+mismatches that silently return wrong data:
+
+- `account.invoice` (v12-13) vs `account.move` (v14+)
+- `state='open'` (v12-13 invoice) vs `state='posted'` (v14+ move)
+- `name_get()` (≤16) vs `_compute_display_name` (17+)
+- `aggregator='sum'` (v18+) vs `group_operator='sum'` (≤17) on field declarations
+- `payment.acquirer` (v12-14) vs `payment.provider` (v15+) model name
+
+**Protocol:** read `__manifest__.py` via `codebase.read_manifest` and
+parse `version` field with regex `^(\d+)\.0\.`. If detection is
+ambiguous (mixed monorepo), call `codebase.search_model_definitions`
+for the model your expression references to confirm it exists on the
+target version. State the detected version + which models you assumed
+in the report header.
+
+Routing table:
+
+| Detected major | Expression style |
+|---|---|
+| 12 | `account.invoice`, `state='open'`, `name_get()`. v12 ORM eval works the same way; just match the symbols. |
+| 13 | Mixed — both `account.invoice` and `account.move` exist; verify which is in use via `search_count` before composing the aggregate. |
+| 14-16 | `account.move`, `state='posted'`, `name_get()` still standard. |
+| 17+ | `account.move`, `_compute_display_name`. v18+ adds `aggregator='sum'`. v19+ adds mail v2 (verify `mail.message` schema before aggregating thread data). |
+
 ## When to use this skill
 
 - A computed field's stored values look suspicious.

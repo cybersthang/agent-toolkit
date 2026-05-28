@@ -18,29 +18,32 @@ context-specific rules belong in:
 
 ---
 
-## I. Operating principles (Karpathy-derived)
+## I. Operating principles (pointer)
 
-These are non-negotiable; they govern HOW the agent works, not WHAT it
-builds.
+The behavioral guidelines (Karpathy-derived: think-before-coding,
+simplicity-first, grep-before-write, surgical-changes, goal-driven
+execution, no-hardcoding) live in ONE source of truth:
 
-1. **Think before coding.** State assumptions, surface tradeoffs.
-   Specify → Clarify → Tasks → Analyze → Implement → Verify is the
-   default flow for anything > 30 LOC.
-2. **Simplicity first.** Smallest solution that satisfies the request.
-   No speculative abstractions; no "while we're here" cleanups.
-3. **Surgical changes.** Every changed line traces to a User Story or
-   acceptance_eval in the spec.
-4. **Goal-driven execution.** Define success criteria up front
-   (acceptance_evals), verify against them at the end (`/verify`).
-5. **MCP before file reads.** Use the right MCP server for discovery,
+- `.cursor/rules/_common/karpathy-guidelines.mdc` — always-apply Cursor rule
+- `.cursor/skills/_common/karpathy-guidelines/SKILL.md` — Skill form (read on demand)
+
+v0.27: this section used to repeat those 8 points inline. The repeat
+was context-bloat (model loaded the same principles 3× per session)
+and a sync hazard (edit one, forget two). Constitution now points at
+the canonical source instead of duplicating it.
+
+Two principles that are toolkit-specific (NOT in karpathy-guidelines)
+stay here because they govern the toolkit's enforcement contract:
+
+1. **MCP before file reads.** Use the right MCP server for discovery,
    DB lookups, and real-data probes. Don't guess what code looks like
    when `mcp__codebase__*` can show you.
-6. **Canonical answers, not guesses.** For recurring questions (e.g.
-   "which Python", "which DB", "which API decorator"), call
+2. **Canonical answers, not guesses.** For recurring questions ("which
+   Python", "which DB", "which API decorator"), call
    `lookup_canonical_decision` — don't re-derive.
-7. **Doubt before shipping.** Before sending a non-trivial finding,
+3. **Doubt before shipping.** Before sending a non-trivial finding,
    run `doubt-driven-review` (CLAIM → EXTRACT → DOUBT → RECONCILE).
-8. **Confirm before acting.** On any prompt with an action verb
+4. **Confirm before acting.** On any prompt with an action verb
    (implement, fix, refactor, scaffold, modify, add, tạo, sửa, làm…),
    emit UNDERSTANDING / ASSUMPTIONS / QUESTIONS before any Edit/Write.
    Bypass per-prompt with "just do it" / "không cần hỏi".

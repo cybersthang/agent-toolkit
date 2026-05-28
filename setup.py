@@ -423,6 +423,7 @@ def cmd_init(args):
     seed_memory(preset, ctx, target, force=args.force)
     write_mcp_configs(ctx, target, force=args.force)
     write_gitignore(target)
+    seed_mcp_local_env(target)
     write_project_config(target, ctx, args.preset)
 
     print()
@@ -1039,6 +1040,55 @@ def write_gitignore(target):
         gi.write_text('# agent-toolkit\n' + '\n'.join(snippets) + '\n',
                       encoding='utf-8')
         info('  created .gitignore')
+
+
+def seed_mcp_local_env(target):
+    """v0.27 (B3 fix): auto-seed `.codex/mcp.local.env` from the `.example`
+    template if (and only if) the gitignore covers it.
+
+    Before v0.27 the post-install checklist told the user to manually copy
+    `.codex/mcp.local.env.example` → `.codex/mcp.local.env`. Users skipped
+    that step and MCP server boots failed because the env file was
+    missing. We now do the copy automatically, BUT only after asserting
+    `.gitignore` contains `.codex/mcp.local.env` — never seed an env file
+    in a tree that isn't gitignoring it (cred-leak prevention).
+
+    Safety rules:
+      - Skip silently if `.codex/mcp.local.env` already exists (preserve
+        user's filled-in credentials).
+      - Skip + warn if `.codex/mcp.local.env.example` is missing (the
+        template should have been rendered earlier in the install pipeline;
+        absence means a real bug worth surfacing, not silent recovery).
+      - Skip + warn if `.gitignore` does NOT cover the env path — never
+        write secrets-bearing-stub into an un-gitignored tree.
+
+    Result file is a verbatim copy of `.example` with `replace-me`
+    placeholder values intact — the agent / user must still fill in real
+    creds before MCP servers connect to live DBs.
+    """
+    codex_dir = target / '.codex'
+    example = codex_dir / 'mcp.local.env.example'
+    real = codex_dir / 'mcp.local.env'
+    gi = target / '.gitignore'
+
+    if real.exists():
+        return  # silent — user-managed credentials, don't touch
+
+    if not example.exists():
+        warn(f'  .codex/mcp.local.env.example missing — skipping auto-seed '
+             f'(expected the install pipeline to render it earlier)')
+        return
+
+    gi_text = gi.read_text(encoding='utf-8') if gi.exists() else ''
+    if '.codex/mcp.local.env' not in gi_text:
+        warn(f'  .gitignore does NOT cover .codex/mcp.local.env — refusing '
+             f'to auto-seed env file (cred-leak protection). Run '
+             f'write_gitignore() first or add the entry manually.')
+        return
+
+    real.write_text(example.read_text(encoding='utf-8'), encoding='utf-8')
+    ok(f'  seeded {real.relative_to(target)} from .example '
+       f'(values still need filling — search `replace-me`)')
 
 
 # -----------------------------------------------------------------------

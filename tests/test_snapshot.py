@@ -60,7 +60,10 @@ def test_dry_run_emits_stable_file_count(tmp_path, preset):
     # Bumped at v0.19.0: +gap_completeness_gate.py hook + v0.19 spec.
     # Bumped at v0.23.0: +scope_completeness_gate.py hook + scope-manifest
     # skill + scope_gate.example.json config (R9).
-    maximums = {'generic': 210, 'odoo-12': 270, 'odoo-17': 270}
+    # Bumped at v0.27.0: +enforce_mode.strict.example.json + 8 new Odoo
+    # skills (studio/payment/account-move/mail-v2/install-scripts/l10n/
+    # upgrade/owl-17-refactor) added under templates/cursor/skills/odoo/.
+    maximums = {'generic': 210, 'odoo-12': 290, 'odoo-17': 290}
     assert len(plan_lines) <= maximums[preset], (
         f'{preset}: {len(plan_lines)} files planned, '
         f'unexpectedly above ceiling {maximums[preset]} '

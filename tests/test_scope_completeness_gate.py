@@ -65,6 +65,17 @@ def _seed_manifest(workspace: Path, items: list, source: str = "tasks.md") -> Pa
     return path
 
 
+def _seed_block_mode(workspace: Path) -> Path:
+    """v0.27: scope_completeness_gate default flipped to warn. Tests that
+    exercise the block path opt in explicitly via enforce_mode.json."""
+    path = workspace / ".agent-toolkit/enforce_mode.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "per_hook": {"scope_completeness_gate": "block"},
+    }), encoding="utf-8")
+    return path
+
+
 def _read_manifest(workspace: Path) -> dict:
     return json.loads((workspace / MANIFEST_REL).read_text(encoding="utf-8"))
 
@@ -125,15 +136,29 @@ class TestManifestDerive:
 
 
 class TestBlockSemantics:
-    """us2: done/full claim + pending item → BLOCK (exit 2)."""
+    """us2: done/full claim + pending item → BLOCK (exit 2) when strict,
+    or WARN (rc=0 + stderr) by default (v0.27)."""
 
-    def test_block_when_pending_and_done_claim(self, workspace):
+    def test_block_when_pending_and_done_claim_strict(self, workspace):
+        """v0.27: opt-in to block via enforce_mode.json."""
+        _seed_manifest(workspace, [
+            {"id": "S1", "ref": "T1", "desc": "alpha", "status": "done"},
+            {"id": "S2", "ref": "T2", "desc": "beta", "status": "pending"},
+        ])
+        _seed_block_mode(workspace)
+        r = _run(workspace, "Implement done — everything complete.")
+        assert r.returncode == 2, f"expected block, got {r.returncode}: {r.stderr}"
+        assert "S2" in r.stderr
+
+    def test_warns_by_default_when_pending_and_done_claim(self, workspace):
+        """v0.27: no enforce_mode.json → warn-by-default (rc=0 + stderr)."""
         _seed_manifest(workspace, [
             {"id": "S1", "ref": "T1", "desc": "alpha", "status": "done"},
             {"id": "S2", "ref": "T2", "desc": "beta", "status": "pending"},
         ])
         r = _run(workspace, "Implement done — everything complete.")
-        assert r.returncode == 2, f"expected block, got {r.returncode}: {r.stderr}"
+        assert r.returncode == 0, f"expected warn-allow, got rc={r.returncode}"
+        assert "[scope-completeness-gate] warn:" in r.stderr
         assert "S2" in r.stderr
 
     def test_all_resolved_allows(self, workspace):
@@ -171,10 +196,12 @@ class TestResolutionMarkers:
         assert st == {"S1": "done", "S2": "deferred", "S3": "cant"}
 
     def test_partial_resolution_still_blocks(self, workspace):
+        """v0.27: still blocks when strict mode is on + S2 unresolved."""
         _seed_manifest(workspace, [
             {"id": "S1", "ref": "T1", "desc": "a", "status": "pending"},
             {"id": "S2", "ref": "T2", "desc": "b", "status": "pending"},
         ])
+        _seed_block_mode(workspace)
         r = _run(workspace, "All done. scope-done: S1")
         assert r.returncode == 2, f"S2 still pending → block; got {r.returncode}"
         assert "S2" in r.stderr

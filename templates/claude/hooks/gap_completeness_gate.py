@@ -26,9 +26,15 @@ Skip cases (silent allow, exit 0):
   - Bypass token consumed from prior UserPromptSubmit
 
 Enforce mode via `get_enforce_mode(workspace, "gap_completeness_gate")`:
-  - `block` (default — `feedback_exhaustive_analysis` is strict)
-  - `warn` (allow + stderr nudge)
-  - `off` (silent allow)
+  - `warn` (default v0.27 — surface gaps but don't block; reduce paralysis)
+  - `block` (opt-in via enforce_mode.json — `feedback_exhaustive_analysis` strict mode)
+  - `off`   (silent allow)
+
+Cross-gate dedup (v0.27): if the response contains any `scope-done:` /
+`scope-defer:` / `scope-cant:` marker, scope_completeness_gate is the
+authoritative completion gate for this turn → gap-gate downgrades to
+warn (or off if already warn). Avoids two stacked Stop hooks firing on
+the same claim.
 
 Fails open on any unexpected error.
 """
@@ -46,6 +52,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from _common import run_main_safe, emit_fire_event, get_enforce_mode, parse_expires_at, atomic_write_json  # noqa: E402
 from _patterns import (  # noqa: E402
     DONE_CLAIM_GAP_RE, GAP_DEFER_RE, GAP_CANT_FIX_RE, GAP_LIST_EMIT_RE,
+    SCOPE_DONE_RE, SCOPE_DEFER_RE, SCOPE_CANT_RE,
 )
 
 # UTF-8 stdin/stdout/stderr — Vietnamese-friendly + Windows-safe.
@@ -336,12 +343,26 @@ def _main() -> int:
     # Persist mutations (defer / cant_fix applied but residual open).
     _persist(state, gaps_path)
 
-    mode = get_enforce_mode(workspace, HOOK_NAME, default="block")
+    # v0.27 default flipped block → warn (reduce paralysis from stacked
+    # Stop gates). DEV can still opt in to block via enforce_mode.json or
+    # AGENT_TOOLKIT_STRICT=1.
+    mode = get_enforce_mode(workspace, HOOK_NAME, default="warn")
+
+    # v0.27 cross-gate dedup: scope_completeness_gate is the authoritative
+    # completion gate when DEV declared an upfront scope. If the response
+    # uses any scope-* marker, this gate downgrades to warn so both gates
+    # don't double-fire on the same claim.
+    if mode == "block" and (
+        SCOPE_DONE_RE.search(response_text)
+        or SCOPE_DEFER_RE.search(response_text)
+        or SCOPE_CANT_RE.search(response_text)
+    ):
+        mode = "warn"
+
     if mode == "off":
         return _exit_allow(detail=f"off;open={len(open_gaps)}")
     if mode == "warn":
         return _exit_warn(reason)
-    # Default: block.
     return _exit_block(reason)
 
 

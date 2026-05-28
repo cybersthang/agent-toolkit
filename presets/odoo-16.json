@@ -27,10 +27,10 @@
     "default_port": 5432,
     "default_user": "odoo"
   },
-  "rules": ["_common", "odoo-17"],
+  "rules": ["_common", "odoo-16"],
   "_rules_comment": "TODO: differentiate from odoo-17 base when templates/cursor/rules/odoo-16/ is authored. v16 is the first major OWL2 release — patterns very close to v17.",
   "skills": ["_common", "odoo"],
-  "memory_packs": ["odoo-17"],
+  "memory_packs": ["odoo-16"],
   "_overlay_doc": "Version-specific invariants merged on top of project invariants.json by a FUTURE installer step (setup.py --merge-invariants, not yet wired — Wave C). Same schema as .agent-toolkit/invariants.json entries. severity=warn (informational). Cite a confirmed Odoo release fact per entry.",
   "invariants_overlay": [
     {

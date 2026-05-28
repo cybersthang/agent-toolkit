@@ -32,7 +32,9 @@ Same protocol as `odoo-code-review` / `odoo-code-patterns`:
 2. **Fallback signals** (only if manifest missing):
    - `@api.multi` decorator → ≤13 (treat as 12 in our scope).
    - `with_company()` ORM call anywhere in the addon → ≥14.
-   - `_check_company_auto = True` class attribute → ≥13.
+   - `_check_company_auto = True` class attribute → **mainstream from 16+**
+     (introduced earlier as opt-in around 13 partial / 14, but typical
+     v13-15 code does NOT set it; default-True only became standard in 16).
    - `@api.model_create_multi` decorator → ≥14.
 3. **Ask the user** only if signals are inconclusive.
 

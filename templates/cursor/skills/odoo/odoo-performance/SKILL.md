@@ -27,7 +27,7 @@ Same protocol as `odoo-code-review`:
 | Detected major | Reference |
 |---|---|
 | 12 | `references/odoo-12-perf.md` (standalone) |
-| 13–16 | `references/odoo-17-perf.md` + flag LOW |
+| 13–16 | `references/odoo-17-perf.md` + flag MEDIUM "v13-16 lack `flush_recordset()` + `env.flush_all()` (formalized v16); pre-v16 cache invalidation is ad-hoc via `recordset.invalidate_cache()`. v15 also removed legacy kanban JS — perf tweaks touching kanban widgets must check the dedicated odoo-15 rule pack first." |
 | 17 | `references/odoo-17-perf.md` |
 | 18 | `references/odoo-18-perf.md` ← 17 |
 | 19/20 | `references/odoo-18-perf.md` ← 17 + flag MEDIUM (placeholder cascade — re-check the target major's release notes; this reference may need overrides) |

@@ -3,6 +3,50 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
+## [0.26.0] — 2026-05-28 — version-bump consolidation + Odoo coverage parity
+
+Aggregate release covering v0.23 → v0.26 features that shipped on `1.0`
+branch but never received a `__version__` bump or tag. Plus parity work
+to remove asymmetric Odoo coverage flagged by the NAKIVO consumer audit.
+
+**Versioning catch-up**:
+
+- `lib/installer.py:__version__` bumped 0.21.0 → 0.26.0 to match
+  branch HEAD (commits `df64d51`, `f266b45`, `a5d5471`, `847d2e5`).
+- Tags v0.23.0 / v0.24.0 / v0.25.0 / v0.26.0 published — previously
+  only v0.22.0 existed.
+
+**Added (already-shipped features, retroactively versioned)**:
+
+- v0.23 + v0.24: `scope_completeness_gate` Stop hook (R9 manifest pattern)
+  · `claim-fix` audit · `agent-resilience-supervisor` tools/.
+- v0.25: `parallel_conflict_guard` PreToolUse hook · `parallel-batching`
+  skill · `parallel_wave.json` manifest schema for file-disjoint
+  sub-agent waves.
+- v0.26: `sub-agent-stall-watcher` extension to `tools/agent_supervisor.py`
+  + `tools/notify.py` for autonomous run timeout detection (toolkit-side
+  only — no consumer-deployable file).
+
+**Added (this release — Odoo coverage parity)**:
+
+- `templates/codex/canonical_decisions.odoo-{13,14,15,16,18,19,20}.json`
+  — copies of the odoo-12 17-decision base with `framework_version`
+  field swapped + `_per_version_review` note. Closes the audit gap
+  where 7/9 Odoo presets fell back to `generic.json` (11 decisions,
+  Odoo-agnostic) instead of getting Odoo-specific guidance.
+- `presets/odoo-12.json` — added `invariants_overlay` with
+  `odoo12-api-multi-required-on-write` (positive guard against copy-paste
+  from Odoo 16+ which dropped `@api.multi`).
+
+**Promoted to blocker severity**:
+
+- `no-bare-python-shebang` (warn → blocker)
+- `credentials-via-mcp-local-env` (warn → blocker)
+
+Both invariants now DENY edits that strip the required reference,
+matching the `feedback_python_venv` + `feedback_credentials` rule
+captured by every Odoo consumer's memory pack.
+
 ## [0.22.0] — TBD pending merge to master — Odoo edition coverage + 4-axis depth
 
 Q2 / Phase A release. Closes the M19 deferral from v0.21 (per-Odoo-version

@@ -30,5 +30,17 @@
   "rules": ["_common", "odoo-12"],
   "_rules_comment": "TODO: differentiate from odoo-12 base when templates/cursor/rules/odoo-14/ is authored. v14 still uses @api.multi-era patterns so odoo-12 rules apply.",
   "skills": ["_common", "odoo"],
-  "memory_packs": ["odoo-12"]
+  "memory_packs": ["odoo-12"],
+  "_overlay_doc": "Version-specific invariants merged on top of project invariants.json by a FUTURE installer step (setup.py --merge-invariants, not yet wired — Wave C). Same schema as .agent-toolkit/invariants.json entries. severity=warn (informational). Cite a confirmed Odoo release fact per entry.",
+  "invariants_overlay": [
+    {
+      "id": "odoo14-manifest-assets-dict",
+      "description": "Odoo 14 introduced the manifest `assets` dict — register JS/CSS bundles there, not via the legacy <template> asset-inheritance XML.",
+      "applies_to": ["**/__manifest__.py"],
+      "rules": {"must_keep_regex": ["[\"']assets[\"']\\s*:"]},
+      "severity": "warn",
+      "rationale": "Odoo 14 added the `assets` key to `__manifest__.py`; new bundles should be declared there instead of the v12-era `<template inherit_id=\"web.assets_backend\">` XML pattern. Fix when violated: restore the `assets` manifest entry the edit dropped (or confirm bundles are intentionally declared elsewhere).",
+      "_version": "14+"
+    }
+  ]
 }

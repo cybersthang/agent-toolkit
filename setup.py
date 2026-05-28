@@ -73,7 +73,7 @@ from installer import (  # noqa: E402
     load_preset, render_text, detect_python, detect_psql, encode_claude_project_path,
     confirm, info, warn, ok,
     resolve_preset, git_dirty_status,
-    merge_invariants_file,
+    merge_invariants_file, load_preset_overlay,
 )
 
 
@@ -497,28 +497,61 @@ def cmd_update(args):
     # merge new template entries by id (project wins on collision). In
     # dry-run mode we just preview which ids would be added/skipped.
     if args.merge_invariants:
-        _run_merge_invariants(target, dry_run=args.dry_run)
+        _run_merge_invariants(target, dry_run=args.dry_run,
+                              preset_name=args.preset)
 
 
-def _run_merge_invariants(target: Path, dry_run: bool) -> None:
-    """Merge `templates/agent_toolkit/invariants.json` into the project's
-    `.agent-toolkit/invariants.json` (dedup by id, project wins).
+def _resolve_overlay(preset_name: Optional[str]) -> List[Dict[str, Any]]:
+    """Load the active preset's `invariants_overlay` (R4-consumer).
+
+    Returns [] when no preset name is known or the preset has no overlay.
+    A bad preset name is downgraded to a warning here (the main install path
+    already validated it); merge proceeds with template defaults only.
+
+    v0.23 R4-consumer.
+    """
+    if not preset_name:
+        return []
+    try:
+        return load_preset_overlay(preset_name, PRESETS_DIR)
+    except (FileNotFoundError, ValueError) as exc:
+        warn(f'[merge-invariants] preset overlay unavailable: {exc}; '
+             f'merging template defaults only')
+        return []
+
+
+def _run_merge_invariants(target: Path, dry_run: bool,
+                          preset_name: Optional[str] = None) -> None:
+    """Merge `templates/agent_toolkit/invariants.json` AND the active preset's
+    `invariants_overlay` into the project's `.agent-toolkit/invariants.json`
+    (dedup by id, project wins, then template, then overlay).
 
     Split out so cmd_update stays under the LOC budget cap. In dry-run we
     compute the diff in-memory without writing.
+
+    v0.23 R4-consumer.
     """
     template_path = TEMPLATES / 'agent_toolkit' / 'invariants.json'
     project_path = target / '.agent-toolkit' / 'invariants.json'
     if not template_path.exists():
         warn(f'[merge-invariants] template missing: {template_path}; skipping')
         return
+    overlay = _resolve_overlay(preset_name)
+    if overlay:
+        info(f'[merge-invariants] preset `{preset_name}` overlay: '
+             f'{len(overlay)} invariant(s)')
     if dry_run:
         from installer import merge_invariants  # local import keeps top tidy
         tmpl_data = json.loads(template_path.read_text(encoding='utf-8'))
         proj_data = None
         if project_path.exists():
             proj_data = json.loads(project_path.read_text(encoding='utf-8'))
-        _, added, skipped = merge_invariants(proj_data, tmpl_data)
+        merged, added, skipped = merge_invariants(proj_data, tmpl_data)
+        if overlay:
+            _, ov_added, ov_skipped = merge_invariants(
+                merged, {'invariants': overlay})
+            added = added + ov_added
+            skipped = skipped + ov_skipped
         info(f'[dry-run] merge-invariants → +{len(added)} new, '
              f'{len(skipped)} skip (existing id)')
         for inv_id in added:
@@ -527,7 +560,8 @@ def _run_merge_invariants(target: Path, dry_run: bool) -> None:
             print(f'  SKIP_DUP  invariant: {inv_id}')
         info('[dry-run] Run with --apply --merge-invariants to write')
         return
-    added, skipped = merge_invariants_file(project_path, template_path)
+    added, skipped = merge_invariants_file(
+        project_path, template_path, overlay_invariants=overlay)
     ok(f'merge-invariants: +{len(added)} new, {len(skipped)} skip')
     for inv_id in added:
         info(f'  added: {inv_id}')

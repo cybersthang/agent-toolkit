@@ -38,12 +38,15 @@ Full release / mirror / tag procedure documented in [REBUILD.md](REBUILD.md).
 
 ## Why agent-toolkit?
 
-- 🛡️ **Mechanical enforcement, not honor system.** 27 hooks DENY at the
+- 🛡️ **Mechanical enforcement, not honor system.** 30 hooks DENY at the
   Claude Code harness level — invariant strips, claim-without-proof,
   destructive git (`git_guardrails` blocks commit/push/add until DEV
   explicitly authorizes), hallucinated progress, **unresolved gaps on
-  done-claim** (`gap_completeness_gate` v0.19 — chặn drip-feed). Not
-  warnings the agent can ignore.
+  done-claim** (`gap_completeness_gate` v0.19 — chặn drip-feed), and
+  **partial-done on a multi-item request** (`scope_completeness_gate` v0.23
+  — enumerates full scope from tasks.md / acceptance_evals / TodoWrite and
+  blocks a done/full claim while any item is still pending). Not warnings
+  the agent can ignore.
 - 🔬 **Real-data verify or it didn't ship.** `/verify` runs MCP probes on
   the live DB; `evidence_audit` Stop hook BLOCKS "tests pass" claims that
   lack an `mcp__realdata_test__*` or `mcp__postgres__*` call in the turn.
@@ -70,6 +73,14 @@ Full release / mirror / tag procedure documented in [REBUILD.md](REBUILD.md).
   10 cross-version performance recipes shipped. 5 default invariants shipped
   with the preset. 12 outstanding TODO markers resolved. See
   [CHANGELOG.md](CHANGELOG.md) for the full diff.
+- **v0.24**: agent-resilience — `tools/agent_supervisor.py` stall-watcher
+  (read-only detect → notify, cả VSCode-extension lẫn CLI; `--relaunch` cap 10
+  cho CLI) + resume-brief trong `session_brief` (tái dùng R9 manifest làm
+  checkpoint idempotent). Notify: toast/log/SMTP/webhook. 529: tune
+  `CLAUDE_CODE_MAX_RETRIES` (xem [docs/resilience.md](docs/resilience.md)).
+- **v0.23**: `scope_completeness_gate` Stop hook — chặn partial-done trên
+  multi-item request (R9). Manifest derive từ tasks.md / acceptance_evals /
+  TodoWrite≥3, KHÔNG parse DEV prompt keyword.
 - **v0.21**: security hardening (Round 3 — H9/H10/H11) + CI fix
   (pytest-cov 7.x regression) + `make rebuild` reproducible bundle.
 - **v0.19**: `gap_completeness_gate` Stop hook — chặn drip-feed.
@@ -182,7 +193,7 @@ DEV: (reads tasks.md, OK) /implement log-request-slowness
 Toolkit is in **active daily use** on a production Odoo 12 Enterprise
 workspace since 2026-Q1. Hook telemetry shows ~57
 fire-events per session avg, ~26% block rate, ~3.5% bypass rate.
-**27 hooks** active, **607 unit tests** in CI (matrix: Ubuntu / macOS /
+**30 hooks** active, **663 unit tests** in CI (matrix: Ubuntu / macOS /
 Windows × Python 3.8 / 3.10 / 3.12 — all green).
 
 > 🤖 **AI agents installing into a project**: Read
@@ -229,6 +240,8 @@ Windows × Python 3.8 / 3.10 / 3.12 — all green).
               │       ─► [clarification_gate_enforcer] ❌BLOCK │
               │       ─► [gap_completeness_gate]  ❌BLOCK    │
               │             (chặn drip-feed v0.19)           │
+              │       ─► [scope_completeness_gate] ❌BLOCK   │
+              │             (chặn partial-done v0.23)        │
               │       ─► [verify_lint]      ❌BLOCK          │
               │       ─► [post_edit_verify_gate] ❌BLOCK     │
               │       ─► [debug_sentry]     ❌BLOCK          │
@@ -550,8 +563,7 @@ python setup.py update /path/to/project
 agent-toolkit/
 ├── setup.py                  # CLI entry (init / update / list-presets)
 ├── lib/
-│   ├── installer.py          # preset loader + templating + detect helpers (__version__)
-│   └── plugins.py            # plugin hook interface stub
+│   └── installer.py          # preset loader + templating + detect helpers (__version__)
 ├── presets/
 │   ├── odoo-12.json          # generic Odoo 12
 │   ├── odoo-17.json          # generic Odoo 17

@@ -37,7 +37,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from _common import wrap_utf8_stdio, run_main_safe, atomic_write_json  # noqa: E402
 from _patterns import (  # noqa: E402
     BYPASS_INVARIANT_RE, SKIP_CLARIFICATION_RE, BYPASS_GAP_GATE_RE,
-    BYPASS_GIT_GUARD_RE, BYPASS_DEBUG_SENTRY_RE,
+    BYPASS_GIT_GUARD_RE, BYPASS_DEBUG_SENTRY_RE, BYPASS_SCOPE_GATE_RE,
 )
 
 wrap_utf8_stdio()
@@ -59,6 +59,31 @@ SKIP_GIT_GUARD_TTL_SECONDS = 600
 # v0.21 T16 (M13) — debug-sentry bypass token.
 SKIP_DEBUG_SENTRY_REL = ".agent-toolkit/.skip_debug_sentry_next.json"
 SKIP_DEBUG_SENTRY_TTL_SECONDS = 600
+
+# v0.23.0 R9 — scope-completeness-gate bypass token.
+SKIP_SCOPE_GATE_REL = ".agent-toolkit/.skip_scope_gate_next.json"
+SKIP_SCOPE_GATE_TTL_SECONDS = 600
+
+# v0.23 R3-fallback — canonical-lookup expectation marker. Claude Code has
+# NO PreResponse event, so we cannot enforce "call lookup_canonical_decision
+# before answering" mechanically. Fallback: when a prompt matches a
+# recurring-decision (canonical-topic) pattern, intent_router (UserPromptSubmit)
+# injects an explicit ⚠️ CANONICAL CHECK reminder AND writes this marker.
+# FORWARD-PREP: the marker is NOT YET consumed by any hook. A FUTURE Stop hook
+# (evidence_audit) could read it to flag "canonical topic matched but no
+# lookup_canonical_decision call observed this turn". Until that consumer
+# ships, the file is written best-effort and harmlessly ignored.
+CANONICAL_EXPECTED_REL = ".agent-toolkit/.canonical_expected.json"
+CANONICAL_EXPECTED_TTL_SECONDS = 600
+# Mirror of the canonical-topic ("recurring decision") alias used in the
+# INTENT_MAP entry that suggests `odoo-deterministic-answers`. Kept as a
+# standalone compiled pattern so _format_reminder / the marker writer can
+# detect a canonical hit without re-deriving which intent entry matched.
+CANONICAL_TOPIC_RE = re.compile(
+    r"\b(how\s*do\s*we|convention|recurring|canonical|"
+    r"làm\s*sao.*project|chuẩn.*project|theo\s*chuẩn)\b",
+    flags=re.IGNORECASE | re.UNICODE,
+)
 
 
 def _load_intent_map(workspace: Path) -> Tuple[str, str, List[Tuple[str, List[str]]]]:
@@ -312,6 +337,18 @@ SKILL_OUTPUT_FIELDS = {
         "to `.agent-toolkit/acceptance-probes.json`. probe_autostub will "
         "WARN if a feature-scope edit lands without a covering probe."
     ),
+    # v0.23 R3-fallback — strengthen the canonical-topic skill entry with an
+    # explicit "look it up before answering" contract. The dedicated
+    # ⚠️ CANONICAL CHECK block in _format_reminder is the loud signal; this
+    # per-skill line reinforces the expected output shape.
+    "odoo-deterministic-answers": (
+        "BEFORE answering, call `mcp__codebase__lookup_canonical_decision` "
+        "(or grep `.codex/canonical_decisions.*.json`) to check for an "
+        "existing canonical answer. Answering from memory without checking "
+        "= determinism drift. If a canonical decision exists, cite its `id` "
+        "verbatim and follow it; if none exists, say so explicitly before "
+        "proposing a new convention."
+    ),
     "code-review": (
         "Count table (BLOCKER/MEDIUM/LOW) + per-finding Proof line "
         "tracing trigger → observable failure. Proof line MUST cite "
@@ -401,8 +438,31 @@ SKILL_OUTPUT_FIELDS = {
 }
 
 
-def _format_reminder(skills: List[str]) -> str:
-    """Render the system reminder; tailor expectations per matched skill."""
+def _canonical_check_block() -> str:
+    """v0.23 R3-fallback — loud, explicit canonical-lookup reminder.
+
+    Emitted when the prompt matches CANONICAL_TOPIC_RE. Because Claude Code
+    lacks a PreResponse event, this UserPromptSubmit-injected text is the
+    only place we can nudge the agent to consult the canonical registry
+    BEFORE answering a recurring-decision question.
+    """
+    return (
+        "\n\n⚠️ CANONICAL CHECK: This prompt matches a recurring-decision "
+        "pattern.\nBEFORE answering, you MUST call "
+        "`mcp__codebase__lookup_canonical_decision`\n(or grep "
+        ".codex/canonical_decisions.*.json) to check if a canonical answer\n"
+        "exists. Answering from memory without checking = determinism drift.\n"
+        "Cite the canonical decision id if found."
+    )
+
+
+def _format_reminder(skills: List[str], prompt: str = "") -> str:
+    """Render the system reminder; tailor expectations per matched skill.
+
+    v0.23 R3-fallback: `prompt` is used only to detect a canonical-topic hit
+    so the ⚠️ CANONICAL CHECK block can be appended. Defaulted to "" so
+    existing callers / tests that pass only `skills` keep working.
+    """
     skill_list = ", ".join(f"`{s}`" for s in skills)
     expectations = []
     for s in skills:
@@ -421,10 +481,17 @@ def _format_reminder(skills: List[str]) -> str:
             " Read each skill's SKILL.md for its specific output "
             "contract — do NOT assume a generic Proof/Doubt-pass shape."
         )
+    # v0.23 R3-fallback: prepend the loud canonical-check block when the
+    # prompt matches a recurring-decision pattern (additive — leaves the rest
+    # of the reminder intact).
+    canonical_block = (
+        _canonical_check_block() if prompt and CANONICAL_TOPIC_RE.search(prompt)
+        else ""
+    )
     return (
         f"[intent-router] Detected intent in user prompt. Open these "
         f"skills BEFORE answering: {skill_list}. Apply each skill's "
-        f"STOP checkpoints." + format_note +
+        f"STOP checkpoints." + format_note + canonical_block +
         "\n\nHARD RULES (enforced by other hooks, not optional):\n"
         "- `invariant-guard` will BLOCK any Edit/Write that strips a "
         "  pattern listed in `.agent-toolkit/invariants.json`.\n"
@@ -533,6 +600,42 @@ def _capture_skip_clarification(workspace: Path, prompt: str) -> None:
         pass
 
 
+def _capture_canonical_expected(workspace: Path, prompt: str) -> None:
+    """v0.23 R3-fallback — write a forward-prep marker when the prompt matches
+    a canonical-topic (recurring-decision) pattern.
+
+    Claude Code has NO PreResponse event, so we cannot mechanically enforce
+    "agent must call lookup_canonical_decision before answering". This marker
+    records the EXPECTATION so a FUTURE Stop hook (e.g. evidence_audit) could
+    later verify whether a `lookup_canonical_decision` / canonical-grep call
+    actually happened this turn and warn on drift.
+
+    NOTE: this file is NOT YET consumed by any hook. It is pure forward-prep —
+    written best-effort, harmless if ignored. Single-use / TTL semantics are
+    left to the future consumer (we record `ts` + `ttl_seconds` so it can
+    apply the same pattern as the other state files).
+    """
+    import hashlib
+    import time
+    if not CANONICAL_TOPIC_RE.search(prompt):
+        return
+    path = workspace / CANONICAL_EXPECTED_REL
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "ts": int(time.time()),
+            "ttl_seconds": CANONICAL_EXPECTED_TTL_SECONDS,
+            "prompt_hash": hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:8],
+            # Documents intent for the future consumer; no hook reads this yet.
+            "expected_call": "mcp__codebase__lookup_canonical_decision",
+            "consumed": False,
+        }
+        atomic_write_json(path, payload)
+    except OSError:
+        # Best-effort: silent on failure (don't break UserPromptSubmit flow).
+        pass
+
+
 def _capture_bypass_debug_sentry(workspace: Path, prompt: str) -> None:
     """v0.21 T16 (M13) — write single-shot debug_sentry bypass token when
     user types `bypass-debug-sentry: <reason ≥ 8 chars>`.
@@ -555,6 +658,34 @@ def _capture_bypass_debug_sentry(workspace: Path, prompt: str) -> None:
             "ts": int(time.time()),
             "reason": reason,
             "ttl_seconds": SKIP_DEBUG_SENTRY_TTL_SECONDS,
+        }
+        atomic_write_json(path, payload)
+    except OSError:
+        pass
+
+
+def _capture_bypass_scope_gate(workspace: Path, prompt: str) -> None:
+    """v0.23.0 R9 — write single-shot scope_completeness_gate bypass token
+    when user types `bypass-scope-gate: <reason ≥ 8 chars>`.
+
+    Symmetric with _capture_bypass_gap_gate. scope_completeness_gate.py
+    reads `.skip_scope_gate_next.json` (TTL 600s, single-use) and consumes
+    it on the next Stop.
+    """
+    import time
+    m = BYPASS_SCOPE_GATE_RE.search(prompt)
+    if not m:
+        return
+    reason = m.group(1).strip()
+    if not reason:
+        return
+    path = workspace / SKIP_SCOPE_GATE_REL
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "ts": int(time.time()),
+            "reason": reason,
+            "ttl_seconds": SKIP_SCOPE_GATE_TTL_SECONDS,
         }
         atomic_write_json(path, payload)
     except OSError:
@@ -660,6 +791,9 @@ def main() -> int:
         _capture_bypass_gap_gate(workspace, prompt)
         _capture_skip_git_guard(workspace, prompt)
         _capture_bypass_debug_sentry(workspace, prompt)
+        _capture_bypass_scope_gate(workspace, prompt)
+        # v0.23 R3-fallback: forward-prep canonical-expectation marker.
+        _capture_canonical_expected(workspace, prompt)
 
     # Heuristic skip for very short replies (yes/no/ok), questions about
     # earlier output, or empty prompts.
@@ -680,7 +814,7 @@ def main() -> int:
     _write_last_intent_suggested(workspace, skills, prompt,
                                  deferred_skills=deferred)
 
-    reminder = _format_reminder(skills)
+    reminder = _format_reminder(skills, prompt)
 
     # JSON envelope is the documented Claude Code hook output shape;
     # plain stdout is the fallback for older harnesses.

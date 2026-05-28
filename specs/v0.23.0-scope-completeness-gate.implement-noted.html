@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Implement Notes — scope-completeness-gate (R9, v0.23.0)</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 860px;
+         margin: 2rem auto; padding: 0 1rem; line-height: 1.55; color: #1c1e21; }
+  h1 { font-size: 1.5rem; border-bottom: 2px solid #2d6cdf; padding-bottom: .3rem; }
+  h2 { font-size: 1.15rem; margin-top: 1.8rem; color: #2d6cdf; }
+  code { background: #f0f2f5; padding: .1rem .35rem; border-radius: 3px; font-size: .9em; }
+  table { border-collapse: collapse; width: 100%; margin: .6rem 0; }
+  th, td { border: 1px solid #d0d3d8; padding: .45rem .6rem; text-align: left; vertical-align: top; }
+  th { background: #f5f7fa; }
+  .H { color: #1a7f37; font-weight: 600; }
+  .M { color: #b8860b; font-weight: 600; }
+  .L { color: #c0392b; font-weight: 600; }
+  .badge { display: inline-block; background: #1a7f37; color: #fff; padding: .15rem .6rem;
+           border-radius: 12px; font-size: .8rem; }
+  ol li, ul li { margin: .35rem 0; }
+</style>
+</head>
+<body>
+<h1>Implement Notes — scope-completeness-gate (R9, v0.23.0)</h1>
+<p>Emitted <strong>2026-05-27</strong> · Verify verdict:
+   <span class="badge">VERIFIED</span> · Full suite: <strong>636 passed</strong></p>
+
+<h2>§1 Scope deviations</h2>
+<ol>
+  <li><strong>Manifest derivation in the gate hook, not
+      <code>implement_orchestrator.py</code></strong> — lazy build on first
+      Stop while autonomy active. Spec §3 allowed "implement_orchestrator
+      HOẶC /implement skill"; chose lower-risk path (orchestrator untouched).</li>
+  <li><strong>TodoWrite ad-hoc capture reads the transcript</strong>
+      (<code>transcript_path</code>, latest TodoWrite call) — no new
+      PostToolUse hook, no <code>settings.json</code> churn.</li>
+  <li><strong>Docs count correction</strong> — README said "27 hooks / 607
+      tests" (stale: Wave A added 2 hooks without bumping). Corrected to the
+      true <strong>30 hooks / 636 tests</strong>.</li>
+</ol>
+
+<h2>§2 In-transcript trade-offs</h2>
+<ul>
+  <li><strong>Block via exit code 2</strong>, mirroring
+      <code>gap_completeness_gate</code> (not the
+      <code>{"decision":"block"}</code> envelope). Spec eval us2's drafted
+      assertion was replaced with <code>returncode == 2</code>.</li>
+  <li><strong><code>DONE_FULL_CLAIM_RE</code> broader than the gap gate's</strong>
+      — catches standalone <code>done/verified/finished</code> + punctuation
+      because the manifest enumerates full upfront scope. Activation boundary
+      limits the false-positive blast radius.</li>
+  <li><strong>Gate does NOT skip on autonomy active</strong> (opposite of gap
+      gate) — the R9 bug is partial-done DURING a multi-item run. Per-task
+      "T1 passed" claims don't match the full-done regex, so mid-chain work
+      isn't blocked.</li>
+</ul>
+
+<h2>§3 Open follow-ups</h2>
+<ul>
+  <li><strong>F1 (low)</strong>: orchestrator could pre-create the manifest
+      at autonomy start (eager) so it's visible from turn 1. v0.24 polish.</li>
+  <li><strong>F2 (low)</strong>: <code>skipped</code> → <code>deferred</code>
+      mapping; revisit if policy wants skipped to stay pending.</li>
+  <li><strong>F3 (low)</strong>: ad-hoc manifest reads only the LATEST
+      TodoWrite call (no cross-turn union). Fine for R9.</li>
+</ul>
+
+<h2>§4 Confidence summary</h2>
+<table>
+  <tr><th>Decision</th><th>Confidence</th><th>Note</th></tr>
+  <tr><td>Block-by-exit-code-2 parity</td><td class="H">H</td><td>Verified vs chain test + 3 block tests.</td></tr>
+  <tr><td>tasks.md / evals derivation</td><td class="H">H</td><td>us1 tests; priority order asserted.</td></tr>
+  <tr><td>Activation boundary (silent)</td><td class="H">H</td><td>us4: zero output + no file.</td></tr>
+  <tr><td>TodoWrite≥3 transcript capture</td><td class="M">M</td><td>Synthetic transcript tested; verify live transcript block shape before relying on ad-hoc path.</td></tr>
+  <tr><td>DONE_FULL_CLAIM_RE FP surface</td><td class="M">M</td><td>Broader than gap gate; monitor bypass rate post-rollout.</td></tr>
+  <tr><td>Docs count (30 / 636)</td><td class="H">H</td><td>Counted mechanically.</td></tr>
+</table>
+<p><strong>LOW items for DEV: none.</strong> Two MEDIUM items (live-transcript
+   TodoWrite shape, broader done-claim regex) are the things to watch on rollout.</p>
+</body>
+</html>

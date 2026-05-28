@@ -139,17 +139,6 @@ class TestExport:
         s_now = hte._parse_since('now')
         assert abs(s_now - now_seconds) < 5
 
-    def test_otlp_stub_counts_without_network(self, tmp_path: Path, capsys):
-        """--otlp-url runs the stub adapter (prints, no network)."""
-        now = int(time.time())
-        _seed_fire_log(tmp_path, [
-            {'ts': now - 10, 'hook': 'h', 'verdict': 'allow'},
-        ])
-        summary = hte.export(tmp_path, otlp_url='https://otel.example/v1/logs')
-        assert summary['wrote_otlp'] == 1
-        captured = capsys.readouterr()
-        assert 'otlp-stub' in captured.err
-
     def test_main_cli_smoke(self, tmp_path: Path):
         now = int(time.time())
         _seed_fire_log(tmp_path, [

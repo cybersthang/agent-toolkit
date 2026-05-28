@@ -558,6 +558,158 @@ def compare_with_expected(arguments: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# v0.23 A2 (recipe wiring)
+# Falsification recipes for Odoo performance claims live as data-only JSON at
+# templates/codex/recipe_patterns/odoo_perf_recipes.json. This tool turns one
+# recipe into a STRUCTURED PLAN the agent then drives via the existing
+# read-only tools (eval_orm_expression / consistency_check_eval) plus
+# run_smoke_test. The server NEVER executes the perturbation itself — injecting
+# sleeps, loading 10k synthetic rows, or firing concurrent crons from inside
+# the MCP process would be dangerous and non-revertible. Returning a plan keeps
+# the inverse-perturbation falsification check auditable and human-gated.
+# ---------------------------------------------------------------------------
+
+# Recipe JSON sits one directory up from mcp_servers/, under recipe_patterns/.
+# Allow an env override so an installed workspace can repoint it.
+PERF_RECIPES_PATH = Path(
+    os.environ.get("{{ENV_PREFIX}}_PERF_RECIPES")
+    or (Path(__file__).resolve().parent.parent / "recipe_patterns" / "odoo_perf_recipes.json")
+)
+
+
+def load_perf_recipes() -> Dict[str, Any]:
+    if not PERF_RECIPES_PATH.exists():
+        raise ValueError(
+            f"perf recipe file not found at {PERF_RECIPES_PATH}; "
+            "set {{ENV_PREFIX}}_PERF_RECIPES to its location"
+        )
+    try:
+        data = json.loads(PERF_RECIPES_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"could not read perf recipes: {exc}")
+    if not isinstance(data, dict) or not isinstance(data.get("patterns"), list):
+        raise ValueError("perf recipe file malformed: expected object with a 'patterns' list")
+    return data
+
+
+def _step_tool_hint(measurement: Dict[str, Any]) -> List[str]:
+    hints: List[str] = []
+    primary = str(measurement.get("tool_hint") or "").strip()
+    if primary:
+        hints.append(primary)
+    alt = str(measurement.get("alt_tool") or "").strip()
+    if alt:
+        hints.append(alt)
+    return hints or ["realdata_test.eval_orm_expression"]
+
+
+def run_perf_recipe(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    # v0.23 A2 (recipe wiring) — returns a STRUCTURED PLAN only; does not run it.
+    recipe_id = str(arguments.get("recipe_id") or "").strip()
+    if not recipe_id:
+        catalogue = load_perf_recipes()
+        return {
+            "ok": False,
+            "error": "recipe_id is required",
+            "available_recipes": [
+                p.get("id") for p in catalogue.get("patterns", []) if p.get("id")
+            ],
+        }
+
+    catalogue = load_perf_recipes()
+    recipe: Optional[Dict[str, Any]] = next(
+        (p for p in catalogue.get("patterns", []) if p.get("id") == recipe_id),
+        None,
+    )
+    if recipe is None:
+        return {
+            "ok": False,
+            "error": f"unknown recipe_id '{recipe_id}'",
+            "available_recipes": [
+                p.get("id") for p in catalogue.get("patterns", []) if p.get("id")
+            ],
+        }
+
+    injection = recipe.get("injection", {}) or {}
+    measurement = recipe.get("measurement", {}) or {}
+    predicted = recipe.get("predicted_delta", {}) or {}
+    tool_hints = _step_tool_hint(measurement)
+    sentinel = str(injection.get("target_pattern") or "")
+
+    # The plan is the inverse-perturbation falsification loop:
+    #   baseline -> inject perturbation -> measure -> assert predicted delta
+    #   -> revert (and grep-verify the PERTURB-TEST sentinel is gone).
+    steps = [
+        {
+            "action": "baseline",
+            "intent": "Measure the metric BEFORE perturbing — establishes without_fix vs with_fix anchor.",
+            "command": measurement.get("command", ""),
+            "alt_command": measurement.get("alt_command", ""),
+            "extract": measurement.get("extract", ""),
+            "tool_hints": tool_hints,
+        },
+        {
+            "action": "inject",
+            "intent": "Apply the one-line perturbation (carries a PERTURB-TEST sentinel for revert).",
+            "injection_type": injection.get("type", ""),
+            "target_pattern": injection.get("target_pattern", ""),
+            "inject_code": injection.get("inject_lines", ""),
+            "inject_position": injection.get("inject_position", ""),
+            "notes": injection.get("notes", ""),
+            "tool_hints": ["MANUAL EDIT (Edit tool) — server never injects code/data"],
+        },
+        {
+            "action": "measure",
+            "intent": "Re-measure the metric AFTER perturbing using the same command.",
+            "command": measurement.get("command", ""),
+            "alt_command": measurement.get("alt_command", ""),
+            "extract": measurement.get("extract", ""),
+            "tool_hints": tool_hints,
+        },
+        {
+            "action": "assert",
+            "intent": "Compare measured delta against predicted_delta within tolerance.",
+            "with_fix": predicted.get("with_fix", ""),
+            "without_fix": predicted.get("without_fix", ""),
+            "delta_signal": predicted.get("delta_signal", ""),
+            "tolerance": recipe.get("tolerance", 0.0),
+            "tool_hints": ["realdata_test.compare_with_expected"],
+        },
+        {
+            "action": "revert",
+            "intent": "Undo the perturbation and prove it is gone via the grep guard.",
+            "check": recipe.get("revert_check", ""),
+            "sentinel": sentinel,
+            "tool_hints": ["MANUAL EDIT (revert) + Bash grep guard"],
+        },
+    ]
+
+    return {
+        "ok": True,
+        "recipe_id": recipe.get("id"),
+        "stack": recipe.get("stack") or catalogue.get("stack"),
+        "applicable_versions": recipe.get("applicable_versions")
+        or catalogue.get("applicable_versions"),
+        "claim_pattern": recipe.get("claim_pattern", ""),
+        "tolerance": recipe.get("tolerance", 0.0),
+        "steps": steps,
+        "tool_hints": tool_hints,
+        "source": str(PERF_RECIPES_PATH),
+        "notes": [
+            "This is a PLAN, not an execution. The MCP server does NOT inject "
+            "perturbations or run queries — that would be dangerous and "
+            "non-revertible.",
+            "Drive baseline/measure steps via eval_orm_expression (or "
+            "consistency_check_eval for determinism); use compare_with_expected "
+            "for the assert step.",
+            "inject/revert are MANUAL Edit-tool steps; always confirm the "
+            "PERTURB-TEST sentinel is gone with the revert grep guard before "
+            "claiming PASS.",
+        ],
+    }
+
+
 SERVER = SimpleMcpServer(
     name="{{PROJECT_NAME_SLUG}}_realdata_test",
     version="0.1.0",
@@ -731,6 +883,27 @@ SERVER = SimpleMcpServer(
                 "required": ["expression", "expected"],
             },
             handler=compare_with_expected,
+        ),
+        # v0.23 A2 (recipe wiring)
+        ToolDefinition(
+            name="run_perf_recipe",
+            description=(
+                "Return a STRUCTURED falsification PLAN for an Odoo performance claim from "
+                "odoo_perf_recipes.json (baseline -> inject -> measure -> assert -> revert). "
+                "The server NEVER executes the perturbation; the agent drives each step via "
+                "eval_orm_expression / consistency_check_eval / compare_with_expected and reverts "
+                "the PERTURB-TEST sentinel manually. Omit recipe_id to list available recipes."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "recipe_id": {
+                        "type": "string",
+                        "description": "Recipe id from odoo_perf_recipes.json, e.g. n_plus_one_search_in_loop. Omit to list all.",
+                    },
+                },
+            },
+            handler=run_perf_recipe,
         ),
     ],
 )

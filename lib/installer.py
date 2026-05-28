@@ -51,6 +51,12 @@ _PRESET_KNOWN = {
     'extends', 'addon_roots_append', 'mcp_servers_append',
     'mcp_servers_remove', 'rules_append', 'skills_append',
     'memory_packs_append', 'external_mcp_servers_append',
+    # Per-Odoo-version invariants overlay (R4). Array of invariant entries
+    # (same schema as .agent-toolkit/invariants.json) carrying version-specific
+    # API-diff rules. Recognised here so presets validate; NOT yet consumed by
+    # the installer. Wave-C follow-up: `setup.py --merge-invariants` should
+    # merge this onto the project's invariants.json at init time.
+    'invariants_overlay',
 }
 
 
@@ -91,6 +97,140 @@ def _closest_match(needle: str, haystack) -> Optional[str]:
     return matches[0] if matches else None
 
 
+# --- P2.7: jsonschema-style preset validation (stdlib only) ---------------
+# v0.23 P2.7
+# `validate_preset` (above) only checks field NAMES (typo guard) + a thin
+# list-type sanity pass. `validate_preset_schema` is the stricter,
+# jsonschema-equivalent check: REQUIRED fields present, every known field has
+# the right TYPE, and each `invariants_overlay` entry matches the invariant
+# schema (id/description/applies_to/rules/severity). Hand-rolled so the
+# toolkit stays stdlib-only (jsonschema is NOT a dep — see requirements-dev.txt
+# which pins only pytest/pytest-cov/ruff; the runtime ships zero install-time
+# Python deps). Returns a list of human-readable errors (empty = OK); never
+# raises so the caller picks fail-hard vs warn.
+
+# Expected JSON type(s) per known preset field. `list`/`dict`/`str`/`int` map
+# to Python types. A tuple means "any of these types is acceptable".
+_PRESET_FIELD_TYPES: Dict[str, Any] = {
+    'description': str,
+    'stack': dict,
+    'stack_label': str,
+    'response_language': str,
+    'addon_roots': list,
+    'mcp_servers': list,
+    'db': dict,
+    'rules': list,
+    'skills': list,
+    'memory_packs': list,
+    'env_prefix': str,
+    'external_mcp_servers': dict,
+    'extends': str,
+    'addon_roots_append': list,
+    'mcp_servers_append': list,
+    'mcp_servers_remove': list,
+    'rules_append': list,
+    'skills_append': list,
+    'memory_packs_append': list,
+    'external_mcp_servers_append': dict,
+    'invariants_overlay': list,
+}
+
+# Invariant-entry schema (mirrors templates/agent_toolkit/invariants.json
+# `_schema`). Used to validate each `invariants_overlay` entry.
+_INVARIANT_REQUIRED = ('id', 'description', 'applies_to', 'rules', 'severity')
+_INVARIANT_SEVERITIES = ('blocker', 'warn')
+
+
+def _type_label(t: Any) -> str:
+    if isinstance(t, tuple):
+        return ' or '.join(x.__name__ for x in t)
+    return t.__name__
+
+
+def validate_invariant_entry(entry: Any, where: str) -> List[str]:
+    """Validate a single invariant entry against the shipped schema.
+
+    `where` is a human-readable locator (e.g. `odoo-13.invariants_overlay[0]`)
+    prefixed onto every error. Returns a list of errors (empty = OK).
+    """
+    errors: List[str] = []
+    if not isinstance(entry, dict):
+        return [f'{where}: must be an object, got {type(entry).__name__}']
+    for req in _INVARIANT_REQUIRED:
+        if req not in entry:
+            errors.append(f'{where}: missing required field `{req}`')
+    # Type checks (only for fields that are present).
+    if 'id' in entry and not isinstance(entry['id'], str):
+        errors.append(f'{where}: `id` must be a string')
+    if 'description' in entry and not isinstance(entry['description'], str):
+        errors.append(f'{where}: `description` must be a string')
+    if 'applies_to' in entry and not isinstance(entry['applies_to'], list):
+        errors.append(f'{where}: `applies_to` must be a list')
+    if 'rules' in entry and not isinstance(entry['rules'], dict):
+        errors.append(f'{where}: `rules` must be an object')
+    if 'severity' in entry:
+        sev = entry['severity']
+        if sev not in _INVARIANT_SEVERITIES:
+            errors.append(
+                f'{where}: `severity` must be one of '
+                f'{_INVARIANT_SEVERITIES}, got {sev!r}'
+            )
+    return errors
+
+
+def validate_preset_schema(data: Any, name: str = '<preset>') -> List[str]:
+    """Full jsonschema-style validation of a preset dict (P2.7).
+
+    Stricter superset of `validate_preset`: in addition to the unknown-field
+    typo guard, this enforces required fields, per-field TYPE correctness, and
+    recurses into every `invariants_overlay` entry. Returns a list of
+    human-readable errors (empty list = OK); does not raise.
+    """
+    errors: List[str] = []
+    if not isinstance(data, dict):
+        return [f'{name}: preset must be a JSON object, got '
+                f'{type(data).__name__}']
+
+    # 1. Required top-level fields.
+    for req in _PRESET_REQUIRED:
+        if req not in data:
+            errors.append(f'{name}: missing required field `{req}`')
+
+    # 2. Unknown-field typo guard (reuse the allow-list).
+    for key in data.keys():
+        if key.startswith('_'):
+            continue  # private/meta fields
+        if key not in _PRESET_KNOWN:
+            suggestion = _closest_match(key, _PRESET_KNOWN)
+            hint = f' (did you mean `{suggestion}`?)' if suggestion else ''
+            errors.append(f'{name}: unknown field `{key}`{hint}')
+
+    # 3. Per-field type correctness.
+    for key, expected in _PRESET_FIELD_TYPES.items():
+        if key in data and not isinstance(data[key], expected):
+            errors.append(
+                f'{name}: `{key}` must be {_type_label(expected)}, got '
+                f'{type(data[key]).__name__}'
+            )
+
+    # 4. Recurse into invariants_overlay entries (only if it's a list — a
+    #    type error was already recorded above otherwise).
+    overlay = data.get('invariants_overlay')
+    if isinstance(overlay, list):
+        seen_ids: set = set()
+        for i, entry in enumerate(overlay):
+            where = f'{name}.invariants_overlay[{i}]'
+            errors.extend(validate_invariant_entry(entry, where))
+            if isinstance(entry, dict) and isinstance(entry.get('id'), str):
+                if entry['id'] in seen_ids:
+                    errors.append(
+                        f'{where}: duplicate invariant id `{entry["id"]}` '
+                        f'within overlay'
+                    )
+                seen_ids.add(entry['id'])
+    return errors
+
+
 def resolve_preset(name: str, presets_dir: Path,
                    _seen: Optional[set] = None) -> dict:
     """Load a preset and recursively merge any `extends:` parent chain.
@@ -111,7 +251,11 @@ def resolve_preset(name: str, presets_dir: Path,
         raise FileNotFoundError(f'preset not found: {name}{hint}')
 
     data = load_preset(path)
-    errors = validate_preset(data, name=name)
+    # v0.23 P2.7: use the stricter jsonschema-style validator (required
+    # fields + per-field types + invariants_overlay entry schema). It is a
+    # superset of the old name-only `validate_preset`, so the latter is no
+    # longer called here (kept for backward-compat callers).
+    errors = validate_preset_schema(data, name=name)
     if errors:
         msg = 'preset validation failed:\n  ' + '\n  '.join(errors)
         raise ValueError(msg)
@@ -283,17 +427,49 @@ def merge_invariants(
     return merged, added, skipped
 
 
+def load_preset_overlay(
+    preset_name: str,
+    presets_dir: Path,
+) -> List[Dict[str, Any]]:
+    """Resolve a preset (honoring `extends:`) and return its
+    `invariants_overlay` array (R4).
+
+    Returns an empty list when the preset has no overlay (most non-Odoo or
+    base presets). Propagates FileNotFoundError / ValueError from
+    `resolve_preset` so the caller can surface a clear "bad preset name"
+    message rather than silently merging nothing.
+
+    v0.23 R4-consumer.
+    """
+    preset = resolve_preset(preset_name, presets_dir)
+    overlay = preset.get('invariants_overlay') or []
+    if not isinstance(overlay, list):
+        # Schema validation in resolve_preset already rejects this, but be
+        # defensive against a caller passing a hand-built dict.
+        return []
+    return [e for e in overlay if isinstance(e, dict)]
+
+
 def merge_invariants_file(
     project_path: Path,
     template_path: Path,
+    overlay_invariants: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[List[str], List[str]]:
     """Read project + template invariants files, write merged result.
 
+    Merges TWO sources into the project's invariants list (dedup by `id`,
+    project wins, then template, then preset overlay):
+      1. Template `invariants.json` defaults (existing behavior).
+      2. The active preset's `invariants_overlay` (R4 — pass via
+         `overlay_invariants`; resolve with `load_preset_overlay`). Optional;
+         `None`/empty means "template only" (backward compatible).
+
     Returns `(added_ids, skipped_ids)`. Atomic write via temp + os.replace.
-    `project_path` need not exist — when absent, the template is copied
-    verbatim (same path as `merge_invariants` with project_data=None).
-    Raises FileNotFoundError if template is missing (toolkit bug, not
-    user error).
+    `project_path` need not exist — when absent, the template (plus overlay)
+    is seeded. Raises FileNotFoundError if template is missing (toolkit bug,
+    not user error).
+
+    v0.23 R4-consumer.
     """
     if not template_path.exists():
         raise FileNotFoundError(
@@ -304,6 +480,17 @@ def merge_invariants_file(
     if project_path.exists():
         project_data = json.loads(project_path.read_text(encoding='utf-8'))
     merged, added, skipped = merge_invariants(project_data, template_data)
+
+    # R4: fold the preset overlay onto the just-merged result. We re-run the
+    # same dedup-by-id pass treating `merged` as the project side, so:
+    #   - overlay ids already present (from project OR template) are skipped,
+    #   - genuinely new overlay ids are appended.
+    if overlay_invariants:
+        overlay_data = {'invariants': list(overlay_invariants)}
+        merged, ov_added, ov_skipped = merge_invariants(merged, overlay_data)
+        added.extend(ov_added)
+        skipped.extend(ov_skipped)
+
     _atomic_write_json(project_path, merged)
     return added, skipped
 

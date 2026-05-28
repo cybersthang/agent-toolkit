@@ -95,6 +95,23 @@ def _format_autonomy(workspace: Path) -> str:
     )
 
 
+def _format_resume(workspace: Path) -> str:
+    """v0.24.0 — render a RESUME block when an autonomous run was interrupted
+    (529 / hang / reload) and the R9 scope manifest still has pending items.
+
+    Lets a resumed session (incl. the VSCode-extension semi-auto path) pick up
+    where it stopped, idempotently. Returns "" when nothing to resume. Imports
+    `_resume_state` lazily so a missing module never breaks the brief."""
+    try:
+        import _resume_state  # noqa: E402 — same hooks dir
+    except ImportError:
+        return ""
+    try:
+        return _resume_state.build_brief(workspace) or ""
+    except Exception:  # noqa: BLE001 — brief is best-effort
+        return ""
+
+
 def _load_json(path: Path) -> Dict[str, Any]:
     try:
         return json.loads(path.read_text(encoding="utf-8-sig"))
@@ -328,6 +345,12 @@ def _build_brief(workspace: Path) -> str:
     autonomy = _format_autonomy(workspace)
     if autonomy:
         sections.append(autonomy)
+
+    # v0.24.0 RESUME block — right after autonomy so an interrupted run is the
+    # first thing the agent sees on a resumed session.
+    resume = _format_resume(workspace)
+    if resume:
+        sections.append(resume)
 
     # Audit lock-files surface — same prominence tier as autonomy, since
     # code-review/SKILL.md Section 0 is honor-system without it.

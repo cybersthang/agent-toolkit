@@ -30,5 +30,9 @@
   "rules": ["_common", "odoo-17"],
   "_rules_comment": "TODO: differentiate from odoo-17 base when v20 GA ships and templates/cursor/rules/odoo-20/ is authored. Currently treats v20 == v19 with pre-GA caveat.",
   "skills": ["_common", "odoo"],
-  "memory_packs": ["odoo-17"]
+  "memory_packs": ["odoo-17"],
+  "_overlay_doc": "Version-specific invariants merged on top of project invariants.json by a FUTURE installer step (setup.py --merge-invariants, not yet wired — Wave C). Same schema as .agent-toolkit/invariants.json entries. severity=warn. Cite a confirmed Odoo release fact per entry.",
+  "_inherits_overlay": "odoo-19",
+  "_overlay_note": "TODO: author v20 invariants when API diff confirmed. Odoo 20 is a PRE-GA STUB (expected late 2026) with no verified deltas — falls back to the odoo-19 overlay. When v20 GA changelog ships, populate odoo-20-patterns.md verified deltas first, then encode them here.",
+  "invariants_overlay": []
 }

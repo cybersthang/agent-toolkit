@@ -63,9 +63,11 @@ class TestStopChainOrder(unittest.TestCase):
         self.assertEqual(hooks[-1]["name"], "verify_lint_scope.py")
 
     def test_stop_chain_length(self):
-        """11 hooks in Stop chain post-v0.19.0 (added gap_completeness_gate)."""
+        """14 hooks in Stop chain post-v0.23 (added probe_coverage_gate +
+        bypass_rate_alarm + scope_completeness_gate before the
+        verify_lint_scope final gate)."""
         hooks = _stop_chain_hooks()
-        self.assertEqual(len(hooks), 11)
+        self.assertEqual(len(hooks), 14)
 
 
 class TestPreToolUseChainOrder(unittest.TestCase):

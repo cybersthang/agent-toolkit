@@ -40,10 +40,11 @@ class TestChannels:
 
         # --- toast (mock subprocess) ---
         calls = {}
+        class _FakeProc:
+            pass
         def fake_run(cmd, *a, **k):
             calls["cmd"] = cmd
-            class R: pass
-            return R()
+            return _FakeProc()
         monkeypatch.setattr(notify.subprocess, "run", fake_run)
         assert notify.notify_toast(ALERT) is True
         assert calls["cmd"], "toast must build a command"
@@ -58,12 +59,18 @@ class TestChannels:
         sent = {}
         class FakeSMTP:
             def __init__(self, host, port, timeout=0):
-                sent["host"] = host; sent["port"] = port
-            def __enter__(self): return self
-            def __exit__(self, *a): return False
-            def starttls(self): sent["tls"] = True
-            def login(self, u, p): sent["login"] = (u, p)
-            def sendmail(self, frm, to, body): sent["mail"] = (frm, to, body)
+                sent["host"] = host
+                sent["port"] = port
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return False
+            def starttls(self):
+                sent["tls"] = True
+            def login(self, u, p):
+                sent["login"] = (u, p)
+            def sendmail(self, frm, to, body):
+                sent["mail"] = (frm, to, body)
         monkeypatch.setattr(notify.smtplib, "SMTP", FakeSMTP)
         monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
         monkeypatch.setenv("SMTP_FROM", "bot@example.com")
@@ -78,12 +85,14 @@ class TestChannels:
         monkeypatch.delenv("WEBHOOK_URL", raising=False)
         assert notify.notify_webhook(ALERT) is False, "no URL → skip"
         posted = {}
+        class _FakeResp:
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return False
         def fake_urlopen(req, timeout=0):
             posted["data"] = req.data
-            class R:
-                def __enter__(self): return self
-                def __exit__(self, *a): return False
-            return R()
+            return _FakeResp()
         monkeypatch.setattr(notify.urllib.request, "urlopen", fake_urlopen)
         monkeypatch.setenv("WEBHOOK_URL", "https://hooks.example.com/x")
         assert notify.notify_webhook(ALERT) is True

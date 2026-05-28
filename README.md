@@ -76,6 +76,14 @@ Full release / mirror / tag procedure documented in [REBUILD.md](REBUILD.md).
   10 cross-version performance recipes shipped. 5 default invariants shipped
   with the preset. 12 outstanding TODO markers resolved. See
   [CHANGELOG.md](CHANGELOG.md) for the full diff.
+- **v0.26**: sub-agent-stall-watcher — extend v0.24 `agent_supervisor`
+  với multi-transcript mode kích hoạt khi v0.25 `.parallel_wave.json`
+  active. Watcher detect bất kỳ sub-agent transcript nào stale (mtime cũ)
+  + autonomy active → aggregate notify (kênh v0.24:
+  toast/log/SMTP/webhook) với prefix `[sub-agent <wave>]`. Notify-only
+  cho sub-agent (Agent tool model-only spawn). Đóng gap "sub-agent treo
+  giữa wave" từ v0.24 D11 + v0.25 §7 (xem [docs/parallel.md](docs/parallel.md)
+  + [docs/resilience.md](docs/resilience.md)).
 - **v0.25**: parallel-subagent-guard — `parallel_conflict_guard.py`
   PreToolUse hook BLOCK cross-zone Edit khi 2 sub-agent song song (Agent
   tool) đụng cùng file. Manifest từ `tools/parallel_wave.py emit` (CLI
@@ -202,7 +210,7 @@ DEV: (reads tasks.md, OK) /implement log-request-slowness
 Toolkit is in **active daily use** on a production Odoo 12 Enterprise
 workspace since 2026-Q1. Hook telemetry shows ~57
 fire-events per session avg, ~26% block rate, ~3.5% bypass rate.
-**31 hooks** active, **687 unit tests** in CI (matrix: Ubuntu / macOS /
+**31 hooks** active, **700 unit tests** in CI (matrix: Ubuntu / macOS /
 Windows × Python 3.8 / 3.10 / 3.12 — all green).
 
 > 🤖 **AI agents installing into a project**: Read

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Implement Notes — sub-agent-stall-watcher (v0.26.0)</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 880px;
+         margin: 2rem auto; padding: 0 1rem; line-height: 1.55; color: #1c1e21; }
+  h1 { font-size: 1.5rem; border-bottom: 2px solid #2d6cdf; padding-bottom: .3rem; }
+  h2 { font-size: 1.15rem; margin-top: 1.8rem; color: #2d6cdf; }
+  code { background: #f0f2f5; padding: .1rem .35rem; border-radius: 3px; font-size: .9em; }
+  table { border-collapse: collapse; width: 100%; margin: .6rem 0; }
+  th, td { border: 1px solid #d0d3d8; padding: .45rem .6rem; text-align: left; vertical-align: top; }
+  th { background: #f5f7fa; }
+  .H { color: #1a7f37; font-weight: 600; } .M { color: #b8860b; font-weight: 600; }
+  .L { color: #c0392b; font-weight: 600; }
+  .badge { display:inline-block; background:#1a7f37; color:#fff; padding:.15rem .6rem; border-radius:12px; font-size:.8rem; }
+</style>
+</head>
+<body>
+<h1>Implement Notes — sub-agent-stall-watcher (v0.26.0)</h1>
+<p>Emitted <strong>2026-05-28</strong> · Verify: <span class="badge">VERIFIED</span> · Full suite: <strong>700 passed</strong> (Win 3.8 + WSL Linux 3.12)</p>
+
+<h2>§1 Scope deviations</h2>
+<ol>
+  <li>Extends <code>tools/agent_supervisor.py</code> in-place; no new tool file (single supervisor, two modes, D6).</li>
+  <li>One-line <code>notify._alert_title</code> branch for <code>kind="sub-agent"</code> prefix (additive, backward-compat).</li>
+  <li>Test helper <code>_projects_dir</code> initially had wrong layout — caught by RED tests, fixed; no source bug.</li>
+</ol>
+
+<h2>§2 Trade-offs</h2>
+<ul>
+  <li><strong>No agent_id ↔ session_id bridge (Phase 1)</strong> — notify gives transcript filename, DEV correlates. Bridge needs fragile prompt-text matching (defer F1).</li>
+  <li><strong>Aggregate notify (D2)</strong> + per-transcript cooldown (D3) — less spam.</li>
+  <li><strong>Notify-only (D8)</strong> — Agent tool model-only, no relaunch.</li>
+</ul>
+
+<h2>§3 Open follow-ups</h2>
+<ul>
+  <li><strong>F1 (M)</strong>: parse main transcript <code>agentId</code> + match prompt to enrich notify with DEV-chosen <code>agent_id</code>.</li>
+  <li><strong>F2 (M)</strong>: empirically verify Claude Code's actual sub-agent transcript filename layout in <code>~/.claude/projects/&lt;encoded&gt;/</code>.</li>
+  <li><strong>F3 (L)</strong>: concurrent-write contention; Phase 1 mtime-only avoids it.</li>
+  <li><strong>F4 (L)</strong>: <code>subagent_stall_seconds</code> tunable — DEV may want shorter than main 180s.</li>
+</ul>
+
+<h2>§4 Confidence</h2>
+<table>
+  <tr><th>Decision</th><th>Conf</th><th>Note</th></tr>
+  <tr><td>Discovery filter</td><td class="H">H</td><td>2 tests exact</td></tr>
+  <tr><td>Per-transcript stall + cooldown</td><td class="H">H</td><td>2 tests incl cooldown</td></tr>
+  <tr><td>Aggregate payload + prefix</td><td class="H">H</td><td>static + monkeypatch</td></tr>
+  <tr><td>4-condition activation guard</td><td class="H">H</td><td>4 guard tests</td></tr>
+  <tr><td>Single-loop two-mode</td><td class="H">H</td><td>v0.24 tests still green</td></tr>
+  <tr><td>Notify-only contract</td><td class="H">H</td><td>static + relaunch_loop spy</td></tr>
+  <tr><td>Cross-platform Win+Linux</td><td class="H">H</td><td>WSL pre-handoff verified</td></tr>
+  <tr><td>Sub-agent transcript layout</td><td class="M">M</td><td>docs say yes, encoding assumed (F2)</td></tr>
+</table>
+<p><strong>Field-check first</strong>: F2 — run a real 3-way fan-out + ls <code>~/.claude/projects/&lt;encoded&gt;/</code> to confirm layout.</p>
+</body>
+</html>

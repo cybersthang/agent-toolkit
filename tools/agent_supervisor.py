@@ -214,6 +214,149 @@ def relaunch_loop(workspace: Path, config: Dict[str, Any],
     return ("cap-exhausted", attempts)
 
 
+# ============================================================
+# v0.26.0 — sub-agent multi-transcript stall watcher
+#
+# Extends the single-transcript main-session path with a second mode that
+# auto-activates when v0.25 `.parallel_wave.json` declares an active wave
+# of concurrent sub-agents. Each sub-agent has its own `<session>.jsonl`
+# under the same `~/.claude/projects/<encoded>/` dir (verified per Claude
+# Code docs sessions.md). When any sub-agent's transcript goes stale past
+# the (sub-agent) stall threshold, dispatch ONE aggregate notify per tick
+# listing all stalled transcripts. Notify-only — sub-agents are Agent-tool
+# spawned (model-only) so the toolkit cannot relaunch them.
+#
+# Closes the gap documented at v0.24 §5 D11 + v0.25 §7 Out-of-scope.
+# ============================================================
+
+PARALLEL_WAVE_REL = ".agent-toolkit/.parallel_wave.json"
+
+
+def read_parallel_wave_manifest(workspace: Path) -> Optional[Dict[str, Any]]:
+    """Read the v0.25 wave manifest if present + active (not done, not TTL-
+    expired). Returns the dict or None. Used as activation guard for the
+    sub-agent multi-transcript watcher (D4)."""
+    path = workspace / PARALLEL_WAVE_REL
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+        if not isinstance(data, dict):
+            return None
+    except (OSError, json.JSONDecodeError):
+        return None
+    if data.get("wave_done"):
+        return None
+    created = int(data.get("created_ts") or 0)
+    ttl = int(data.get("ttl_seconds") or 0)
+    if created and ttl and time.time() > created + ttl:
+        return None
+    return data
+
+
+def discover_sub_agent_transcripts(workspace: Path,
+                                   manifest: Dict[str, Any],
+                                   projects_root: Optional[Path] = None
+                                   ) -> List[Path]:
+    """List sub-agent `.jsonl` transcripts in the project's transcript dir
+    that (a) appeared/were modified AFTER the wave was emitted and (b) are
+    NOT the main-session transcript. Per D1 we do not bridge agent_id →
+    session_id in Phase 1 — DEV correlates via the filename in notify."""
+    if projects_root is None:
+        projects_root = Path.home() / ".claude" / "projects"
+    enc = encode_project_path(workspace)
+    proj = projects_root / enc
+    if not proj.is_dir():
+        return []
+    main = find_active_transcript(workspace, projects_root=projects_root)
+    created = int((manifest or {}).get("created_ts") or 0)
+    out: List[Path] = []
+    for p in proj.glob("*.jsonl"):
+        try:
+            mtime = p.stat().st_mtime
+        except OSError:
+            continue
+        if created and mtime < created:
+            continue
+        if main is not None and p.resolve() == main.resolve():
+            continue
+        out.append(p)
+    return out
+
+
+def _subagent_stall_seconds(config: Dict[str, Any]) -> int:
+    """D4: optional `subagent_stall_seconds` override; fallback to main
+    `stall_seconds`."""
+    sub = config.get("subagent_stall_seconds")
+    if isinstance(sub, int) and sub > 0:
+        return sub
+    return int(config.get("stall_seconds", 180))
+
+
+def check_subagent_transcripts(workspace: Path,
+                               manifest: Optional[Dict[str, Any]],
+                               config: Dict[str, Any],
+                               now: Optional[float] = None,
+                               last_notify_per_transcript: Optional[Dict[str, float]] = None,
+                               projects_root: Optional[Path] = None
+                               ) -> Optional[Dict[str, Any]]:
+    """Per-tick sub-agent stall detection. Returns None when the multi-
+    transcript mode is inactive (D4 activation guard: no manifest / done /
+    TTL / autonomy off). Otherwise returns
+    `{stalled: [paths], last_notify_per_transcript: {...}}` and may have
+    dispatched a notify side-effect.
+
+    Aggregate semantics (D2): ONE dispatch per tick listing every stalled
+    transcript that has passed its per-transcript cooldown (D3). NEVER kills
+    or relaunches — Phase 1 notify-only (D8)."""
+    if manifest is None:
+        return None
+    if not autonomy_active(workspace, now):
+        return None
+    if now is None:
+        now = time.time()
+    if last_notify_per_transcript is None:
+        last_notify_per_transcript = {}
+    transcripts = discover_sub_agent_transcripts(workspace, manifest,
+                                                 projects_root=projects_root)
+    if not transcripts:
+        return {"stalled": [], "last_notify_per_transcript": last_notify_per_transcript}
+
+    threshold = _subagent_stall_seconds(config)
+    cooldown = float(config.get("notify_cooldown", 300))
+    stalled: List[Dict[str, Any]] = []
+    for tp in transcripts:
+        try:
+            idle = now - tp.stat().st_mtime
+        except OSError:
+            continue
+        if idle <= threshold:
+            continue
+        key = str(tp)
+        if now - last_notify_per_transcript.get(key, 0.0) < cooldown:
+            continue
+        stalled.append({"path": tp, "idle_seconds": int(idle)})
+
+    if stalled:
+        worst = max(s["idle_seconds"] for s in stalled)
+        alert = {
+            "kind": "sub-agent",
+            "spec": (manifest or {}).get("wave", "?"),
+            "wave": manifest.get("wave", "?"),
+            "transcript": ", ".join(str(s["path"]) for s in stalled),
+            "stalled_count": len(stalled),
+            "idle_seconds": worst,
+            "reason": f"{len(stalled)} sub-agent transcript stale > {threshold}s",
+            "brief": _resume_state.build_brief(workspace) if _resume_state else None,
+        }
+        notify.dispatch(alert, config, workspace)
+        for s in stalled:
+            last_notify_per_transcript[str(s["path"])] = now
+
+    return {"stalled": [str(s["path"]) for s in stalled],
+            "last_notify_per_transcript": last_notify_per_transcript}
+
+
 def _proc_alive_by_name(name: str = "claude") -> bool:
     """Best-effort: is there a live `claude` process? Uses psutil if present,
     else assume alive (degrade — transcript-mtime path still works)."""
@@ -243,8 +386,19 @@ if __name__ == "__main__":  # pragma: no cover — CLI loop
     cfg = load_config(ws)
     tp = Path(args.transcript) if args.transcript else find_active_transcript(ws)
     last = 0.0
+    last_per_transcript: Dict[str, float] = {}
     while True:
         tp = tp or find_active_transcript(ws)
+        # v0.24 main-session path (unchanged).
         action, last = check_once(ws, tp, cfg, proc_alive=_proc_alive_by_name(),
                                   last_notify_ts=last)
+        # v0.26 sub-agent multi-transcript path (D6 single-loop two-mode).
+        # Auto-activates only when a v0.25 wave manifest is active; otherwise
+        # returns None and the loop continues exactly like v0.24.
+        manifest = read_parallel_wave_manifest(ws)
+        if manifest is not None:
+            result = check_subagent_transcripts(
+                ws, manifest, cfg, last_notify_per_transcript=last_per_transcript)
+            if result is not None:
+                last_per_transcript = result["last_notify_per_transcript"]
         time.sleep(max(5, args.interval))

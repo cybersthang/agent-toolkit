@@ -114,9 +114,35 @@ via `fnmatch` (cross-platform stdlib).
 | Forget to clear after wave | TTL auto-expires; or use `clear` |
 | Use bypass routinely | Re-plan zones; bypass is for one-off emergencies |
 
+## v0.26 — sub-agent hang detection (multi-transcript)
+
+Conflict-prevention (above, v0.25) catches **two sub-agents writing the
+same file**. It does NOT catch **one sub-agent hanging** (529 exhausted,
+deadlock, etc.) — that gap is closed by v0.26.
+
+`tools/agent_supervisor.py` auto-activates a multi-transcript mode when
+`.parallel_wave.json` is present + autonomy is active. It discovers every
+`*.jsonl` in the project's transcript dir whose mtime is newer than the
+wave's `created_ts` (and is NOT the main session's transcript), then
+checks each one's idle time independently. When any sub-agent transcript
+stays idle past `subagent_stall_seconds` (default = `stall_seconds`,
+180s), the watcher dispatches ONE aggregate notify per tick listing all
+stalled transcripts — channel reused from v0.24 (toast/log/SMTP/webhook),
+prefixed `[sub-agent <wave>]` so you can tell it apart from main-session
+stalls in your toast/email subject.
+
+**Notify-only** for sub-agents: the toolkit cannot relaunch a sub-agent
+(`Agent` / `Task` is model-invoked). When notified, DEV decides: kill the
+wave, let it continue, or re-spawn manually.
+
+The v0.24 main-session watcher (with `--relaunch` cap-10 auto-recovery)
+keeps running in parallel on the same loop — multi-mode never touches
+main-session logic.
+
 ## See also
 
-- Spec: `specs/v0.25.0-parallel-subagent-guard.md`
+- Spec: `specs/v0.25.0-parallel-subagent-guard.md`,
+  `specs/v0.26.0-sub-agent-stall-watcher.md`
 - Skill: `templates/cursor/skills/_common/parallel-batching/SKILL.md`
 - Sibling: [docs/resilience.md](resilience.md) (v0.24 — 529/hang resilience)
 - Hook docs: https://code.claude.com/docs/en/hooks

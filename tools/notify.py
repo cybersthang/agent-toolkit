@@ -35,6 +35,12 @@ STALL_ALERT_REL = ".agent-toolkit/.stall_alert.json"
 def _alert_title(alert: Dict[str, Any]) -> str:
     spec = alert.get("spec") or "?"
     reason = alert.get("reason") or "stalled"
+    # v0.26: sub-agent alerts get a distinct `[sub-agent <wave>]` prefix so
+    # DEV can tell main-session stalls from wave-internal sub-agent stalls
+    # in toast/email subject lines at a glance.
+    if alert.get("kind") == "sub-agent":
+        wave = alert.get("wave") or spec
+        return f"[sub-agent {wave}] Claude session stalled: {reason}"
     return f"Claude session stalled [{spec}]: {reason}"
 
 

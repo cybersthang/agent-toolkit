@@ -82,3 +82,14 @@ Works on Windows + Linux/Ubuntu (and macOS). Process-liveness uses `psutil`
 when installed; without it the watcher degrades to transcript-mtime-only
 detection (still functional). Install the optional dep with `pip install
 psutil` if you want the process-gone signal.
+
+## v0.26 — multi-transcript mode (sub-agents in a wave)
+
+When a parallel wave is active (`.agent-toolkit/.parallel_wave.json`
+present, `wave_done: false`, TTL alive), the same supervisor loop ALSO
+watches every sub-agent's `.jsonl` transcript. If any sub-agent goes
+idle past `subagent_stall_seconds` (default = `stall_seconds`), the
+watcher dispatches an aggregate notify via the same channels, prefixed
+`[sub-agent <wave>]` for at-a-glance distinction. **Notify-only** for
+sub-agents (Agent tool is model-invoked — no relaunch). See
+[docs/parallel.md](parallel.md) for the full sub-agent flow.

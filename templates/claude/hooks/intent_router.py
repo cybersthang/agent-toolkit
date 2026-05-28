@@ -38,6 +38,7 @@ from _common import wrap_utf8_stdio, run_main_safe, atomic_write_json  # noqa: E
 from _patterns import (  # noqa: E402
     BYPASS_INVARIANT_RE, SKIP_CLARIFICATION_RE, BYPASS_GAP_GATE_RE,
     BYPASS_GIT_GUARD_RE, BYPASS_DEBUG_SENTRY_RE, BYPASS_SCOPE_GATE_RE,
+    BYPASS_PARALLEL_GUARD_RE,
 )
 
 wrap_utf8_stdio()
@@ -63,6 +64,10 @@ SKIP_DEBUG_SENTRY_TTL_SECONDS = 600
 # v0.23.0 R9 — scope-completeness-gate bypass token.
 SKIP_SCOPE_GATE_REL = ".agent-toolkit/.skip_scope_gate_next.json"
 SKIP_SCOPE_GATE_TTL_SECONDS = 600
+
+# v0.25.0 parallel-subagent-guard bypass token.
+SKIP_PARALLEL_GUARD_REL = ".agent-toolkit/.skip_parallel_guard_next.json"
+SKIP_PARALLEL_GUARD_TTL_SECONDS = 600
 
 # v0.23 R3-fallback — canonical-lookup expectation marker. Claude Code has
 # NO PreResponse event, so we cannot enforce "call lookup_canonical_decision
@@ -664,6 +669,34 @@ def _capture_bypass_debug_sentry(workspace: Path, prompt: str) -> None:
         pass
 
 
+def _capture_bypass_parallel_guard(workspace: Path, prompt: str) -> None:
+    """v0.25.0 — write single-shot parallel_conflict_guard bypass token when
+    user types `bypass-parallel-guard: <reason ≥ 8 chars>`.
+
+    Symmetric with _capture_bypass_scope_gate / _capture_bypass_gap_gate.
+    parallel_conflict_guard.py reads `.skip_parallel_guard_next.json`
+    (TTL 600s, single-use) on next matching Edit/Write PreToolUse fire.
+    """
+    import time
+    m = BYPASS_PARALLEL_GUARD_RE.search(prompt)
+    if not m:
+        return
+    reason = m.group(1).strip()
+    if not reason:
+        return
+    path = workspace / SKIP_PARALLEL_GUARD_REL
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "ts": int(time.time()),
+            "reason": reason,
+            "ttl_seconds": SKIP_PARALLEL_GUARD_TTL_SECONDS,
+        }
+        atomic_write_json(path, payload)
+    except OSError:
+        pass
+
+
 def _capture_bypass_scope_gate(workspace: Path, prompt: str) -> None:
     """v0.23.0 R9 — write single-shot scope_completeness_gate bypass token
     when user types `bypass-scope-gate: <reason ≥ 8 chars>`.
@@ -792,6 +825,7 @@ def main() -> int:
         _capture_skip_git_guard(workspace, prompt)
         _capture_bypass_debug_sentry(workspace, prompt)
         _capture_bypass_scope_gate(workspace, prompt)
+        _capture_bypass_parallel_guard(workspace, prompt)
         # v0.23 R3-fallback: forward-prep canonical-expectation marker.
         _capture_canonical_expected(workspace, prompt)
 

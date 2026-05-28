@@ -33,6 +33,12 @@
             "timeout": 5
           },
           {
+            "_comment": "v0.25.0 parallel-subagent-guard: DENY when an Edit/Write targets a file owned by a different sub-agent in the active wave (file-disjoint enforcement). Manifest from `tools/parallel_wave.py emit`; silent allow when no manifest / wave_done / TTL expired / outside any zone. Identity from envelope `agent_id` (sub-agents only — Claude Code docs hooks.md). Default `block`; bypass once via `bypass-parallel-guard:` in prompt.",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/parallel_conflict_guard.py",
+            "timeout": 5
+          },
+          {
             "type": "command",
             "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/analyze_halt_gate.py",
             "timeout": 5

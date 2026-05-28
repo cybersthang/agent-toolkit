@@ -38,14 +38,17 @@ Full release / mirror / tag procedure documented in [REBUILD.md](REBUILD.md).
 
 ## Why agent-toolkit?
 
-- 🛡️ **Mechanical enforcement, not honor system.** 30 hooks DENY at the
+- 🛡️ **Mechanical enforcement, not honor system.** 31 hooks DENY at the
   Claude Code harness level — invariant strips, claim-without-proof,
   destructive git (`git_guardrails` blocks commit/push/add until DEV
   explicitly authorizes), hallucinated progress, **unresolved gaps on
-  done-claim** (`gap_completeness_gate` v0.19 — chặn drip-feed), and
+  done-claim** (`gap_completeness_gate` v0.19 — chặn drip-feed),
   **partial-done on a multi-item request** (`scope_completeness_gate` v0.23
   — enumerates full scope from tasks.md / acceptance_evals / TodoWrite and
-  blocks a done/full claim while any item is still pending). Not warnings
+  blocks a done/full claim while any item is still pending), and
+  **cross-zone edits between concurrent sub-agents**
+  (`parallel_conflict_guard` v0.25 — file-disjoint Wave manifest blocks any
+  Edit that targets a file owned by a different sub-agent). Not warnings
   the agent can ignore.
 - 🔬 **Real-data verify or it didn't ship.** `/verify` runs MCP probes on
   the live DB; `evidence_audit` Stop hook BLOCKS "tests pass" claims that
@@ -73,6 +76,12 @@ Full release / mirror / tag procedure documented in [REBUILD.md](REBUILD.md).
   10 cross-version performance recipes shipped. 5 default invariants shipped
   with the preset. 12 outstanding TODO markers resolved. See
   [CHANGELOG.md](CHANGELOG.md) for the full diff.
+- **v0.25**: parallel-subagent-guard — `parallel_conflict_guard.py`
+  PreToolUse hook BLOCK cross-zone Edit khi 2 sub-agent song song (Agent
+  tool) đụng cùng file. Manifest từ `tools/parallel_wave.py emit` (CLI
+  helper) + skill `parallel-batching` (5-step template, dogfood Wave A
+  v0.21). Identity từ envelope `agent_id` (docs hooks.md). Bypass:
+  `bypass-parallel-guard:` (xem [docs/parallel.md](docs/parallel.md)).
 - **v0.24**: agent-resilience — `tools/agent_supervisor.py` stall-watcher
   (read-only detect → notify, cả VSCode-extension lẫn CLI; `--relaunch` cap 10
   cho CLI) + resume-brief trong `session_brief` (tái dùng R9 manifest làm
@@ -193,7 +202,7 @@ DEV: (reads tasks.md, OK) /implement log-request-slowness
 Toolkit is in **active daily use** on a production Odoo 12 Enterprise
 workspace since 2026-Q1. Hook telemetry shows ~57
 fire-events per session avg, ~26% block rate, ~3.5% bypass rate.
-**30 hooks** active, **663 unit tests** in CI (matrix: Ubuntu / macOS /
+**31 hooks** active, **687 unit tests** in CI (matrix: Ubuntu / macOS /
 Windows × Python 3.8 / 3.10 / 3.12 — all green).
 
 > 🤖 **AI agents installing into a project**: Read

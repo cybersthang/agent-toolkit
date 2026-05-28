@@ -217,6 +217,15 @@ BYPASS_SCOPE_GATE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# v0.25.0 parallel-subagent-guard — single-shot bypass for the PreToolUse
+# parallel_conflict_guard. intent_router writes .skip_parallel_guard_next.json;
+# parallel_conflict_guard.py consumes (unlinks) on next matching Edit/Write.
+# Symmetric with BYPASS_GIT_GUARD_RE / BYPASS_GAP_GATE_RE.
+BYPASS_PARALLEL_GUARD_RE = re.compile(
+    r"\bbypass-parallel-guard:\s*(\S{8,200})\b",
+    re.IGNORECASE,
+)
+
 # Broader done/full claim for scope gate. The manifest enumerates the full
 # upfront scope, so any claim-of-completion should gate against pending
 # items — this needs higher RECALL than DONE_CLAIM_GAP_RE.

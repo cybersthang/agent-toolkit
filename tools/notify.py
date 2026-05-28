@@ -142,12 +142,13 @@ def notify_webhook(alert: Dict[str, Any]) -> bool:
         return False
 
 
-_CHANNELS = {
-    "log": None,  # handled specially (needs workspace)
-    "toast": notify_toast,
-    "smtp": notify_smtp,
-    "webhook": notify_webhook,
-}
+# Channels other than `log` (which needs a workspace param). The dispatch
+# function looks up each by module-attribute name (`notify_<ch>`) at call
+# time, NOT through a cached dict — so monkeypatching `notify.notify_toast`
+# (or any other channel) in tests is honored. The earlier cached-dict design
+# silently bypassed monkeypatch and ran the real `notify-send`, which on a
+# headless Linux CI runner (no display) fails → broke the dispatch test.
+_NON_LOG_CHANNELS = ("toast", "smtp", "webhook")
 
 
 def dispatch(alert: Dict[str, Any], config: Dict[str, Any],
@@ -163,7 +164,10 @@ def dispatch(alert: Dict[str, Any], config: Dict[str, Any],
         if ch == "log":
             results["log"] = notify_log(alert, workspace)
             continue
-        fn = _CHANNELS.get(ch)
+        if ch not in _NON_LOG_CHANNELS:
+            continue
+        # Dynamic module-attribute lookup so test monkeypatch propagates.
+        fn = globals().get(f"notify_{ch}")
         if fn is None:
             continue
         try:

@@ -30,5 +30,17 @@
   "rules": ["_common", "odoo-12"],
   "_rules_comment": "TODO: differentiate from odoo-12 base when templates/cursor/rules/odoo-13/ is authored. v13 still uses @api.multi-era patterns so odoo-12 rules apply.",
   "skills": ["_common", "odoo"],
-  "memory_packs": ["odoo-12"]
+  "memory_packs": ["odoo-12"],
+  "_overlay_doc": "Version-specific invariants merged on top of project invariants.json by a FUTURE installer step (setup.py --merge-invariants, not yet wired — Wave C). Same schema as .agent-toolkit/invariants.json entries. severity=warn (informational). Cite a confirmed Odoo release fact per entry.",
+  "invariants_overlay": [
+    {
+      "id": "odoo13-no-api-one",
+      "description": "Odoo 13 removed @api.one — methods that previously used it now run on a recordset; iterate self instead of returning a scalar.",
+      "applies_to": ["**/models/**/*.py", "**/wizards/**/*.py"],
+      "rules": {"must_keep_regex": ["for\\s+\\w+\\s+in\\s+self\\b|self\\.ensure_one\\("]},
+      "severity": "warn",
+      "rationale": "@api.one was dropped in Odoo 13 (it auto-looped and returned a list). Code ported from v12 that relied on @api.one's implicit single-record behavior must explicitly iterate `self` or call `ensure_one()`. Fix when violated: restore the explicit loop / ensure_one() that the edit dropped.",
+      "_version": "13+"
+    }
+  ]
 }

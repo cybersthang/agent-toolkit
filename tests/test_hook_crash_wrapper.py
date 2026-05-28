@@ -84,7 +84,10 @@ class TestAllHooksUseRunMainSafe(unittest.TestCase):
 
     def _hook_files(self):
         for p in sorted(self.HOOKS_DIR.glob("*.py")):
-            if p.name in self.EXCLUDED:
+            # Skip library modules: explicit excludes + any `_`-prefixed file
+            # (e.g. _common, _patterns, _resume_state) — these are not hooks
+            # and have no main()/run_main_safe wrapper.
+            if p.name in self.EXCLUDED or p.name.startswith("_"):
                 continue
             yield p
 

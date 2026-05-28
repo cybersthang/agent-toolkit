@@ -30,5 +30,26 @@
   "rules": ["_common", "odoo-12"],
   "_rules_comment": "TODO: differentiate from odoo-12 base when templates/cursor/rules/odoo-15/ is authored. v15 is transitional — most backend ORM still v12-era, only OWL frontend new.",
   "skills": ["_common", "odoo"],
-  "memory_packs": ["odoo-12"]
+  "memory_packs": ["odoo-12"],
+  "_overlay_doc": "Version-specific invariants merged on top of project invariants.json by a FUTURE installer step (setup.py --merge-invariants, not yet wired — Wave C). Same schema as .agent-toolkit/invariants.json entries. severity=warn (informational). Cite a confirmed Odoo release fact per entry.",
+  "invariants_overlay": [
+    {
+      "id": "odoo15-check-company-decorator",
+      "description": "Odoo 15 provides the @api.constrains-friendly `_check_company` consistency helper + `check_company=True` field attr — use it on company-scoped relational fields instead of hand-rolled cross-company guards.",
+      "applies_to": ["**/models/**/*.py"],
+      "rules": {"must_keep_regex": ["check_company\\s*=\\s*True|_check_company\\("]},
+      "severity": "warn",
+      "rationale": "From v15 the multi-company consistency check (`check_company=True` on Many2one/One2many + the `_check_company` helper) is the supported way to enforce company alignment; v12 lacked it and required manual constraints. Fix when violated: restore the `check_company=True` attr / `_check_company()` call the edit dropped.",
+      "_version": "15+"
+    },
+    {
+      "id": "odoo15-owl-module-header",
+      "description": "Odoo 15 OWL 1.x JS components require the `/** @odoo-module **/` header; legacy odoo.define()/web.Widget is the QWeb path, not OWL.",
+      "applies_to": ["**/static/src/**/*.js"],
+      "rules": {"must_keep_regex": ["@odoo-module|odoo\\.define\\("]},
+      "severity": "warn",
+      "rationale": "v15 is transitional: OWL 1.x components need the `/** @odoo-module **/` ESM header, while legacy widgets use `odoo.define()`. An edit that strips both leaves a JS file in neither loader's discovery path. Fix when violated: restore the module header or odoo.define wrapper the edit dropped.",
+      "_version": "15+"
+    }
+  ]
 }

@@ -21,7 +21,10 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import run_main_safe, emit_fire_event, atomic_write_json
+from _common import (
+    run_main_safe, emit_fire_event, atomic_write_json,
+    envelope_protocol_drift_warning,
+)
 
 # Make `_audit` package importable when invoked as a standalone script.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -57,6 +60,10 @@ from _audit.progress_checks import (
 )
 from _audit.reasons import (
     format_generic_claim_reason, format_pass_block_reason, format_progress_block_reason,
+)
+# v0.23 C1 (two-source) — optional cross-source corroboration layer.
+from _audit.cross_source import (
+    cross_source_warning, requires_cross_source,
 )
 from _audit.telemetry import log_event
 from _audit.transcript import (
@@ -196,6 +203,22 @@ def main() -> int:
     if envelope.get("stop_hook_active"):
         sys.exit(0)
 
+    # v0.23 R8-wire: surface envelope schema drift (Claude Code format change
+    # early-warning). evidence_audit is the FIRST Stop hook to parse the
+    # envelope, so it's the natural place to detect when Anthropic changes the
+    # envelope schema — before all 27 hooks silently break together.
+    #
+    # Emitted via STDERR (not stdout additionalContext) on purpose:
+    #   - Advisory only — must NOT block the Stop.
+    #   - stdout is reserved for the block/allow JSON envelope; printing an
+    #     additionalContext object here AND a decision object later would emit
+    #     two JSON lines and risk parser confusion. stderr is shown in the
+    #     transcript, carries no envelope semantics, and never conflicts.
+    drift = envelope_protocol_drift_warning(envelope, "Stop")
+    if drift:
+        sys.stderr.write(drift + "\n")
+        # continue normal flow — drift is advisory only, does NOT block.
+
     transcript_path = envelope.get("transcript_path")
     if not transcript_path:
         sys.exit(0)
@@ -270,6 +293,38 @@ def main() -> int:
             _emit_block(workspace,
                         format_pass_block_reason(text, matched, fallback_blocks, required_prefixes),
                         categories=["pass_contract"])
+
+        # ----- Cross-source corroboration (v0.23 C1, two-source) -----
+        # Opt-in + warn-only. Fires ONLY for matched probes that declared
+        # `cross_source_required: true` AND make a critical-class claim.
+        # When the turn lacks evidence from ≥2 distinct MCP backends we emit
+        # a NON-blocking warning — a single-source read may be a Postgres
+        # replica-lag false positive. Conservative rollout: never blocks
+        # (see _audit/cross_source.py docstring to promote to block later).
+        cross_probes = [p for p in matched if requires_cross_source(text, p)]
+        if cross_probes:
+            warning = cross_source_warning(cross_probes, tool_calls)
+            if warning is not None:
+                log_event(workspace, hook="evidence_audit",
+                          decision="warn", categories=["cross_source"])
+                try:
+                    emit_fire_event("evidence_audit.py", verdict="warn",
+                                    detail="cross_source")
+                except Exception:
+                    pass
+                # Warn-only short-circuit: emit ONE additionalContext
+                # envelope and exit. Exiting here avoids printing a second
+                # JSON object later (the allow/block paths each print their
+                # own). This is a non-blocking outcome → clear recursion
+                # state like the allow path does.
+                _clear_recursion_state(workspace)
+                print(json.dumps({
+                    "hookSpecificOutput": {
+                        "hookEventName": "Stop",
+                        "additionalContext": warning,
+                    }
+                }, ensure_ascii=False))
+                sys.exit(0)
 
     # ----- Hallucinated-progress contract -----
     disabled_cats = set(defaults.get("disabled_progress_checks") or [])

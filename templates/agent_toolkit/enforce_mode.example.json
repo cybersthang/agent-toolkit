@@ -13,6 +13,7 @@
     "verify_lint_scope": "warn",
     "spec_drift_advisory": "warn",
     "implement_orchestrator": "warn",
-    "clarification_gate_enforcer": "block"
+    "clarification_gate_enforcer": "block",
+    "scope_completeness_gate": "block"
   }
 }

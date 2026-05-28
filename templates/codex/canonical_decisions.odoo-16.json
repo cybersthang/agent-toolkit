@@ -1,0 +1,219 @@
+{
+  "version": 1,
+  "updated_at": "{{TODAY_ISO_DATE}}",
+  "purpose": "Single source of truth for recurring project questions on this {{STACK_LABEL}} workspace. Agents MUST consult this registry before answering 'how do we do X in this project'. Adding/changing entries requires explicit user approval — this protects determinism. NOTE: this file is the toolkit seed for the {{PRESET_NAME}} preset; project-specific debug findings belong in `.codex/audit_findings_locked.md` or `.agent-toolkit/decision-log.md`, NOT here.",
+  "decisions": [
+    {
+      "id": "stack",
+      "topic": "stack",
+      "aliases": [
+        "technology stack",
+        "tech stack",
+        "odoo version"
+      ],
+      "question": "What is the project stack?",
+      "answer": "{{STACK_LABEL}} on Python {{STACK_LANGUAGE_VERSION}} (project venv at `{{PYTHON_BIN}}`), PostgreSQL, QWeb + jQuery. Workspace root: `{{WORKSPACE_ROOT}}`. Default database: `{{DEFAULT_DB}}`.",
+      "source": ".cursor/rules/odoo-16-project-context.mdc"
+    },
+    {
+      "id": "python-bin",
+      "topic": "python binary",
+      "aliases": [
+        "python interpreter",
+        "venv python",
+        "which python",
+        "project python"
+      ],
+      "question": "Which Python interpreter do we run for this project?",
+      "answer": "Always use the project venv: `{{PYTHON_BIN}}` (Python {{STACK_LANGUAGE_VERSION}}). Never a system-PATH `python` — it can resolve to an interpreter without the project's dependencies and silently diverge from the runtime. The venv path is exported as `{{ENV_PREFIX}}_PYTHON_BIN` in `.codex/mcp.local.env` so MCP wrappers, Odoo shell, and test runners stay aligned.",
+      "source": ".codex/mcp.local.env"
+    },
+    {
+      "id": "addon-roots",
+      "topic": "addon roots",
+      "aliases": [
+        "where are modules",
+        "addon path",
+        "module location"
+      ],
+      "question": "Where do custom and vendored addons live?",
+      "answer": "{{ADDON_ROOTS_CSV}}. Custom project code lives under the first entry by convention.",
+      "source": "AGENTS.md"
+    },
+    {
+      "id": "reuse-first",
+      "topic": "reuse over rewrite",
+      "aliases": [
+        "duplicate function",
+        "same name",
+        "already exists",
+        "rewrite vs reuse",
+        "code already there"
+      ],
+      "question": "When writing a new function whose name/logic already exists in the workspace, what do we do?",
+      "answer": "Reuse > Extend > Rewrite. Before adding any new `def`/`class`, grep the workspace for the identifier + the root word. If a hit exists: (1) Reuse — call directly. (2) Extend — add a parameter to the existing function. (3) Rewrite ONLY if the existing is in the wrong layer / wrong contract / dead, AND state the reason in the spec or commit body. Enforced mechanically by `reuse_probe.py` PreToolUse hook + `reuse-first-then-write` skill. Spec frontmatter `reuse_targets:` lists intended targets; `/verify` blocks if declared but uncited.",
+      "source": ".cursor/rules/_common/karpathy-guidelines.mdc (§Grep Before Write)"
+    },
+    {
+      "id": "complexity-budget",
+      "topic": "algorithmic complexity",
+      "aliases": [
+        "nested loops",
+        "big o",
+        "function too long",
+        "cyclomatic",
+        "complexity"
+      ],
+      "question": "How complex can one function be before review pushes back?",
+      "answer": "Soft limit: 2 nested loops / 3 nested if / 40 LOC body / 8 branches. Hard limit: 3 / 4 / 60 / 12 (matches `complexity_sentinel.py` Stop hook defaults). Any function with cost worse than O(n log n) MUST carry a one-line `# O(n²) — acceptable because <reason>` annotation. Override per project in `.agent-toolkit/complexity_budget.json`.",
+      "source": ".cursor/rules/_common/algorithm-complexity-budget.mdc"
+    },
+    {
+      "id": "api-decorators",
+      "topic": "api decorators",
+      "aliases": [
+        "api.multi",
+        "api.one",
+        "api.model",
+        "decorator"
+      ],
+      "question": "Which Odoo 16 API decorators do we use?",
+      "answer": "Use `@api.multi` for recordset methods and `@api.model` for model-level methods. Avoid `@api.one` (deprecated). Call `ensure_one()` when a single record is required.",
+      "source": ".cursor/rules/odoo-16-backend.mdc"
+    },
+    {
+      "id": "loop-anti-patterns",
+      "topic": "loop anti-patterns",
+      "aliases": [
+        "search in loop",
+        "browse in loop",
+        "performance loop"
+      ],
+      "question": "What ORM calls are forbidden inside loops?",
+      "answer": "Never call `search()`, `browse(id)`, `write()`, or `unlink()` inside loops. Push filtering into domains, batch with `mapped/filtered/read_group`, and use `search_count()` instead of `len(search())`.",
+      "source": ".cursor/rules/odoo-16-backend.mdc"
+    },
+    {
+      "id": "sudo-policy",
+      "topic": "sudo",
+      "aliases": [
+        "sudo()",
+        "privileged"
+      ],
+      "question": "When may we use sudo()?",
+      "answer": "Avoid `sudo()` unless clearly required. Document every `sudo()` call with a one-line reason. Default to standard ACL / record-rule security.",
+      "source": ".cursor/rules/odoo-16-backend.mdc"
+    },
+    {
+      "id": "verification-default",
+      "topic": "verification",
+      "aliases": [
+        "how to test",
+        "verify changes",
+        "smoke test"
+      ],
+      "question": "How do we verify Odoo 16 changes?",
+      "answer": "Prefer the narrowest module-level check: `-u <module> --stop-after-init` against the configured DB. For real-data smoke checks use the `realdata_test` MCP `run_smoke_test` or `build_module_test_command` tool. For algorithm correctness use `eval_orm_expression` + `consistency_check_eval`.",
+      "source": ".codex/mcp_servers/realdata_test_server.py"
+    },
+    {
+      "id": "mcp-routing",
+      "topic": "mcp routing",
+      "aliases": [
+        "which mcp",
+        "tool selection",
+        "mcp choice"
+      ],
+      "question": "Which MCP do we use for which question?",
+      "answer": "Codebase discovery, manifests, models, XML IDs → `codebase`. Read-only DB schema/data → `postgres`. Real-data smoke and algorithm verification → `realdata_test`. JIRA tickets → `jira_production` (live) or `jira_preproduction` (UAT). Never broad-read files before asking the codebase MCP first.",
+      "source": "AGENTS.md"
+    },
+    {
+      "id": "jira-routing",
+      "topic": "jira",
+      "aliases": [
+        "jira url",
+        "jira base",
+        "ticket lookup"
+      ],
+      "question": "How is JIRA configured and accessed?",
+      "answer": "Two profiles ship: `jira_production` (live tickets, sprint queries, post-merge triage) and `jira_preproduction` (UAT verification, regression). Base URLs and credentials live ONLY in `.codex/mcp.local.env` under `{{ENV_PREFIX}}_JIRA_PRODUCTION_*` / `{{ENV_PREFIX}}_JIRA_PREPRODUCTION_*` — never hardcode them in committed files. The `start_jira_<profile>_mcp.py` wrappers map the profile-prefixed vars onto the generic `{{ENV_PREFIX}}_JIRA_*` vars before launching the server.",
+      "source": ".codex/mcp.local.env"
+    },
+    {
+      "id": "language-policy",
+      "topic": "response language",
+      "aliases": [
+        "vietnamese",
+        "language",
+        "reply language"
+      ],
+      "question": "Which language do we reply in?",
+      "answer": "Reply in {{RESPONSE_LANGUAGE}} unless the user explicitly asks otherwise. Code identifiers and comments stay in English so the codebase is searchable.",
+      "source": "AGENTS.md"
+    },
+    {
+      "id": "module-agnostic-rule",
+      "topic": "module agnostic",
+      "aliases": [
+        "generic rule",
+        "fix cứng",
+        "any module",
+        "module agnostic"
+      ],
+      "question": "Should rules and skills hard-code specific module names?",
+      "answer": "No. Rules and skills must be generic and operate on any module in the workspace. Use addon roots, manifests, model names and inheritance chains discovered at runtime via the codebase MCP — never embed module names like `my_module` into invariant rules.",
+      "source": ".cursor/rules/odoo-16-generic.mdc"
+    },
+    {
+      "id": "determinism-policy",
+      "topic": "determinism",
+      "aliases": [
+        "consistency",
+        "same answer",
+        "registry lookup"
+      ],
+      "question": "How do we keep answers consistent across conversations?",
+      "answer": "Before answering recurring questions, call `lookup_canonical_decision` via the `codebase` MCP. If a match exists, return the registered answer verbatim and cite `registry_path` + `version`. If no match exists, propose adding a new entry instead of inventing a one-shot answer.",
+      "source": ".cursor/rules/decision-consistency.mdc"
+    },
+    {
+      "id": "audit-methodology",
+      "topic": "audit methodology",
+      "aliases": [
+        "deep review",
+        "exhaustive audit",
+        "phân tích sâu",
+        "review methodology"
+      ],
+      "question": "How do we run a deep review/audit so the count is consistent across sessions?",
+      "answer": "Follow `.cursor/rules/audit-methodology.mdc`. Step 0: read `.codex/audit_findings_locked.md` (or per-module variant) FIRST and cite the recorded count verbatim. Allowed to differ only when (a) code changed since the lock timestamp, verified via `git log`, (b) reproducible proof contradicts a verified entry, or (c) the user requests a re-audit. Step 1: cover all audit dimensions in ONE pass. Step 2: uniform severity (BLOCKER / MEDIUM / LOW) with PROOF lines. Drip-feed across sessions is forbidden.",
+      "source": ".cursor/rules/audit-methodology.mdc"
+    },
+    {
+      "id": "credentials-policy",
+      "topic": "credentials",
+      "aliases": [
+        "passwords",
+        "secrets",
+        "env file"
+      ],
+      "question": "Where do real credentials live?",
+      "answer": "Real JIRA / Postgres / Odoo credentials live ONLY in `.codex/mcp.local.env` (gitignored). Committed files (`mcp.local.env.example`, `config.toml.example`, any `.py` MCP server, any `.md` rule/skill) must contain placeholders or env-var names — never real passwords or hostnames. Each MCP profile gets its own prefixed block (`{{ENV_PREFIX}}_JIRA_PRODUCTION_*`, etc.); the `start_*_mcp.py` wrappers map the prefix onto the generic vars before launching the server.",
+      "source": ".cursor/rules/_common/decision-consistency.mdc"
+    },
+    {
+      "id": "invariant-guard",
+      "topic": "invariant enforcement",
+      "aliases": [
+        "invariant guard",
+        "must keep pattern",
+        "edit blocker"
+      ],
+      "question": "How are durable rules enforced on edits?",
+      "answer": "`.claude/hooks/invariant_guard.py` runs PreToolUse on Edit/Write/MultiEdit. It reads `.agent-toolkit/invariants.json` and DENIES any edit that strips a `must_keep_regex` pattern with severity `blocker`. Bypass once by adding `bypass-invariant: <id>` to the next user prompt. Permanent changes go through `/adr-add` → `/inv-add`. Memory ≠ enforcement; this is the contract layer.",
+      "source": ".agent-toolkit/README.md"
+    }
+  ],
+  "_per_version_review": "Auto-generated v0.26.0: copied from canonical_decisions.odoo-16.json with 'Odoo 16' → 'Odoo 16' substitution. PENDING per-version refinement — some decisions (e.g. api-decorators) need version-specific edits: v13 dropped @api.one; v16 dropped @api.multi; v17 deprecated name_get; v18 unified check_access; v19 renamed type='json' → 'jsonrpc'. Cross-check invariants_overlay in presets/odoo-16.json."
+}

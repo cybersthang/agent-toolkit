@@ -81,8 +81,12 @@ SLUG_PATTERNS = [
 # phrases that should trigger the gate when paired with an Edit on a
 # spec-tracked file but no /verify run.
 
+# v0.23.1: negative lookbehind `(?<!chưa\s)` so a negated claim ("chưa
+# xong" / "chưa hoàn thành" = NOT done yet) no longer reads as a completion
+# claim. Step-level mentions ("Bước 1 xong") are left as-is — this gate only
+# warn-nudges /verify, so over-triggering there is low harm.
 COMPLETION_RE = re.compile(
-    r"\b(done|ready|verified|complete|completed|finished|fixed|"
+    r"(?<!ch(?:ư|u)a\s)\b(done|ready|verified|complete|completed|finished|fixed|"
     r"ready\s*to\s*merge|xong|ho(à|a)n\s*th(à|a)nh|đã\s*fix|đã\s*xong|"
     r"feature\s*ready|deploy\s*ready)\b",
     re.IGNORECASE | re.UNICODE,
@@ -175,5 +179,85 @@ DONE_CLAIM_GAP_RE = re.compile(
     r"|sprint\s+(?:complete|done|ho(?:à|a)n\s*th(?:à|a)nh)"
     r"|✅\s*(?:Implement\s+done|Done|Complete)"
     r")\b",
+    re.IGNORECASE | re.UNICODE,
+)
+
+
+# --- v0.23.0 scope-completeness-gate (R9) --------------------------------
+# Used by: scope_completeness_gate (Stop), intent_router (UserPromptSubmit
+# bypass capture). Sibling of gap-completeness-gate but tracks UPFRONT
+# request scope (manifest items S<N>) instead of mid-work surfaced gaps.
+#
+# Distinction from DONE_CLAIM_GAP_RE: scope gate fires on a broader
+# done/full claim because the manifest enumerates the FULL request scope
+# declared upfront (tasks.md / acceptance_evals / TodoWrite≥3), so any
+# completion phrasing should trigger the unresolved-item check.
+
+# Per-item resolution markers in agent response. Reason ≥ 8 chars
+# (audit-friendly, same standard as gap-defer / skip-clarification).
+SCOPE_DONE_RE = re.compile(
+    r"\bscope-done:\s*S(\d+)\b",
+    re.IGNORECASE | re.UNICODE,
+)
+
+SCOPE_DEFER_RE = re.compile(
+    r"\bscope-defer:\s*S(\d+)\s+(\S(?:.{6,196}\S)?)",
+    re.IGNORECASE | re.UNICODE,
+)
+
+SCOPE_CANT_RE = re.compile(
+    r"\bscope-cant:\s*S(\d+)\s+(\S(?:.{6,196}\S)?)",
+    re.IGNORECASE | re.UNICODE,
+)
+
+# Whole-gate single-shot bypass in user prompt. intent_router writes
+# .skip_scope_gate_next.json; scope_completeness_gate consumes on Stop.
+BYPASS_SCOPE_GATE_RE = re.compile(
+    r"\bbypass-scope-gate:\s*(\S{8,200})\b",
+    re.IGNORECASE,
+)
+
+# v0.25.0 parallel-subagent-guard — single-shot bypass for the PreToolUse
+# parallel_conflict_guard. intent_router writes .skip_parallel_guard_next.json;
+# parallel_conflict_guard.py consumes (unlinks) on next matching Edit/Write.
+# Symmetric with BYPASS_GIT_GUARD_RE / BYPASS_GAP_GATE_RE.
+BYPASS_PARALLEL_GUARD_RE = re.compile(
+    r"\bbypass-parallel-guard:\s*(\S{8,200})\b",
+    re.IGNORECASE,
+)
+
+# Broader done/full claim for scope gate. The manifest enumerates the full
+# upfront scope, so any claim-of-completion should gate against pending
+# items — this needs higher RECALL than DONE_CLAIM_GAP_RE.
+#
+# v0.23.1 fix: the earlier version wrapped every alternative in `\b(?:…)\b`,
+# which silently KILLED two branches — `\b` cannot match before the emoji
+# `✅` (non-word char) nor after a trailing `.`/`—` (non-word char). Net: the
+# emoji branch and the "Done."/"Verified —" punctuation branch never fired,
+# and ~12/22 real completion phrasings slipped through (verified empirically
+# via tests/test_claim_detection_patterns.py). Each branch now manages its
+# own boundaries; no outer `\b` wrapper. Negation (`chưa xong` / `chưa hoàn
+# thành`) is excluded via lookbehind so "not done yet" never reads as done.
+DONE_FULL_CLAIM_RE = re.compile(
+    r"(?:"
+    # scope-word + done-word within 30 chars ("all done", "tất cả ... pass",
+    # "mọi thứ đã ổn", "everything complete", "toàn bộ done").
+    r"(?:t(?:ất|at)\s*c(?:ả|a)|to(?:à|a)n\s*b(?:ộ|o)|m(?:ọ|o)i\s*th(?:ứ|u)|all|everything)"
+    r"\b[^.\n]{0,30}?\b(?:done|xong|ho(?:à|a)n\s*th(?:à|a)nh|complete[d]?|pass(?:ed)?|(?:ổ|o)n)"
+    # implement/sprint done, completed successfully, finished implementing.
+    r"|\b(?:implement\s+done|sprint\s+(?:complete|done|ho(?:à|a)n\s*th(?:à|a)nh)"
+    r"|completed\s+successfully|finished\s+implement\w*)"
+    r"|\bready\s+to\s+merge\b"
+    # hoàn tất / hoàn thành (not negated by "chưa").
+    r"|(?<!ch(?:ư|u)a\s)\bho(?:à|a)n\s*(?:t(?:ấ|a)t|th(?:à|a)nh)\b"
+    # đã [word word] xong | xong rồi/hết | fix hết rồi (not negated).
+    r"|(?<!ch(?:ư|u)a\s)\bđã\s+(?:\w+\s+){0,2}xong\b"
+    r"|\bxong\s+(?:r(?:ồ|o)i|h(?:ế|e)t)\b"
+    r"|\bfix\s+h(?:ế|e)t\s+r(?:ồ|o)i\b"
+    # ✅ emoji branch — no \b before the emoji (it is a non-word char).
+    r"|✅\s*(?:implement\s+done|done|complete[d]?|ho(?:à|a)n\s*th(?:à|a)nh)"
+    # standalone done/verified/complete/finished terminated by punct or EOL.
+    r"|(?<!\w)(?:done|verified|complete[d]?|finished)\s*(?:[—\-.!:]|$)"
+    r")",
     re.IGNORECASE | re.UNICODE,
 )

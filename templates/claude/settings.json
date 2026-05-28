@@ -33,6 +33,12 @@
             "timeout": 5
           },
           {
+            "_comment": "v0.25.0 parallel-subagent-guard: DENY when an Edit/Write targets a file owned by a different sub-agent in the active wave (file-disjoint enforcement). Manifest from `tools/parallel_wave.py emit`; silent allow when no manifest / wave_done / TTL expired / outside any zone. Identity from envelope `agent_id` (sub-agents only — Claude Code docs hooks.md). Default `block`; bypass once via `bypass-parallel-guard:` in prompt.",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/parallel_conflict_guard.py",
+            "timeout": 5
+          },
+          {
             "type": "command",
             "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/analyze_halt_gate.py",
             "timeout": 5
@@ -144,6 +150,12 @@
             "timeout": 5
           },
           {
+            "_comment": "v0.23.0 R9 scope-completeness-gate: BLOCK done/full-claim while scope manifest (derived from tasks.md / acceptance_evals / TodoWrite≥3, NOT DEV prompt keywords) still has pending items. Resolution markers: scope-done / scope-defer / scope-cant (in response) + bypass-scope-gate (in prompt). Default mode: block (D2). Silent when no manifest (zero friction). Sibling of gap_completeness_gate (gap=mid-work discovery; scope=upfront coverage). Runs AFTER gap gate, BEFORE verify_lint_scope final gate.",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/scope_completeness_gate.py",
+            "timeout": 8
+          },
+          {
             "type": "command",
             "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/verify_lint.py",
             "timeout": 15
@@ -175,6 +187,19 @@
             "timeout": 8
           },
           {
+            "_comment": "v0.23 R7 probe-coverage-gate: BLOCK done-claim if feature-scope probe coverage < min_coverage_pct (default 60%, warn-only until enforce_mode promotes). Opt-in via .agent-toolkit/probe_coverage.json. Skips silently if config absent.",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/probe_coverage_gate.py",
+            "timeout": 10
+          },
+          {
+            "_comment": "v0.23 R1 bypass-rate-alarm: surface hooks with bypass-rate > threshold (default 5% rolling 7d) so DEV reviews before bypass becomes routine (security-theatre guard). Warn-only; reads .hook_fire_log.json. Opt-in via .agent-toolkit/bypass_alarm.json.",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/bypass_rate_alarm.py",
+            "timeout": 5
+          },
+          {
+            "_comment": "Layer 5 FINAL gate — must remain last (test_stop_chain_interactions asserts this).",
             "type": "command",
             "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/verify_lint_scope.py",
             "timeout": 15

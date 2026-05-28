@@ -515,3 +515,51 @@ def split_current_turn(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             last_user = idx
             break
     return messages[last_user:] if last_user >= 0 else messages
+
+
+# ============================================================
+# R8 — hook envelope protocol version handshake
+#
+# Hooks read stdin JSON envelopes from Claude Code. If Anthropic changes
+# the envelope schema, all 27 hooks can break together with no signal.
+# These helpers let a hook SOFT-CHECK that the envelope still carries the
+# fields it expects, surfacing a drift warning before silent breakage.
+#
+# OPT-IN: hooks must call validate_envelope_schema() /
+# envelope_protocol_drift_warning() voluntarily — nothing auto-wires here.
+# ============================================================
+HOOK_PROTOCOL_VERSION = 1  # bump when Claude Code envelope schema changes
+
+# Known envelope fields per Claude Code hook event (schema v1, 2026-05).
+# When Anthropic adds/renames fields, bump HOOK_PROTOCOL_VERSION + update.
+_EXPECTED_ENVELOPE_FIELDS = {
+    "Stop": ["transcript_path", "stop_hook_active", "cwd"],
+    "PreToolUse": ["tool_name", "tool_input", "cwd"],
+    "PostToolUse": ["tool_name", "tool_input", "tool_response", "cwd"],
+    "UserPromptSubmit": ["prompt", "cwd"],
+    "SessionStart": ["cwd"],
+}
+
+
+def validate_envelope_schema(envelope: dict, event: str) -> tuple:
+    """Return (is_valid, missing_fields). Soft-check: warns if expected
+    fields missing (envelope format drift signal), never blocks.
+    Returns (True, []) if event unknown (forward-compat)."""
+    expected = _EXPECTED_ENVELOPE_FIELDS.get(event)
+    if not expected:
+        return (True, [])  # unknown event = forward-compatible, don't fail
+    missing = [f for f in expected if f not in envelope]
+    return (len(missing) == 0, missing)
+
+
+def envelope_protocol_drift_warning(envelope: dict, event: str) -> str:
+    """Return warning string if envelope missing expected fields (schema
+    drift), else empty. Hooks can surface this so DEV knows Claude Code
+    changed format before all hooks silently break."""
+    ok, missing = validate_envelope_schema(envelope, event)
+    if ok:
+        return ""
+    return (f"[hook-protocol] Envelope schema drift detected for {event}: "
+            f"missing {missing}. Claude Code may have changed envelope format. "
+            f"Expected protocol v{HOOK_PROTOCOL_VERSION}. Hooks may misbehave — "
+            f"check agent-toolkit compatibility with current Claude Code release.")

@@ -30,5 +30,36 @@
   "rules": ["_common", "odoo-17"],
   "_rules_comment": "TODO: differentiate from odoo-17 base when templates/cursor/rules/odoo-19/ is authored. v19 deltas (jsonrpc route, Domain API, declarative constraints) covered in skill references only.",
   "skills": ["_common", "odoo"],
-  "memory_packs": ["odoo-17"]
+  "memory_packs": ["odoo-17"],
+  "_overlay_doc": "Version-specific invariants merged on top of project invariants.json by a FUTURE installer step (setup.py --merge-invariants, not yet wired — Wave C). Inherits the odoo-17 + odoo-18 overlays conceptually, plus the v19 deltas below. Same schema as .agent-toolkit/invariants.json entries. severity=warn. Cite a confirmed Odoo release fact per entry.",
+  "_inherits_overlay": "odoo-18",
+  "invariants_overlay": [
+    {
+      "id": "odoo19-jsonrpc-route-type",
+      "description": "Odoo 19 renamed controller route type='json' to type='jsonrpc' (type='json2' is a separate new contract).",
+      "applies_to": ["**/controllers/**/*.py"],
+      "rules": {"must_keep_regex": ["type\\s*=\\s*[\"']jsonrpc[\"']|type\\s*=\\s*[\"']json2[\"']|type\\s*=\\s*[\"']http[\"']"]},
+      "severity": "warn",
+      "rationale": "v19 renamed @http.route(type='json') to type='jsonrpc' (odoo-19-patterns.md). A leftover type='json' no longer matches the JSON-RPC dispatcher. Fix when violated: restore the type='jsonrpc' (or intended type='json2'/'http') the edit dropped.",
+      "_version": "19+"
+    },
+    {
+      "id": "odoo19-domain-api",
+      "description": "Odoo 19 ships the Domain class + 'any!' operator for non-trivial domain construction.",
+      "applies_to": ["**/models/**/*.py", "**/wizards/**/*.py"],
+      "rules": {"must_keep_regex": ["Domain\\(|from\\s+odoo\\s+import[^\\n]*Domain"]},
+      "severity": "warn",
+      "rationale": "v19 formalizes domain construction via the Domain class (with the strict 'any!' operator) (odoo-19-patterns.md). Code built around Domain(...) must keep the import + usage intact. Fix when violated: restore the Domain import/usage the edit dropped.",
+      "_version": "19+"
+    },
+    {
+      "id": "odoo19-declarative-constraints",
+      "description": "Odoo 19 supports declarative _constraints / _indexes class attributes (preferred over the legacy _sql_constraints attribute).",
+      "applies_to": ["**/models/**/*.py"],
+      "rules": {"must_keep_regex": ["_constraints\\s*=|_indexes\\s*=|_sql_constraints\\s*="]},
+      "severity": "warn",
+      "rationale": "v19 adds declarative _constraints / _indexes class attributes as the preferred form (odoo-19-patterns.md); _sql_constraints still works but is legacy. Fix when violated: restore the _constraints/_indexes (or _sql_constraints) declaration the edit dropped.",
+      "_version": "19+"
+    }
+  ]
 }

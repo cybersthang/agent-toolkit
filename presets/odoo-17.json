@@ -30,5 +30,35 @@
   },
   "rules": ["_common", "odoo-17"],
   "skills": ["_common", "odoo"],
-  "memory_packs": ["odoo-17"]
+  "memory_packs": ["odoo-17"],
+  "_overlay_doc": "Version-specific invariants merged on top of project invariants.json by a FUTURE installer step (setup.py --merge-invariants, not yet wired — Wave C). Same schema as .agent-toolkit/invariants.json entries. severity=warn (informational). Cite a confirmed Odoo release fact per entry.",
+  "invariants_overlay": [
+    {
+      "id": "odoo17-display-name-not-name-get",
+      "description": "Odoo 17 deprecates name_get(); use _compute_display_name() to set display_name.",
+      "applies_to": ["**/models/**/*.py"],
+      "rules": {"must_keep_regex": ["_compute_display_name|display_name\\s*="]},
+      "severity": "warn",
+      "rationale": "name_get() is deprecated in v17 (gone-by-default in v18 per odoo-17-patterns.md / odoo-18-patterns.md). Models needing custom display logic must implement `_compute_display_name()` instead. Fix when violated: restore the `_compute_display_name` override / `display_name =` assignment the edit dropped.",
+      "_version": "17+"
+    },
+    {
+      "id": "odoo17-no-attrs-no-states",
+      "description": "Odoo 17 removed attrs=\"{...}\" and states=\"...\" on view fields — use Python expressions directly (invisible=\"state == 'done'\").",
+      "applies_to": ["**/views/**/*.xml"],
+      "rules": {"must_keep_regex": ["invisible=|readonly=|required="]},
+      "severity": "warn",
+      "rationale": "attrs=\"{...}\" and states=\"...\" were REMOVED in v17 and now raise a parse error (odoo-17-patterns.md). Conditional UI must use direct Python-expression attributes (invisible/readonly/required). Fix when violated: restore the direct-expression attribute the edit dropped, and never reintroduce attrs/states.",
+      "_version": "17+"
+    },
+    {
+      "id": "odoo17-create-model-create-multi",
+      "description": "Odoo 17 create() takes a list of vals and must be decorated @api.model_create_multi; single-record @api.model create(vals) silently breaks batch inserts.",
+      "applies_to": ["**/models/**/*.py"],
+      "rules": {"must_keep_regex": ["@api\\.model_create_multi|@api\\.model\\b"]},
+      "severity": "warn",
+      "rationale": "From v17 create() is batch-oriented and must use @api.model_create_multi(vals_list); a single-record @api.model create(vals) override silently breaks batched inserts (odoo-17-patterns.md). Fix when violated: restore the @api.model_create_multi decorator the edit dropped.",
+      "_version": "17+"
+    }
+  ]
 }

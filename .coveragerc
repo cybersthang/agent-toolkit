@@ -37,7 +37,6 @@ parallel = True
 concurrency = multiprocessing
 omit =
     tests/*
-    lib/plugins.py
 
 [report]
 exclude_lines =

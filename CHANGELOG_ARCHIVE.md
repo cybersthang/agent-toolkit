@@ -485,8 +485,8 @@ new events to a date-partitioned JSONL file
 high-water dedup means cross-machine aggregation works via shared
 storage (NFS / S3 / git-lfs) without merge conflicts. Each event is
 enriched with `_host`, `_workspace`, `_source` so 5 devs × 5 projects
-remain distinguishable in one bucket. OTLP HTTP/JSON adapter shipped
-as stub (real impl deferred — install `requests` to wire).
+remain distinguishable in one bucket. (An OTLP HTTP/JSON adapter stub
+shipped here originally; removed in v0.23 R6 — zero users.)
 
 CLI:
 ```bash

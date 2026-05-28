@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from installer import merge_invariants, merge_invariants_file
+from installer import merge_invariants, merge_invariants_file, load_preset_overlay
 
 
 # --------------------------------------------------------- fixtures ---
@@ -206,3 +206,111 @@ def test_merge_invariants_file_atomic_write(
     by_id = {inv['id']: inv for inv in data['invariants']}
     # Project's blocker promotion preserved on disk.
     assert by_id['no-bare-python-shebang']['severity'] == 'blocker'
+
+
+# --------------------------------------------------- R4 overlay merge ---
+# v0.23 R4-consumer
+def _overlay_payload() -> list:
+    """Two preset-overlay invariants: one NEW id + one that collides with a
+    template default id (so we can prove project/template wins over overlay)."""
+    return [
+        {
+            'id': 'odoo13-no-api-one',  # genuinely new
+            'description': 'Odoo 13 removed @api.one.',
+            'applies_to': ['**/models/**/*.py'],
+            'rules': {'must_keep_regex': ['ensure_one']},
+            'severity': 'warn',
+        },
+        {
+            'id': 'no-bare-python-shebang',  # collides with template default
+            'description': 'overlay attempt to redefine a template id',
+            'applies_to': ['scripts/**/*.py'],
+            'rules': {'must_keep_regex': ['sys.executable']},
+            'severity': 'blocker',  # overlay tries blocker; must be IGNORED
+        },
+    ]
+
+
+def test_merge_invariants_file_with_preset_overlay(
+    tmp_path: Path, template_file: Path
+):
+    """R4: project + template + preset overlay merge → all three folded,
+    dedup correct, project/template win over overlay on id collision.
+
+    Project owns `no-bare-python-shebang` (severity=blocker custom). Template
+    ships 5 defaults. Overlay ships 1 NEW id + 1 colliding id. Expected:
+      - project entry stays (its blocker, not overlay's),
+      - 4 non-overlapping template ids added,
+      - 1 new overlay id (`odoo13-no-api-one`) added,
+      - overlay's colliding id skipped (project already owns it).
+    """
+    project_path = tmp_path / 'invariants.json'
+    project_path.write_text(json.dumps({
+        '_doc': 'project doc',
+        'version': 2,
+        'invariants': [
+            {'id': 'no-bare-python-shebang', 'severity': 'blocker',
+             'rationale': 'project owns this'},
+        ],
+    }), encoding='utf-8')
+
+    added, skipped = merge_invariants_file(
+        project_path, template_file,
+        overlay_invariants=_overlay_payload(),
+    )
+
+    # 4 template-new + 1 overlay-new = 5 added.
+    assert 'odoo13-no-api-one' in added
+    assert len(added) == 5
+    # Template's own no-bare-python-shebang skipped (project owns it) AND the
+    # overlay's colliding entry skipped → 2 skips of the same id.
+    assert skipped.count('no-bare-python-shebang') == 2
+
+    data = json.loads(project_path.read_text(encoding='utf-8'))
+    by_id = {inv['id']: inv for inv in data['invariants']}
+    # 5 template ids + 1 new overlay id = 6 unique entries.
+    assert len(data['invariants']) == 6
+    assert 'odoo13-no-api-one' in by_id
+    # Project's custom entry wins — overlay's blocker redefinition is ignored;
+    # the project's own (also-blocker, but with its rationale) survives intact.
+    assert by_id['no-bare-python-shebang']['rationale'] == 'project owns this'
+    # The new overlay invariant landed verbatim.
+    assert by_id['odoo13-no-api-one']['severity'] == 'warn'
+
+
+def test_merge_invariants_file_empty_overlay_is_template_only(
+    tmp_path: Path, template_file: Path
+):
+    """Edge: overlay=None / [] → behaves exactly like the template-only path
+    (backward compatible)."""
+    project_path = tmp_path / 'invariants.json'
+    added_none, skipped_none = merge_invariants_file(
+        project_path, template_file, overlay_invariants=None)
+    assert len(added_none) == 5
+    assert skipped_none == []
+
+    project_path2 = tmp_path / 'invariants2.json'
+    added_empty, skipped_empty = merge_invariants_file(
+        project_path2, template_file, overlay_invariants=[])
+    assert len(added_empty) == 5
+    assert skipped_empty == []
+
+
+def test_load_preset_overlay_from_shipped_preset():
+    """R4: `load_preset_overlay` resolves a real shipped preset and returns
+    its `invariants_overlay` array.
+
+    odoo-13 ships exactly one overlay entry (`odoo13-no-api-one`). odoo-12
+    ships one overlay entry as of v0.26.0 (`odoo12-api-multi-required-on-write`).
+    """
+    presets_dir = Path(__file__).resolve().parent.parent / 'presets'
+
+    o13 = load_preset_overlay('odoo-13', presets_dir)
+    assert isinstance(o13, list)
+    ids = {e['id'] for e in o13}
+    assert 'odoo13-no-api-one' in ids
+
+    o12 = load_preset_overlay('odoo-12', presets_dir)
+    assert isinstance(o12, list)
+    o12_ids = {e['id'] for e in o12}
+    assert 'odoo12-api-multi-required-on-write' in o12_ids

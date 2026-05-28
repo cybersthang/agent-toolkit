@@ -1,0 +1,22 @@
+{
+  "_doc": "v0.25.0 — example manifest written by `tools/parallel_wave.py emit`. The PreToolUse hook `parallel_conflict_guard.py` reads this and blocks any Edit/Write whose target file is owned by a different agent_id than the one making the call. Schema is documented in spec specs/v0.25.0-parallel-subagent-guard.md §5 D4-D5. Do NOT hand-edit `.agent-toolkit/.parallel_wave.json` — use the CLI: `python tools/parallel_wave.py emit --wave NAME --zone agent-X:path1,path2 ...`. Owned patterns support glob (`*`), dir-prefix (trailing `/`), or exact path.",
+  "_schema": {
+    "version": "int — manifest schema version (currently 1)",
+    "wave": "string — human-readable wave name",
+    "created_ts": "int — unix timestamp of emit",
+    "ttl_seconds": "int — manifest auto-expires after this many seconds (default 3600)",
+    "zones": [
+      {"agent_id": "string — matches envelope.agent_id of the sub-agent", "owned": "list[str] — file patterns (glob/dir/exact)"}
+    ],
+    "wave_done": "bool — set true by `declare-done` (lifecycle trigger)"
+  },
+  "version": 1,
+  "wave": "example-wave",
+  "created_ts": 0,
+  "ttl_seconds": 3600,
+  "zones": [
+    {"agent_id": "agent-a", "owned": ["templates/claude/hooks/foo.py", "tests/test_foo.py"]},
+    {"agent_id": "agent-b", "owned": ["templates/claude/hooks/bar.py", "templates/agent_toolkit/bar.json"]}
+  ],
+  "wave_done": false
+}

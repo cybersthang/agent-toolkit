@@ -16,14 +16,10 @@ Output:
 Dedup:
   .agent-toolkit/telemetry/.last_export_ts.json     — high-water mark
 
-Optional adapters (placeholders, not yet wired):
-  --otlp-url <url>     POST events to OTLP HTTP/JSON endpoint (NYI, stub)
-
 Usage:
   # Run from project root, typically via cron / git-pre-push hook:
   python <toolkit>/templates/codex/tools/hook_telemetry_export.py
   python .../hook_telemetry_export.py --workspace /path/to/project --since 1d
-  python .../hook_telemetry_export.py --otlp-url https://otel.example.com/v1/logs
 
 Exit codes:
   0  success (with or without events to export)
@@ -124,33 +120,13 @@ def _append_jsonl(path: Path, events: List[Dict[str, Any]]) -> int:
     return written
 
 
-def _post_otlp(url: str, events: List[Dict[str, Any]]) -> int:
-    """Stub for OTLP HTTP/JSON endpoint. Currently writes events to a
-    parallel marker file so DEV can see the intent without requiring
-    the requests dep. Real impl deferred — install `requests` or
-    `httpx` and post to `url + '/v1/logs'` with OTLP log shape.
-    """
-    # The full OTLP shape (resourceLogs → scopeLogs → logRecords) is heavy
-    # for a stub. Just record that we *would* send N events to url.
-    if not events:
-        return 0
-    print(
-        f"[otlp-stub] would POST {len(events)} events to {url} "
-        f"(install `requests`/`httpx` + implement OTLP encoder to wire)",
-        file=sys.stderr,
-    )
-    return len(events)
-
-
 def export(workspace: Path, *,
            since: Optional[int] = None,
-           otlp_url: Optional[str] = None,
            dry_run: bool = False) -> Dict[str, Any]:
     """Run one export pass. Returns summary dict for caller.
 
     `since`: only events with `ts > since` are exported. Defaults to the
     high-water mark from the previous run.
-    `otlp_url`: optional OTLP HTTP endpoint (currently stub).
     `dry_run`: if True, count events but don't write files.
     """
     high_water = since if since is not None else _read_high_water(workspace)
@@ -168,7 +144,6 @@ def export(workspace: Path, *,
         "crash_total": len(crash),
         "new_events": len(new_events),
         "wrote_jsonl": 0,
-        "wrote_otlp": 0,
     }
 
     if dry_run or not new_events:
@@ -177,9 +152,6 @@ def export(workspace: Path, *,
     jsonl_path = _jsonl_path_for_today(workspace)
     summary["wrote_jsonl"] = _append_jsonl(jsonl_path, new_events)
     summary["jsonl_path"] = str(jsonl_path)
-
-    if otlp_url:
-        summary["wrote_otlp"] = _post_otlp(otlp_url, new_events)
 
     latest_ts = max(int(e.get("ts") or 0) for e in new_events)
     _write_high_water(workspace, latest_ts)
@@ -214,8 +186,6 @@ def main(argv: Optional[List[str]] = None) -> int:
                     help="Only export events newer than this. Accepts '1d', "
                          "'1h', '1m', 'now', or epoch seconds. Defaults to "
                          "stored high-water mark.")
-    ap.add_argument("--otlp-url", type=str, default=None,
-                    help="OTLP HTTP/JSON endpoint (currently stub).")
     ap.add_argument("--dry-run", action="store_true",
                     help="Count events but don't write files.")
     ap.add_argument("--quiet", action="store_true",
@@ -225,7 +195,6 @@ def main(argv: Optional[List[str]] = None) -> int:
     since = _parse_since(args.since) if args.since else None
     summary = export(args.workspace.resolve(),
                      since=since,
-                     otlp_url=args.otlp_url,
                      dry_run=args.dry_run)
 
     if not args.quiet:

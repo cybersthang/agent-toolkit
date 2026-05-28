@@ -36,11 +36,11 @@
           "#!/usr/bin/env python|python\\.exe|sys\\.executable"
         ]
       },
-      "severity": "warn",
+      "severity": "blocker",
       "rationale": "A bare `python` shebang resolves to whatever Python is first on PATH (often system Python missing the project's deps). Helper scripts must pin to `#!/usr/bin/env python3`, the venv's `python.exe`, or call through `sys.executable`. Fix when violated: restore the explicit interpreter reference that the edit dropped.",
       "added": "2026-05-26",
       "added_by": "agent",
-      "_doc": "Default shipped v0.22+. Fires only when an edit removes a previously-present explicit-interpreter reference."
+      "_doc": "Default shipped v0.22+. Promoted warn → blocker in v0.26.0 (audit follow-up): bare-shebang is unambiguously broken, no false-positive risk, matches every Odoo consumer's `feedback_python_venv` rule."
     },
     {
       "id": "credentials-via-mcp-local-env",
@@ -57,11 +57,11 @@
           "credential_guard|mcp\\.local\\.env"
         ]
       },
-      "severity": "warn",
+      "severity": "blocker",
       "rationale": "Credentials policy (feedback_credentials): real creds live ONLY in `.codex/mcp.local.env` (gitignored), surfaced by the `credential_guard` precommit hook. If an edit strips both references from an auth-flow file, the doc no longer points to the safe channel and DEV may inline secrets. Fix when violated: restore the `.codex/mcp.local.env` or `credential_guard` reference.",
       "added": "2026-05-26",
       "added_by": "agent",
-      "_doc": "Default shipped v0.22+. Note: `must_keep_regex` cannot express must-NOT-match, so this invariant guards the POSITIVE reference. Use a separate precommit / secret-scanner for the negative (no-inline-passwords) check."
+      "_doc": "Default shipped v0.22+. Promoted warn → blocker in v0.26.0 (audit follow-up): inline secret risk is high-severity + this regex is positive-match (false-positive impossible). Note: `must_keep_regex` cannot express must-NOT-match, so this invariant guards the POSITIVE reference. Use a separate precommit / secret-scanner for the negative (no-inline-passwords) check."
     },
     {
       "id": "odoo-multi-company-with-company-on-create",

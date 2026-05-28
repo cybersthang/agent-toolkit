@@ -301,7 +301,7 @@ def test_load_preset_overlay_from_shipped_preset():
     its `invariants_overlay` array.
 
     odoo-13 ships exactly one overlay entry (`odoo13-no-api-one`). odoo-12
-    (the base) ships none → empty list.
+    ships one overlay entry as of v0.26.0 (`odoo12-api-multi-required-on-write`).
     """
     presets_dir = Path(__file__).resolve().parent.parent / 'presets'
 
@@ -311,4 +311,6 @@ def test_load_preset_overlay_from_shipped_preset():
     assert 'odoo13-no-api-one' in ids
 
     o12 = load_preset_overlay('odoo-12', presets_dir)
-    assert o12 == []
+    assert isinstance(o12, list)
+    o12_ids = {e['id'] for e in o12}
+    assert 'odoo12-api-multi-required-on-write' in o12_ids

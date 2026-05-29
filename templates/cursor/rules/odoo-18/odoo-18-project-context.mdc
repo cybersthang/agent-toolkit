@@ -17,7 +17,7 @@ alwaysApply: true
 - Do not add features outside the request without asking first.
 - Prefer ORM helpers such as `mapped`, `filtered`, and `read_group`.
 - Avoid `search()` / `browse(id)` calls inside loops.
-- Do not introduce `@api.multi` — removed since 14. Recordset is the default.
+- Do not introduce `@api.multi` — removed since 13. Recordset is the default.
 - Do not introduce `attrs="{...}"` or `states="…"` in views — both removed in 17 and stay removed in 18.
 - Do not define `name_get()` — removed in 17. Override `_compute_display_name` with `@api.depends`.
 - Use `@api.model_create_multi` for any `create()` override.

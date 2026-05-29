@@ -9,7 +9,7 @@ This file applies to **any** addon under any addon root. Never embed a specific 
 
 > ## STUB-EXTENDS-V19 DISCLAIMER (read first)
 >
-> Odoo 20 is the most recent stable release. The toolkit's coverage for it is **stub-extends-v19** — these rules are extrapolated from v19 trajectory, not from a verified v20 delta.
+> Odoo 20 is **not yet released** (as of 2026-05-29; expected ~Sept/Oct 2026 — the `20.0` branch does not exist on odoo/odoo and `master` is still 19.x). The toolkit's coverage for it is **stub-extends-v19** — these rules are extrapolated from v19 trajectory, not from a verified v20 delta. Treat any v20-specific API claim as expected/unconfirmed until verified on release.
 >
 > **Before applying any non-trivial pattern: verify against the actual installed Odoo source.** Use `codebase` MCP (`search_text`, `find_inheritance_chain`, `search_model_definitions`, `read_file_chunk`) to grep for the symbol / decorator / method / widget name in the installed tree before assuming v19 carryover. Treat every guideline below as "best-effort based on v19 trajectory" until a verified v20-delta document lands in this directory.
 >
@@ -26,7 +26,7 @@ This file applies to **any** addon under any addon root. Never embed a specific 
 ## Invariants (Odoo 20)
 
 - **Models**: `_name` for new model, `_inherit` for extension, `_inherits` for delegation. Never both `_name` and `_inherit` to the same string in one class.
-- **API**: recordset by default — `@api.multi` removed since 14. `@api.model` only for class-level methods. `@api.model_create_multi` is mandatory for `create()` overrides.
+- **API**: recordset by default — `@api.multi` / `@api.one` removed since 13. `@api.model` only for class-level methods. `@api.model_create_multi` is mandatory for `create()` overrides.
 - **Display name / multi-company**: override `_compute_display_name` (not `name_get`); set `_check_company_auto = True` with matching `check_company` on related fields.
 - **`ensure_one()`** when a method assumes a single record.
 - **Loops**: no `search()`, `browse(id)`, `write()`, `unlink()` inside loops. Push filtering into domains, batch with `mapped` / `filtered` / `filtered_domain` / `read_group`.

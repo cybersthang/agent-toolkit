@@ -17,8 +17,8 @@ alwaysApply: true
 - Do not add features outside the request without asking first.
 - Prefer ORM helpers such as `mapped`, `filtered`, and `read_group`.
 - Avoid `search()` / `browse(id)` calls inside loops.
-- Do **not** add new `@api.multi` — deprecated in 13, removed in 14. Recordset is the default.
-- Never introduce `@api.one` or `@api.returns` — both removed in 13.
+- Do **not** add `@api.multi` — removed in 13 (raises AttributeError; present only ≤12). Recordset is the default.
+- Never introduce `@api.one` — removed in 13 (raises AttributeError; present only ≤12). `@api.returns` still exists in 13 — it was not removed.
 - Override `create()` with `@api.model_create_multi` so batch creates work.
 - `attrs="{...}"` and `states="..."` in views are **valid in 13** — do not pre-migrate them out.
 - No OWL: stay on jQuery + `odoo.define(...)` AMD modules. OWL only arrived in 14.0.

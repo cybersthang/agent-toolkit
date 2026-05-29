@@ -1,14 +1,14 @@
 ---
-description: Odoo 20 backend - ORM, views, performance, security, manifest. Cutting-edge release; rules are best-effort stub-extends-v19 until verified.
+description: Odoo 20 backend - ORM, views, performance, security, manifest. Unreleased (expected ~Sept/Oct 2026); rules are best-effort stub-extends-v19 until verified.
 globs: "{addons,custom_addons,enterprise,odoo/addons}/**/*"
 alwaysApply: false
 ---
 
-> **Stub-extends-v19 disclaimer.** Odoo 20 is the most recent stable release. The toolkit's coverage is extrapolated from v19 trajectory. Verify any non-trivial pattern against the actually installed Odoo source (`codebase` MCP: `search_text` / `find_inheritance_chain` / `search_model_definitions`) before assuming v19 carryover.
+> **Stub-extends-v19 disclaimer.** Odoo 20 is **not yet released** (as of 2026-05-29; expected ~Sept/Oct 2026 — no `20.0` branch on odoo/odoo, `master` is still 19.x). The toolkit's coverage is extrapolated from v19 trajectory, so every v20-specific API claim below is expected/unconfirmed until verified on release. Verify any non-trivial pattern against the actually installed Odoo source (`codebase` MCP: `search_text` / `find_inheritance_chain` / `search_model_definitions`) before assuming v19 carryover.
 
 ## ORM (Odoo 20)
 
-- Methods are **recordset by default**. `@api.multi` was removed in v14 and must never reappear.
+- Methods are **recordset by default**. `@api.multi` / `@api.one` were removed in **v13** (present in 12.0, gone in 13.0) and must never reappear.
 - `@api.model` for class-level methods that don't need a recordset.
 - `@api.model_create_multi` is **mandatory** when overriding `create()`. Single-record `@api.model` `create()` overrides silently break batch create.
 - `@api.depends`, `@api.constrains`, `@api.onchange`, `@api.depends_context` as in 17–19.

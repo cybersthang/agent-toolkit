@@ -22,7 +22,7 @@ Odoo 19.0 is recent (released ~late 2025 / early 2026). The **mail framework was
 ## Invariants (Odoo 19)
 
 - **Models**: `_name` for new model, `_inherit` for extension, `_inherits` for delegation. Never declare both `_name` and `_inherit` to the same string in one class.
-- **API**: recordset by default. `@api.multi` is removed (since v14) and must not be added. `@api.model` only for class-level methods. `@api.model_create_multi` for `create()` overrides.
+- **API**: recordset by default. `@api.multi` is removed (since v13) and must not be added. `@api.model` only for class-level methods. `@api.model_create_multi` for `create()` overrides.
 - **Display name**: override `_compute_display_name` (standard since v17); do not add new `name_get` overrides.
 - **`ensure_one()`**: required when a method assumes a single record.
 - **Loops**: no `search()`, `browse(id)`, `write()`, or `unlink()` inside loops. Push filtering into domains, batch with `mapped` / `filtered` / `read_group`.

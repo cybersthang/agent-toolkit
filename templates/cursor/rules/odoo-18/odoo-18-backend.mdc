@@ -6,7 +6,7 @@ alwaysApply: false
 
 ## ORM (Odoo 18 — refinements over 17)
 
-- Methods are **recordset by default**. `@api.multi` has been removed since 14 and stays gone; never reintroduce it.
+- Methods are **recordset by default**. `@api.multi` has been removed since 13 and stays gone; never reintroduce it.
 - `@api.model` for class-level methods that do not need a recordset.
 - `@api.model_create_multi` is **mandatory** when overriding `create()`. A single-record `@api.model` `create()` override silently breaks batch creates and is rejected in review.
 - `@api.depends`, `@api.constrains`, `@api.onchange`, `@api.depends_context` behave as in 17.

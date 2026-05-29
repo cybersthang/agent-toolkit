@@ -18,8 +18,8 @@ alwaysApply: true
 - Do not add features outside the request without asking first.
 - Prefer ORM helpers such as `mapped`, `filtered`, and `read_group`.
 - Avoid `search()` / `browse(id)` calls inside loops.
-- Do not introduce `@api.multi` — it is removed in Odoo 14. Recordset is the default.
+- Do not introduce `@api.multi` — it was removed in Odoo 13 and stays gone in 14. Recordset is the default.
 - Use `@api.model_create_multi` for `create()` overrides — single-record `create()` overrides silently break batch creates.
 - `attrs="{...}"` and `states="..."` remain valid in 14 — do not strip them.
-- `account.invoice` is gone in 14 — use `account.move` (with `move_type`) for invoice work.
+- `account.invoice` was removed in 13 and stays gone in 14 — use `account.move` (with `move_type`) for invoice work.
 - Frontend has **two coexisting frameworks** (OWL v1 and legacy jQuery/QWeb). Always identify which one the target widget uses before patching; do not port between them inside an unrelated task.

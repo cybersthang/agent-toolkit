@@ -19,7 +19,7 @@ This file applies to **any** addon under any addon root. Never embed a specific 
 
 - **Python**: 3.6+ only. Python 2 support was dropped in 13.0 — no `__future__` imports, no `unicode_literals`, no `super(Cls, self)` if `super()` works.
 - **Models**: `_name` for new model, `_inherit` for extension, `_inherits` for delegation. Never declare both `_name` and `_inherit` to the same string in one class.
-- **API**: `@api.multi` is **deprecated** in 13 (removed in 14) — do not add new occurrences; recordsets are default. `@api.one` and `@api.returns` are **removed** — never introduce them. Use `@api.model` for class-level methods and `@api.model_create_multi` for `create()` overrides.
+- **API**: `@api.multi` and `@api.one` were **removed in 13** (raise AttributeError; present only ≤12) — never introduce them, and replace any leftover. Recordsets are default. `@api.returns` **still exists in 13** — it was not removed. Use `@api.model` for class-level methods and `@api.model_create_multi` for `create()` overrides.
 - **`ensure_one()`**: required when a method assumes a single record.
 - **Loops**: no `search()`, `browse(id)`, `write()`, or `unlink()` inside loops. Push filtering into domains, batch with `mapped` / `filtered` / `read_group`.
 - **Counts**: `search_count(domain)` over `len(search(domain))`.
@@ -48,7 +48,7 @@ This file applies to **any** addon under any addon root. Never embed a specific 
 
 - Every new model has at least one `ir.model.access.csv` row.
 - Record rules align with the model's `_inherit` chain — check the parent's rules before adding new ones.
-- `_check_company_auto` is **not** part of 13 — multi-company crossings must be guarded explicitly in code.
+- `_check_company_auto` **is** part of 13 (in `models.py`) but is opt-in (defaults to `False`, active only with `check_company=True` fields) — guard multi-company crossings explicitly where it is not enabled.
 
 ## Frontend (Odoo 13)
 

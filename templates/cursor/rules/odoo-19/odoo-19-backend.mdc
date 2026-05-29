@@ -8,11 +8,11 @@ alwaysApply: false
 
 - **Mail framework v2 is the #1 caveat.** `mail.thread` and `mail.activity.mixin` were refactored: thread message storage and the follower model changed. If your task touches `message_post`, `_track_subtype`, `_message_compute_subject`, `_mail_thread_data`, custom follower logic, activity scheduling, or any subclass of these mixins — **read the actual Odoo 19 source for the relevant class before editing**. v18 patterns may compile but behave differently.
 - Other v18 patterns mostly carry over: OWL v2, `invisible="..."` Python-expr view syntax, `_compute_display_name`, `_check_company_auto`, `account.move` shape.
-- Python 3.11+ is the supported runtime; PostgreSQL >= 14.
+- Python 3.10+ is the supported runtime; PostgreSQL >= 13.
 
 ## ORM
 
-- Methods are **recordset by default**. `@api.multi` was removed in v14 and must not reappear.
+- Methods are **recordset by default**. `@api.multi` was removed in v13 and must not reappear.
 - `@api.model` for class-level methods that don't need a recordset.
 - `@api.model_create_multi` is required for `create()` overrides; a `@api.model` single-record `create()` silently breaks batch creates.
 - `_compute_display_name` is the standard hook for the display string (replaces the legacy `name_get`).

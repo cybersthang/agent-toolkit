@@ -18,7 +18,7 @@ This file applies to **any** addon under any addon root. Never embed a specific 
 ## Invariants (Odoo 14)
 
 - **Models**: `_name` for new model, `_inherit` for extension, `_inherits` for delegation. Never declare both `_name` and `_inherit` to the same string in one class.
-- **API**: methods are **recordset by default** — `@api.multi` is removed in 14.0 and must not be added. Use `@api.model` only for class-level methods. `@api.model_create_multi` is **required** for `create()` overrides.
+- **API**: methods are **recordset by default** — `@api.multi` was removed in 13 and stays gone in 14, so it must not be added. Use `@api.model` only for class-level methods. `@api.model_create_multi` is **required** for `create()` overrides.
 - **`ensure_one()`**: required when a method assumes a single record.
 - **Loops**: no `search()`, `browse(id)`, `write()`, or `unlink()` inside loops. Push filtering into domains, batch with `mapped` / `filtered` / `read_group`.
 - **Counts**: `search_count(domain)` over `len(search(domain))`.
@@ -28,7 +28,7 @@ This file applies to **any** addon under any addon root. Never embed a specific 
 - **Errors**: `UserError` for business rules, `ValidationError` for invalid data.
 - **Logging**: use `_logger`, never `print`.
 - **Imports**: stdlib, third-party, `odoo`, local — in that order.
-- **Accounting**: `account.invoice` is replaced by `account.move` in 14.0 — never reference `account.invoice` in new code.
+- **Accounting**: `account.invoice` was removed and unified into `account.move` in 13 (and stays gone in 14); v14's change is the field rename `type` -> `move_type`. Never reference `account.invoice` in new code.
 
 ## Manifest hygiene (any module)
 

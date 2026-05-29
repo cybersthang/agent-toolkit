@@ -6,7 +6,7 @@ alwaysApply: true
 **Stack**: Odoo 16 ({{STACK_LANGUAGE}} {{STACK_LANGUAGE_VERSION}}, OWL v2 frontend, PostgreSQL >= 12)
 **Root**: `{{WORKSPACE_ROOT}}`
 **Database**: `{{DEFAULT_DB}}`
-**Python**: `{{PYTHON_BIN}}` (Python 3.10+ required by Odoo 16)
+**Python**: `{{PYTHON_BIN}}` (Odoo 16 requires Python 3.7+; 3.10 is the common Ubuntu 22.04 / Debian 11 baseline)
 **Run**: `{{PYTHON_BIN}} odoo-bin -d {{DEFAULT_DB}}` (cwd: `{{WORKSPACE_ROOT}}`)
 
 **Agent rules**:
@@ -17,7 +17,7 @@ alwaysApply: true
 - Do not add features outside the request without asking first.
 - Prefer ORM helpers such as `mapped`, `filtered`, and `read_group`.
 - Avoid `search()` / `browse(id)` calls inside loops.
-- Do not introduce `@api.multi` — it is removed in Odoo 16. Recordset is the default.
+- Do not introduce `@api.multi` — it was removed in Odoo 13 (long gone by 16). Recordset is the default.
 - When overriding `create()`, decorate with `@api.model_create_multi`.
 - For new company-scoped models, set `_check_company_auto = True` plus `check_company=True` on relational fields — let the ORM enforce multi-company integrity.
 - New OWL components use the **v2 class-based** syntax (`class X extends Component { … }`); legacy OWL v1 / `Widget` patterns are migration-only.

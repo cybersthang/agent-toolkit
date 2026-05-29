@@ -6,7 +6,7 @@ alwaysApply: false
 
 ## ORM (Odoo 15 — diverges from 12/13)
 
-- Methods are **recordset by default**. `@api.multi` was removed in 14 and stays removed in 15 — do not import or apply it.
+- Methods are **recordset by default**. `@api.multi` was removed in 13 and stays removed in 15 — do not import or apply it.
 - `@api.model` for class-level methods that don't need a recordset.
 - `@api.model_create_multi` to override `create()`. A single-record `@api.model` `create()` override silently breaks batch create.
 - `@api.depends`, `@api.constrains`, `@api.onchange`, `@api.depends_context` behave as in 14.
@@ -37,7 +37,7 @@ alwaysApply: false
 ## Frontend (the v15 pitfall)
 
 - **OWL v1 is the default for new components.** Web client is increasingly OWL but still ships QWeb/jQuery legacy in some places.
-- **Legacy kanban JS framework was removed in 15.** Old kanban widgets that depended on it must be migrated to OWL or to the supported kanban widget set — do not delete them blindly, audit usages first.
+- **Legacy kanban JS framework is still present in 15** (it was removed in 17). Old kanban widgets that depend on it keep working in 15, but plan migration to OWL before a 17 jump — do not delete them blindly, audit usages first.
 - Existing QWeb / jQuery widgets continue to work. Do **not** rewrite them wholesale unless the task explicitly asks.
 - New JS components go under `static/src/` as OWL modules with `t-*` directives.
 - Do not introduce new jQuery selectors for new code paths.
@@ -56,4 +56,4 @@ alwaysApply: false
 - Module install/update: `{{PYTHON_BIN}} odoo-bin -u <module> --stop-after-init -d {{DEFAULT_DB}}`.
 - Module tests: `--test-enable --test-tags /<module> --stop-after-init`.
 - For algorithm correctness against real data, prefer `realdata_test.eval_orm_expression` and `consistency_check_eval` over UI-driven repro.
-- PostgreSQL ≥ 12 is required for 15; older clusters fail at registry boot.
+- PostgreSQL 12 is the recommended cluster for 15 (per Odoo's install docs); the 15 codebase still carries older-PG compatibility shims and does not hard-gate the version at registry boot.

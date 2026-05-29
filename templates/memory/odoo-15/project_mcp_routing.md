@@ -16,5 +16,5 @@ The following MCP servers are configured for this workspace (see `.codex/config.
 **How to apply:**
 - Always pick the right MCP before opening files with native tools.
 - For real-data verification, prefer `consistency_check_eval` over a one-shot `eval_orm_expression` whenever the question is "is this deterministic?".
-- Odoo 15 specifics: avoid `@api.multi` semantics in eval expressions (recordset is default since 14); `@api.model_create_multi` is the create-override contract. `attrs` / `states` selectors in XML searches are still legal hits in 15 — do not treat them as bugs.
-- Before any kanban-widget refactor, run `find_inheritance_chain` + `search_text` for the legacy kanban class first; the 15 web client removed the legacy kanban JS framework and a silent rewrite will break downstream consumers.
+- Odoo 15 specifics: avoid `@api.multi` semantics in eval expressions (recordset is default since 13); `@api.model_create_multi` is the create-override contract. `attrs` / `states` selectors in XML searches are still legal hits in 15 — do not treat them as bugs.
+- Before any kanban-widget refactor, run `find_inheritance_chain` + `search_text` for the legacy kanban class first; the 15 web client still ships the legacy kanban JS framework (removed in 17) and a silent rewrite will break downstream consumers.

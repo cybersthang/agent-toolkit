@@ -16,5 +16,5 @@ The following MCP servers are configured for this workspace (see `.codex/config.
 **How to apply:**
 - Always pick the right MCP before opening files with native tools.
 - For real-data verification, prefer `consistency_check_eval` over a one-shot `eval_orm_expression` whenever the question is "is this deterministic?".
-- Odoo 13 specifics: ORM expressions may still call `@api.multi`-decorated methods (decorator is deprecated, not removed) — both decorated and bare recordset methods work. Do **not** assume `@api.model_create_multi` is the only valid create override path on third-party 13 modules; many still ship a single-record `create()`. When verifying batch behaviour, eval against an explicit list of vals dicts.
-- Accounting: `account.invoice` and `account.move` coexist in 13 — `describe_table` both before writing migration queries.
+- Odoo 13 specifics: `@api.multi` was **removed in 13** (using it raises AttributeError; present only ≤12) — only bare recordset methods exist, so do not expect any `@api.multi`-decorated method on 13 code. Do **not** assume `@api.model_create_multi` is the only valid create override path on third-party 13 modules; many still ship a single-record `create()`. When verifying batch behaviour, eval against an explicit list of vals dicts.
+- Accounting: `account.invoice` was **removed in 13** and unified into `account.move` — only `account.move` exists (invoice-type in its `type` field). `describe_table account.move` before writing migration queries; `account.invoice` is not a table in 13.

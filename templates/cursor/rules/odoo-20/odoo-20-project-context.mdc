@@ -9,7 +9,7 @@ alwaysApply: true
 **Python**: `{{PYTHON_BIN}}` (3.11+, 3.12 standard)
 **Run**: `{{PYTHON_BIN}} odoo-bin -d {{DEFAULT_DB}}` (cwd: `{{WORKSPACE_ROOT}}`)
 
-> **Heads-up — stub-extends-v19.** v20 is the most recent stable release; the toolkit's rule coverage for it is extrapolated from v19. Before relying on any pattern that materially differs from v19, **verify against the actually installed Odoo source** via the `codebase` MCP. See `odoo-20-generic.mdc` for the full disclaimer.
+> **Heads-up — stub-extends-v19.** v20 is **not yet released** (as of 2026-05-29; expected ~Sept/Oct 2026); the toolkit's rule coverage for it is extrapolated from v19 and every v20-specific claim is expected/unconfirmed until verified on release. Before relying on any pattern that materially differs from v19, **verify against the actually installed Odoo source** via the `codebase` MCP. See `odoo-20-generic.mdc` for the full disclaimer.
 
 **Agent rules**:
 - Keep output concise and result-focused.
@@ -19,7 +19,7 @@ alwaysApply: true
 - Do not add features outside the request without asking first.
 - Prefer ORM helpers such as `mapped`, `filtered`, `filtered_domain`, `read_group`.
 - Avoid `search()` / `browse(id)` calls inside loops.
-- Do not introduce `@api.multi` — removed since v14. Recordset is the default.
+- Do not introduce `@api.multi` / `@api.one` — removed since v13. Recordset is the default.
 - Do not introduce `attrs="{...}"` or `states="…"` in views — both removed since v17.
 - Override `_compute_display_name`, not `name_get`.
 - Use `@api.model_create_multi` for any `create()` override.

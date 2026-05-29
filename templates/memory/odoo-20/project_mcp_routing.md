@@ -11,7 +11,7 @@ The following MCP servers are configured for this workspace (see `.codex/config.
 - `postgres` — read-only Postgres: `list_databases`, `list_schemas`, `describe_table`, `query_readonly`. Mutations are syntactically rejected.
 - `realdata_test` — `run_smoke_test`, `run_registry_boot`, `run_module_test` (with explicit write guards), and read-only ORM eval: `eval_orm_expression`, `consistency_check_eval`, `compare_with_expected`. ORM eval rejects mutation tokens (=, write, create, unlink, commit, import, dunders).
 
-**Why:** Routing the right question to the right server keeps answers reproducible and cheap. Odoo 20 is the most recent stable release and the toolkit's rule coverage is **stub-extends-v19** — the `codebase` MCP is the only reliable way to confirm whether a v19 pattern survives into v20.
+**Why:** Routing the right question to the right server keeps answers reproducible and cheap. Odoo 20 is **not yet released** (as of 2026-05-29; expected ~Sept/Oct 2026) and the toolkit's rule coverage is **stub-extends-v19** — the `codebase` MCP is the only reliable way to confirm whether a v19 pattern survives into v20.
 
 **How to apply:**
 - Always pick the right MCP before opening files with native tools.

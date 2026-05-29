@@ -13,6 +13,6 @@ metadata:
 - Addon roots:
 {{ADDON_ROOTS}}
 
-**Why:** These facts come up in nearly every task; storing them lets answers stay consistent without re-deriving them from the filesystem. Odoo 13 sits between two large API breaks (Python 2 drop in 13, OWL + decorator cleanup in 14), so the version label matters more than usual.
+**Why:** These facts come up in nearly every task; storing them lets answers stay consistent without re-deriving them from the filesystem. Odoo 13 carries two large API breaks of its own (Python 2 drop, and removal of `@api.multi` / `@api.one`), with OWL arriving in 14, so the version label matters more than usual.
 
-**How to apply:** Pre-13 conventions partially carry over (`attrs=`, `states=`, `mail.thread`), but post-13 patterns do **not** apply — no OWL, no recordset-only requirement yet (`@api.multi` is deprecated, not removed), no `_check_company_auto`. When verifying with `odoo-bin`, always pass `-d {{DEFAULT_DB}}` and `--stop-after-init` for the narrowest check.
+**How to apply:** Pre-13 conventions partially carry over (`attrs=`, `states=`, `mail.thread`), but post-13 patterns do **not** apply — no OWL (arrives in 14). Recordsets are already the only API: `@api.multi` and `@api.one` were **removed in 13** (raise AttributeError; present only ≤12). `_check_company_auto` does exist in 13 but is opt-in (defaults to `False`). When verifying with `odoo-bin`, always pass `-d {{DEFAULT_DB}}` and `--stop-after-init` for the narrowest check.

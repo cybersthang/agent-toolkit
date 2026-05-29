@@ -12,6 +12,6 @@ metadata:
 - Addon roots:
 {{ADDON_ROOTS}}
 
-**Why:** These facts come up in nearly every task; storing them lets answers stay consistent without re-deriving them from the filesystem. Odoo 14 is a transitional release whose conventions differ from both 12/13 (`@api.multi` removed, `account.invoice` gone) and from 17 (`attrs`/`states` still valid, OWL is only partial).
+**Why:** These facts come up in nearly every task; storing them lets answers stay consistent without re-deriving them from the filesystem. Odoo 14 is a transitional release whose conventions differ from 12 (`@api.multi` removed and `account.invoice` gone — both since 13, and unchanged in 14) and from 17 (`attrs`/`states` still valid, OWL is only partial).
 
 **How to apply:** Pre-Odoo-14 conventions DO NOT apply for ORM decorators — recordset is the default; never reintroduce `@api.multi`. `@api.model_create_multi` is required on `create()` overrides. For the frontend, assume **nothing**: every UI patch starts with "is this OWL v1 or legacy jQuery/QWeb?" — the answer determines the file layout, imports, and template syntax. View XML still accepts `attrs="{...}"` and `states="..."`; do not migrate them away.

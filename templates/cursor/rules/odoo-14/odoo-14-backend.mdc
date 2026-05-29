@@ -4,11 +4,11 @@ globs: "{{ADDON_GLOBS}}"
 alwaysApply: false
 ---
 
-## ORM (Odoo 14 — first version without `@api.multi`)
+## ORM (Odoo 14 — `@api.multi` gone since 13)
 
 - Python 3.7+ (3.8 recommended). No Python 2 polyfills, no `from __future__`.
-- `@api.multi` is **removed in 14.0**. Methods are **recordset by default** — do not add or import it. Sweep any leftover decorators from a 13.0 migration.
-- `@api.one` and `@api.returns` remain removed — never introduce them.
+- `@api.multi` was **removed in 13 and stays gone in 14**. Methods are **recordset by default** — do not add or import it. Sweep any leftover `@api.multi` decorators (gone since the 13.0 removal).
+- `@api.one` was also removed in 13 and stays gone — never introduce it. (`@api.returns` still exists in 14, but is rarely needed.)
 - `@api.model` for class-level methods that do not need a recordset.
 - `@api.model_create_multi` is **required** for `create()` overrides so batch creates work. A single-record `@api.model` `create()` will silently break batch create paths (e.g. import wizards, multi-line invoice creation).
 - `@api.depends`, `@api.constrains`, `@api.onchange` as usual. Declare every dependency explicitly.
@@ -34,7 +34,7 @@ alwaysApply: false
 - New widgets shipped in 14.0 (e.g. `widget="image_url"`, refined `domain` evaluation) — check the field type before picking a widget.
 - Keep XML IDs stable across releases.
 - Mail features still use the v1 mixins: `mail.thread` / `mail.activity.mixin` (mail framework v2 lands later).
-- `account.invoice` is fully replaced by `account.move` in 14.0 (the 13.0 partial unification is complete) — never reference `account.invoice` in new code; migrate any leftover references.
+- `account.invoice` was removed and unified into `account.move` in 13 (and stays gone in 14); v14's change is the field rename `type` -> `move_type`. Never reference `account.invoice` in new code; migrate any leftover references.
 - `_check_company_auto` is not yet mainstream in 14 — guard company crossings manually with explicit domain checks.
 - Use `_sql_constraints` or `@api.constrains` for validation.
 

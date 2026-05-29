@@ -18,7 +18,7 @@ This file applies to **any** addon under any addon root. Never embed a specific 
 ## Invariants (Odoo 15)
 
 - **Models**: `_name` for new model, `_inherit` for extension, `_inherits` for delegation. Never declare both `_name` and `_inherit` to the same string in one class.
-- **API**: methods are **recordset by default** — `@api.multi` is removed (since 14) and must not be added. Use `@api.model` only for class-level methods. `@api.model_create_multi` for `create()` overrides.
+- **API**: methods are **recordset by default** — `@api.multi` is removed (since 13) and must not be added. Use `@api.model` only for class-level methods. `@api.model_create_multi` for `create()` overrides.
 - **`ensure_one()`**: required when a method assumes a single record.
 - **Loops**: no `search()`, `browse(id)`, `write()`, or `unlink()` inside loops. Push filtering into domains, batch with `mapped` / `filtered` / `read_group`.
 - **Counts**: `search_count(domain)` over `len(search(domain))`.
@@ -28,7 +28,7 @@ This file applies to **any** addon under any addon root. Never embed a specific 
 - **Errors**: `UserError` for business rules, `ValidationError` for invalid data.
 - **Logging**: use `_logger`, never `print`.
 - **Imports**: stdlib, third-party, `odoo`, local — in that order.
-- **Python**: 3.8+ is the runtime contract for 15.
+- **Python**: 3.7+ is the runtime contract for 15 (source `MIN_PY_VERSION = (3, 7)`).
 
 ## Manifest hygiene (any module)
 
@@ -47,7 +47,7 @@ This file applies to **any** addon under any addon root. Never embed a specific 
 ## Frontend (the v15-specific landmine)
 
 - **OWL v1 is wired in** as the default for new components, but the web client still ships QWeb / jQuery legacy. New widgets → OWL. Old widgets → leave them in their current framework unless the task is an explicit migration.
-- **Legacy kanban JS framework is removed in 15.** Any module still importing it will break at registry boot. Before deleting or rewriting a kanban widget, run `find_inheritance_chain` / `search_text` to map every dependant.
+- **Legacy kanban JS framework is still present in 15** (removed in 17). Modules importing it keep working in 15; the break happens on a 17 upgrade. Before deleting or rewriting a kanban widget, run `find_inheritance_chain` / `search_text` to map every dependant.
 
 ## Security / ACL
 

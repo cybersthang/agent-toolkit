@@ -1075,15 +1075,15 @@ def seed_mcp_local_env(target):
         return  # silent — user-managed credentials, don't touch
 
     if not example.exists():
-        warn(f'  .codex/mcp.local.env.example missing — skipping auto-seed '
-             f'(expected the install pipeline to render it earlier)')
+        warn('  .codex/mcp.local.env.example missing — skipping auto-seed '
+             '(expected the install pipeline to render it earlier)')
         return
 
     gi_text = gi.read_text(encoding='utf-8') if gi.exists() else ''
     if '.codex/mcp.local.env' not in gi_text:
-        warn(f'  .gitignore does NOT cover .codex/mcp.local.env — refusing '
-             f'to auto-seed env file (cred-leak protection). Run '
-             f'write_gitignore() first or add the entry manually.')
+        warn('  .gitignore does NOT cover .codex/mcp.local.env — refusing '
+             'to auto-seed env file (cred-leak protection). Run '
+             'write_gitignore() first or add the entry manually.')
         return
 
     real.write_text(example.read_text(encoding='utf-8'), encoding='utf-8')

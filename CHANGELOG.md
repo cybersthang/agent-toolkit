@@ -3,6 +3,20 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
+## [Unreleased] — auto-parallel task waves for /implement
+
+`/implement` was sequential-only. Adds `tools/wave_planner.py`: a deterministic
+planner that turns a tasks.md into ordered **waves** of provably file-disjoint,
+dependency-ready tasks (from each task's `Touches` + `Depends on`), and emits a
+`.parallel_wave.json` per wave so `parallel_conflict_guard` enforces the
+disjoint zones. `/implement` now dispatches each ≥2-task wave as concurrent
+sub-agents (one per task, single message), falling back to sequential when
+nothing is provably disjoint. Conservative by construction: empty/glob/
+overlapping `Touches` or a dependency cycle ⇒ never parallelized. `/tasks`
+surfaces the wave preview at the review gate. Reuses `parallel_wave.py` +
+`parallel_conflict_guard.py` (no changes). +12 tests
+(`tests/test_wave_planner.py`). Spec: `specs/v0.29.0-auto-parallel-waves.md`.
+
 ## [Unreleased] — read-only GitLab CI MCP server
 
 Adds an **optional, read-only** `gitlab` MCP server so an agent can check CI

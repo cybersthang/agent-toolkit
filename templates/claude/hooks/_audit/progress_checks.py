@@ -1,7 +1,6 @@
 """Hallucinated-progress checks (categories A-E)."""
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -58,6 +57,16 @@ CITATION_RE = re.compile(
     re.IGNORECASE,
 )
 CITATION_READING_TOOLS = {"Read", "Grep", "Glob", "NotebookRead"}
+
+# A cited path is NOT a phantom when the response explicitly frames it as
+# ABSENT — i.e. you are reporting a gap / dead link, not claiming the file
+# exists. Skip flagging when one of these appears next to the citation.
+CITATION_MISSING_NEAR_RE = re.compile(
+    r"missing|absent|does\s*not\s*exist|does\s*n[o']t\s*exist|not\s*exist|"
+    r"dead[\s-]*link|broken\s*link|\(planned\)|placeholder|ch(ư|u)a\s*(t(ồ|o)n\s*t(ạ|a)i|"
+    r"c(ó|o)|vi(ế|e)t|t(ạ|a)o)|kh(ô|o)ng\s*(t(ồ|o)n\s*t(ạ|a)i|c(ó|o))|thi(ế|e)u|TBD",
+    re.IGNORECASE | re.UNICODE,
+)
 
 # D. TodoWrite inconsistency.
 COMPLETION_CLAIM_RE = re.compile(
@@ -186,11 +195,20 @@ def check_phantom_citation(
         cite_base = _basename(np)
         if cite_base and any(_basename(s) == cite_base for s in seen_paths):
             return True
-        try:
-            if (workspace / p).exists() or (workspace / np).exists():
-                return True
-        except OSError:
-            pass
+        # Check the workspace AND its ancestors: the hook's cwd can be a
+        # SUBDIR of the real project root (cwd drift), so a file living at an
+        # ancestor (e.g. the project root above the repo) must still count as
+        # existing — not phantom.
+        anc = workspace
+        for _ in range(4):
+            try:
+                if (anc / p).exists() or (anc / np).exists():
+                    return True
+            except OSError:
+                pass
+            if anc.parent == anc:
+                break
+            anc = anc.parent
         # Subdir search by basename — handles bare filename citations
         # (e.g. `<test_name>.py` lives at `<addon-root>/<module>/tests/`
         # but cited without dir prefix). Short-circuit on first hit; skip
@@ -208,14 +226,20 @@ def check_phantom_citation(
         return False
 
     bad: List[str] = []
-    for tup in cites:
-        path = tup[0]
-        if not path or "/" not in path and "\\" not in path and "." not in path:
+    for m in CITATION_RE.finditer(text):
+        path = m.group(1)
+        if not path or ("/" not in path and "\\" not in path and "." not in path):
             continue
         if len(path) < 4:
             continue
-        if not _seen(path):
-            bad.append(path)
+        if _seen(path):
+            continue
+        # "reporting-missing" exempt: the response explicitly frames this path
+        # as absent (a dead-link / gap finding) — that is NOT a phantom claim.
+        window = text[max(0, m.start() - 90): m.end() + 90]
+        if CITATION_MISSING_NEAR_RE.search(window):
+            continue
+        bad.append(path)
     if not bad:
         return None
     seen_ids: List[str] = []

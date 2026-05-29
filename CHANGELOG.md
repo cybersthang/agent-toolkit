@@ -5,6 +5,18 @@ breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
 ## [0.29.0] — 2026-05-29 — Odoo 12-20 parity + auto-parallel waves + GitLab CI MCP
 
+### evidence_audit: phantom_citation false-positive fix
+
+`check_phantom_citation` (Stop-hook progress check) flagged two legitimate
+cases as "cited a non-existent file": (1) a file that exists at an **ancestor**
+of the hook's `cwd` (cwd-drift — the working dir is a subdir of the real
+project root); (2) a path the response **explicitly documents as missing**
+(dead-link / gap finding). Fix: the existence check now walks up to 4 ancestor
+dirs, and a citation is skipped when a "missing / absent / dead link / không
+tồn tại / (planned) / TBD" marker sits next to it (`CITATION_MISSING_NEAR_RE`).
++2 regression tests (`test_progress.py` C5/C6). Surfaced by dogfooding the
+toolkit on itself.
+
 ### Odoo skill references: full 12-20 parity (7 types × 9 versions)
 
 Now COMPLETE: every Odoo major 12→20 ships all 7 reference types

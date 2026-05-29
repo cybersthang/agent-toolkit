@@ -143,6 +143,27 @@ class TestProgressChecks(unittest.TestCase):
             ),
         ]), "allow")
 
+    def test_C5_reporting_a_missing_file_is_not_phantom(self):
+        # Documenting a dead link / absent file is a FINDING, not a phantom cite.
+        self.assertEqual(self._decide([
+            _user("review docs"),
+            _assistant(text="Dead link: docs/architecture.md is MISSING on disk — the "
+                            "README references it but no such file exists. " + LONG_PAD),
+        ]), "allow")
+
+    def test_C6_file_at_workspace_ancestor_resolves(self):
+        # cwd-drift: cite a file that exists at an ANCESTOR of the workspace
+        # (hook cwd is a subdir of the real project root). Must NOT be phantom.
+        anc = self.ws.parent / "ancestor_only_helper.py"
+        anc.write_text("x = 1\n", encoding="utf-8")
+        try:
+            self.assertEqual(self._decide([
+                _user("ref ancestor"),
+                _assistant(text="See ancestor_only_helper.py:1 for the shared helper. " + LONG_PAD),
+            ]), "allow")
+        finally:
+            anc.unlink(missing_ok=True)
+
     # ===== D. todo_inconsistency =====
 
     def test_D1_all_done_with_open_todos_blocks(self):

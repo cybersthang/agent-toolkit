@@ -30,7 +30,7 @@ Pair with `odoo-code-review` (severity anchors), `odoo-module-install-scripts`
    Pattern `^(\d+)\.0\.`. This is the **source** major.
 2. **Target** major: ask DEV directly ("v17", "v18"); never infer.
 3. **Fallback signals** (only if manifest's `version` is missing):
-   - `@api.one` → ≤12. `@api.multi` → ≤13.
+   - `@api.one` → ≤12. `@api.multi` → ≤12 (removed in v13).
    - `account.invoice` model references → ≤12 source.
    - `payment.acquirer` references → ≤14 source.
    - `name_get(self)` without `_compute_display_name` → ≤16.
@@ -226,8 +226,8 @@ warning becomes hard `AttributeError`, upgrade hangs at module load.
 
 | Source | Warning | Becomes error in |
 |---|---|---|
-| v13 | `@api.multi is deprecated` | v14 (removed) |
-| v14 | `account.invoice is deprecated` | v15 (helpers gone) |
+| v12 | `@api.multi is deprecated` | v13 (removed) |
+| v12 | `account.invoice is deprecated` | v13 (model removed) |
 | v15 | `payment.acquirer is deprecated` | v16 (model renamed) |
 | v16 | `name_get() override deprecated` | v17 (`_compute_display_name`) |
 | v16 | `attrs="..." in views deprecated` | v17 (removed) |
@@ -278,11 +278,11 @@ Condensed; full details + code snippets in
 |---|---|---|---|
 | v12 → v13 | ORM | `@api.one` / `@api.returns` removed | Replace `@api.one` with `for rec in self:` loop returning `self`. |
 | v12 → v13 | ORM | New computed-field evaluator (lazy + cached differently) | Re-test all `@api.depends` for re-trigger semantics. |
-| v12 → v13 | Accounting | `account.invoice` deprecated | Begin migration toward `account.move`. |
-| v13 → v14 | ORM | `@api.multi` removed (silent default) | Strip all `@api.multi` — methods default multi-record. |
-| v13 → v14 | Accounting | `account.invoice` → `account.move` **REAL move** | Rewrite all invoice references: model name, field names, state machine. |
+| v12 → v13 | Accounting | `account.invoice` removed (deprecated in v12) | Complete migration to `account.move` — the model no longer exists in v13. |
+| v12 → v13 | ORM | `@api.multi` removed (silent default) | Strip all `@api.multi` — methods default multi-record. |
+| v12 → v13 | Accounting | `account.invoice` → `account.move` **REAL move** | Rewrite all invoice references: model name, field names, state machine. |
 | v13 → v14 | ORM | `@api.model_create_multi` introduced | Override `create(self, vals_list)`. |
-| v14 → v15 | Payment | `payment.acquirer` → `payment.provider` | Rename all references; views, security, code. |
+| v15 → v16 | Payment | `payment.acquirer` → `payment.provider` (rename landed in 16) | Rename all references; views, security, code. |
 | v14 → v15 | JS | Legacy kanban JS dropped (pre-OWL) | Rewrite custom kanban widgets in OWL. |
 | v15 → v16 | ORM | `_check_company_auto = True` mainstream | Audit multi-company models — see `odoo-multi-company`. |
 | v15 → v16 | ORM | `flush()` formalized → `flush_recordset()` / `flush_model()` | Replace `flush(['fname'])` with `flush_model(['fname'])`. |

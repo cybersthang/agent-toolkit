@@ -1,6 +1,6 @@
 ---
 name: odoo-payment-flows
-description: Odoo payment provider anti-patterns — hard-coded provider codes, bypassed `payment.transaction` state transitions, PCI-unsafe token logging, sandbox/prod mixed in one DB, unverified webhook signatures. Version-aware: Step 0 detects the addon's Odoo version from `__manifest__.py`, then loads `references/odoo-12-payment-acquirer.md` (pre-v15 `payment.acquirer` + `payment.acquirer.token`) or `references/odoo-17-payment-provider.md` (v15+ `payment.provider` + `payment.token`, v17 `_compute_payment_state` canonical). Rename v14→v15 is a load-bearing migration boundary — `payment.acquirer` → `payment.provider`, `acquirer_id` → `provider_id`. Audience: Odoo consultancies wiring Stripe / PayPal / VNPay / MoMo / OnePay / local PSPs. Open whenever the user says "payment", "thanh toán", "acquirer", "provider", "stripe", "paypal", "transaction", "webhook", "tokenization", "PCI", or a code-review finding flags `models/payment_*.py` / `controllers/payment_*.py`.
+description: Odoo payment provider anti-patterns — hard-coded provider codes, bypassed `payment.transaction` state transitions, PCI-unsafe token logging, sandbox/prod mixed in one DB, unverified webhook signatures. Version-aware: Step 0 detects the addon's Odoo version from `__manifest__.py`, then loads `references/odoo-12-payment-acquirer.md` (pre-v16 `payment.acquirer` + `payment.token`) or `references/odoo-17-payment-provider.md` (v16+ `payment.provider` + `payment.token`, v17 `_compute_payment_state` canonical). Rename v15→v16 (rename landed in 16) is a load-bearing migration boundary — `payment.acquirer` → `payment.provider`, `acquirer_id` → `provider_id`. Audience: Odoo consultancies wiring Stripe / PayPal / VNPay / MoMo / OnePay / local PSPs. Open whenever the user says "payment", "thanh toán", "acquirer", "provider", "stripe", "paypal", "transaction", "webhook", "tokenization", "PCI", or a code-review finding flags `models/payment_*.py` / `controllers/payment_*.py`.
 license: MIT
 ---
 
@@ -26,7 +26,7 @@ Pair with `odoo-code-review` (severity anchors) and
 
 ## 0. Version detection (MANDATORY first step)
 
-The **critical extra signal** is the model rename at v15:
+The **critical extra signal** is the model rename at v16:
 
 1. `__manifest__.py` `version` — `codebase.read_manifest({module_path})`,
    pattern `^(\d+)\.0\.`.
@@ -78,8 +78,8 @@ Branching on `provider.name == 'Stripe'` (translatable label) is brittle:
 
 - `name` is translatable — `'Stripe'` vs `'Stripe SAS'` breaks `==`.
 - A second Stripe provider (EUR vs USD) is indistinguishable.
-- v14→v15 rename (`acquirer.provider` → `provider.code`) turns every
-  hard-coded string into a sed target.
+- v15→v16 (rename landed in 16) rename `acquirer.provider` → `provider.code` turns
+  every hard-coded string into a sed target.
 
 Dispatch on `provider.code` **once** at the boundary
 (controller / `_get_specific_*` override hook), never in business logic.
@@ -213,7 +213,8 @@ self.assertEqual(so.invoice_ids[:1].state, 'posted', "_set_done side-effects ski
 
 ### Problem
 
-`payment.token` (v15+) / `payment.acquirer.token` (v12-14) stores an
+`payment.token` (all versions; FK `provider_id`/`provider_ref` ≥v16,
+`acquirer_id`/`acquirer_ref` ≤v15) stores an
 opaque provider-side ref (`provider_ref` / `acquirer_ref`) + a
 **display-only masked PAN** (`name`, e.g. `**** **** **** 4242`).
 Odoo never stores the full PAN — but consultancy code regularly:
@@ -249,7 +250,7 @@ self.env['payment.token'].create({
 })
 ```
 
-For v12-14: model `payment.acquirer.token`, FK `acquirer_id`,
+For ≤v15: model `payment.token`, FK `acquirer_id`,
 redaction rule identical.
 
 ### Falsification recipe
@@ -297,7 +298,7 @@ self.assertRegex(token.name, r'^\*+\s*\*+\s*\*+\s*\d{4}$',
 ### Problem
 
 `payment.provider.state` ∈ `'disabled'` / `'enabled'` / `'test'`
-(v15+; v12 uses `payment.acquirer.environment` with `'test'` /
+(v13+ uses `state`; v12 uses `payment.acquirer.environment` with `'test'` /
 `'prod'`). Flipping one row between `'test'` and `'enabled'` at
 go-live causes three failures:
 
@@ -481,7 +482,7 @@ When `odoo-code-review` flags `models/payment_*` or
 | # | Check | Sev | § |
 |---|---|---|---|
 | 1 | No `provider_id.name == '...'` / `acquirer_id.name == '...'` | **H** | §1 |
-| 2 | PSP-identity branches use `provider.code` (v15+) / `acquirer.provider` (v12) | **H** | §1 |
+| 2 | PSP-identity branches use `provider.code` (v16+) / `acquirer.provider` (≤v15) | **H** | §1 |
 | 3 | No direct `tx.write({'state': '...'})` — must use `_set_*` helpers | **H/blocker** | §2 |
 | 4 | v17+: rely on `_compute_payment_state`, no manual `account.move.payment_state` writes | M | §2 |
 | 5 | No raw PAN / CVV / CVC in `_logger.*` calls | **H/blocker** | §3 |
@@ -517,7 +518,7 @@ H = blocker (money / compliance). M = major. L = nit.
 ## 9. Hard rules summary
 
 - Never branch on `provider_id.name` / `acquirer_id.name` — always
-  `provider.code` (v15+) / `acquirer.provider` (v12).
+  `provider.code` (v16+) / `acquirer.provider` (≤v15).
 - Never write `payment.transaction.state` directly — always
   `_set_pending` / `_set_authorized` / `_set_done` / `_set_canceled` /
   `_set_error`.
@@ -530,10 +531,10 @@ H = blocker (money / compliance). M = major. L = nit.
 
 ## 10. References
 
-- `references/odoo-12-payment-acquirer.md` — pre-v15
-  `payment.acquirer` + `payment.acquirer.token`, `acquirer.provider`
+- `references/odoo-12-payment-acquirer.md` — pre-v16
+  `payment.acquirer` + `payment.token`, `acquirer.provider`
   as code field, `_set_transaction_done` helper.
-- `references/odoo-17-payment-provider.md` — v15+ `payment.provider`
+- `references/odoo-17-payment-provider.md` — v16+ `payment.provider`
   + `payment.token`, `provider.code` as code field, v17
   `_compute_payment_state` canonical state computation.
 - Odoo docs: `<ODOO_PAYMENT_DOCS_URL>` (placeholder).

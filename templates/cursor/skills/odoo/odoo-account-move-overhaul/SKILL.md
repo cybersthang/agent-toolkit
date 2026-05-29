@@ -1,20 +1,20 @@
 ---
 name: odoo-account-move-overhaul
-description: Odoo accounting refactor anti-patterns — v13→v14 merged `account.invoice` into `account.move` (with `move_type` selector), v17+ refined `_compute_taxes()` + helper methods (`is_invoice()`, `is_purchase_document()`). Most disruptive accounting overhaul in Odoo's history; breaks 3rd-party modules silently. Version-aware: Step 0 detects addon's Odoo version from `__manifest__.py`, then loads `references/odoo-12-account-invoice.md` (legacy), `references/odoo-14-account-move-unification.md` (merge + `move_type`), or `references/odoo-17-account-refinements.md` (tax recompute + helpers). Open whenever the user says "account.move", "account.invoice", "invoice", "hóa đơn", "move_type", "payment_state", "accounting refactor", "v14 migration", "tax recompute", or when a code-review finding flags hardcoded `state == 'open'` / direct `account.invoice` references.
+description: Odoo accounting refactor anti-patterns — v13 merged `account.invoice` into `account.move` (invoice-type field `type`), v14 renamed `type` → `move_type`, v17+ refined the `account.tax._compute_taxes(base_lines)` tax engine. Helper methods (`is_invoice()`, `is_purchase_document()`) exist since v13. Most disruptive accounting overhaul in Odoo's history; breaks 3rd-party modules silently. Version-aware: Step 0 detects addon's Odoo version from `__manifest__.py`, then loads `references/odoo-12-account-invoice.md` (legacy), `references/odoo-14-account-move-unification.md` (merge + `move_type`), or `references/odoo-17-account-refinements.md` (tax recompute + helpers). Open whenever the user says "account.move", "account.invoice", "invoice", "hóa đơn", "move_type", "payment_state", "accounting refactor", "v13 unification", "v14 migration", "tax recompute", or when a code-review finding flags hardcoded `state == 'open'` / direct `account.invoice` references.
 license: MIT
 ---
 
-# Odoo — `account.move` Overhaul (v13→v14 merge, v17 refinements)
+# Odoo — `account.move` Overhaul (v13 merge, v14 `move_type` rename, v17 refinements)
 
-The `account.invoice` → `account.move` unification (v14) is the most
+The `account.invoice` → `account.move` unification (v13) is the most
 disruptive accounting refactor in Odoo's history. Modules written for
-v12/v13 reference a model that **no longer exists** on v14+; modules
+v12 reference a model that **no longer exists** on v13+; modules
 forward-ported to v14/15/16 hit subtly broken tax recompute paths on v17+.
 
 This skill enumerates the **top 5 anti-patterns** every Odoo consultancy
-hits when migrating accounting addons across the v13→v14 boundary or
-the v16→v17 refinement boundary, with falsification recipes and
-invariant suggestions.
+hits when migrating accounting addons across the v12→v13 unification
+boundary (and the v13→v14 `type` → `move_type` rename) or the v16→v17
+refinement boundary, with falsification recipes and invariant suggestions.
 
 > Module-agnostic: never hard-codes journal / tax / fiscal position
 > names from a specific project. Discover the target model with
@@ -31,11 +31,11 @@ Same protocol as `odoo-code-review` / `odoo-multi-company`:
 1. **`__manifest__.py` `version`** — `codebase.read_manifest({module_path})`,
    pattern `^(\d+)\.0\.`.
 2. **Fallback signals** (only if manifest missing):
-   - Any reference to `account.invoice` model → ≤13.
-   - `move_type` field in code → ≥14.
-   - `state in ('open', 'paid')` filter on accounting records → ≤13.
-   - `_compute_taxes()` call on `account.move` → ≥17.
-   - `is_invoice()` / `is_purchase_document()` helper call → ≥17.
+   - Any reference to `account.invoice` model → ≤12 (model removed in v13).
+   - `move_type` field in code → ≥14 (`type` → `move_type` rename landed in v14).
+   - `state in ('open', 'paid')` filter on accounting records → ≤12 (legacy `account.invoice.state` values).
+   - `account.tax._compute_taxes(base_lines)` call → ≥17 (refined tax engine).
+   - `is_invoice()` / `is_purchase_document()` helper call → ≥13 (helpers exist since v13).
 3. **Ask the user** only if signals are inconclusive.
 
 Then load the matching reference:
@@ -43,9 +43,9 @@ Then load the matching reference:
 | Detected major | Reference |
 |---|---|
 | 12 | `references/odoo-12-account-invoice.md` (legacy `account.invoice`) |
-| 13 | both legacy + unification — flag MEDIUM transitional (both models coexist; deprecation warnings) |
-| 14 / 15 / 16 | `references/odoo-14-account-move-unification.md` (unified `account.move` + `move_type`) |
-| 17 | `references/odoo-17-account-refinements.md` (`_compute_taxes()`, `is_invoice()`, helper-method era) |
+| 13 | `references/odoo-14-account-move-unification.md` — unification completed here (`account.invoice` removed, merged into `account.move`; invoice-type field still named `type`); helpers `is_invoice()` etc. already present |
+| 14 / 15 / 16 | `references/odoo-14-account-move-unification.md` (unified `account.move`; `type` renamed to `move_type` in v14) |
+| 17 | `references/odoo-17-account-refinements.md` (refined `account.tax._compute_taxes(base_lines)` tax engine) |
 | 18 / 19 / 20 | apply `odoo-17-account-refinements.md` + re-check target major's release notes + flag LOW |
 
 ### `move_type` field — the five values
@@ -60,13 +60,13 @@ Then load the matching reference:
 
 **Never hardcode in business logic** — use helpers (§4).
 
-## 1. Pattern A — Referencing `account.invoice` on v14+
+## 1. Pattern A — Referencing `account.invoice` on v13+
 
 **Confidence: H**
 
 ### Problem
 
-`account.invoice` was **removed** in v14. Any reference to
+`account.invoice` was **removed** in v13. Any reference to
 `self.env['account.invoice']`, `comodel_name='account.invoice'`, or XML
 view inheritance against `account.invoice_form` raises `KeyError` at
 module load — OR (worse) silently no-ops if wrapped in try/except.
@@ -76,11 +76,11 @@ lists, action XML, security rules, and SQL views.
 ### Bad
 
 ```python
-# v14+ — KeyError at runtime, or silent skip if wrapped
+# v13+ — KeyError at runtime, or silent skip if wrapped
 def _create_credit_note(self, invoice):
     return self.env['account.invoice'].create({
         'partner_id': invoice.partner_id.id,
-        'type': 'out_refund',                       # field also removed!
+        'type': 'out_refund',                       # 'type' renamed to 'move_type' in v14
         'origin_invoice_ids': [(6, 0, [invoice.id])],
     })
 ```
@@ -88,11 +88,11 @@ def _create_credit_note(self, invoice):
 ### Good
 
 ```python
-# v14+ — use account.move with move_type
+# v14+ — use account.move with move_type (on v13 the field is named `type`)
 def _create_credit_note(self, invoice):
     return self.env['account.move'].create({
         'partner_id': invoice.partner_id.id,
-        'move_type': 'out_refund',                  # selection field
+        'move_type': 'out_refund',                  # selection field ('type' on v13)
         'reversed_entry_id': invoice.id,            # replaces origin_invoice_ids
     })
 ```
@@ -111,9 +111,9 @@ def _create_credit_note(self, invoice):
 ```python
 # 1. grep the addon
 #    grep -rn "account\.invoice" --include='*.py' --include='*.xml'
-# 2. confirm via eval_orm_expression — model truly gone on v14+:
+# 2. confirm via eval_orm_expression — model truly gone on v13+:
 self.env['ir.model'].search([('model','=','account.invoice')])
-# expected on v14+: empty recordset
+# expected on v13+: empty recordset
 ```
 
 ### Invariant suggestion
@@ -121,7 +121,7 @@ self.env['ir.model'].search([('model','=','account.invoice')])
 ```json
 {
   "id": "account-no-legacy-invoice-model-on-v14plus",
-  "description": "account.invoice removed in v14 — references must migrate to account.move.",
+  "description": "account.invoice removed in v13 — references must migrate to account.move.",
   "applies_to": ["**/models/*.py", "**/wizards/*.py", "**/views/*.xml", "**/data/*.xml", "**/security/*.xml"],
   "rules": {"must_not_contain_regex": ["account\\.invoice(?!_)"]},
   "severity": "blocker",
@@ -137,11 +137,11 @@ self.env['ir.model'].search([('model','=','account.invoice')])
 
 ### Problem
 
-On v12/v13, `account.invoice.state` had values `draft / proforma / open
-/ in_payment / paid / cancel`. On v14+, `account.move.state` only has
+On v12, `account.invoice.state` had values `draft / proforma / open
+/ in_payment / paid / cancel`. On v13+, `account.move.state` only has
 `draft / posted / cancel`; payment is tracked separately via
 `payment_state`. Code branching on `state == 'open'` is **silently
-dead** on v14+ — the filter matches nothing, the cron never fires, the
+dead** on v13+ — the filter matches nothing, the cron never fires, the
 bug is invisible until a user notices "the reminder never sent".
 
 ### Bad
@@ -151,7 +151,7 @@ bug is invisible until a user notices "the reminder never sent".
 def _cron_dunning(self):
     overdue = self.env['account.move'].search([
         ('move_type','=','out_invoice'),
-        ('state','=','open'),                       # v12/v13 only
+        ('state','=','open'),                       # v12 only (legacy account.invoice)
         ('invoice_date_due','<', fields.Date.today()),
     ])
     overdue.send_reminder()
@@ -177,7 +177,7 @@ def _cron_dunning(self):
 # Audit: grep -rn "state.*['\"]open['\"]" --include='*.py' --include='*.xml'
 # Confirm dead filter on the running DB:
 self.env['account.move'].search_count([('state','=','open')])
-# expected on v14+: 0 (no record can have this state)
+# expected on v13+: 0 (no record can have this state)
 ```
 
 ### Invariant suggestion
@@ -185,7 +185,7 @@ self.env['account.move'].search_count([('state','=','open')])
 ```json
 {
   "id": "account-no-legacy-state-open-on-v14plus",
-  "description": "state='open' is a v12/v13 account.invoice value — v14+ uses state='posted' + payment_state.",
+  "description": "state='open' is a v12 account.invoice value — v13+ uses state='posted' + payment_state.",
   "applies_to": ["**/models/*.py", "**/wizards/*.py", "**/views/*.xml", "**/report/*.xml"],
   "rules": {"must_not_contain_regex": ["'state'\\s*,\\s*'='\\s*,\\s*'open'"]},
   "severity": "blocker",
@@ -273,7 +273,8 @@ self.env['account.move'].search_count([
 
 Hardcoding `move_type in ('out_invoice', 'in_invoice')` is unreadable
 and breaks when Odoo adds a new type (e.g. `out_receipt` /
-`in_receipt`). v17+ ships official helpers:
+`in_receipt`). `account.move` has shipped official helpers since v13
+(introduced with the unification):
 
 | Helper | True when `move_type` is |
 |---|---|
@@ -286,7 +287,7 @@ and breaks when Odoo adds a new type (e.g. `out_receipt` /
 ### Bad
 
 ```python
-# v17 — hardcoded tuple, misses receipts, no semantic intent
+# v13+ — hardcoded tuple, misses receipts, no semantic intent
 def _apply_discount(self, move):
     if move.move_type in ('out_invoice', 'in_invoice'):
         return self._compute_discount(move)
@@ -295,12 +296,12 @@ def _apply_discount(self, move):
 ### Good
 
 ```python
-# v17+ — semantic helper, forward-compatible
+# v13+ — semantic helper, forward-compatible (helpers exist since v13)
 def _apply_discount(self, move):
     if move.is_invoice(include_receipts=True):
         return self._compute_discount(move)
 
-# v14/15/16 (helpers less complete) — extract the tuple at least
+# only if you must also support v12 (no account.move helpers) — extract the tuple
 INVOICE_TYPES = ('out_invoice', 'out_refund', 'in_invoice', 'in_refund')
 
 def _apply_discount(self, move):
@@ -313,7 +314,7 @@ def _apply_discount(self, move):
 ```python
 # Grep:  grep -rn "move_type.*in.*(" --include='*.py'
 # Confirm helpers exist on the target version:
-hasattr(self.env['account.move'], 'is_invoice')   # True on v17+
+hasattr(self.env['account.move'], 'is_invoice')   # True on v13+
 ```
 
 ### Invariant suggestion
@@ -321,7 +322,7 @@ hasattr(self.env['account.move'], 'is_invoice')   # True on v17+
 ```json
 {
   "id": "account-prefer-is-invoice-helper-on-v17plus",
-  "description": "Prefer is_invoice() / is_purchase_document() over hardcoded move_type tuples on v17+.",
+  "description": "Prefer is_invoice() / is_purchase_document() over hardcoded move_type tuples on v13+.",
   "applies_to": ["**/models/*.py", "**/wizards/*.py"],
   "rules": {
     "must_keep_regex": ["\\.is_(?:invoice|purchase_document|sale_document|inbound|outbound)\\("]
@@ -339,11 +340,16 @@ hasattr(self.env['account.move'], 'is_invoice')   # True on v17+
 
 ### Problem
 
-On v17+, `account.move._compute_taxes()` is the canonical entry point
-for recomputing tax lines after any structural edit (price, quantity,
-tax_ids, fiscal_position_id). It handles rounding strategies
-(`round_per_line` vs `round_globally`), price-include taxes, discount
-cascading, and tax group merging — all interacting in non-trivial ways.
+On v17+, the canonical tax engine is `account.tax._compute_taxes(base_lines)`
+— a method on **`account.tax`** (not a parameterless `account.move`
+method) that takes the move's base lines and recomputes tax lines after
+any structural edit (price, quantity, tax_ids, fiscal_position_id). It
+handles rounding strategies (`round_per_line` vs `round_globally`),
+price-include taxes, discount cascading, and tax group merging — all
+interacting in non-trivial ways. On the `account.move` side you drive
+recompute by mutating line fields through the ORM (the amount_* computed
+fields then recompute via this engine) — there is no parameterless
+`account.move._compute_taxes()`.
 
 Manual computation (`amount = sum(l.price_subtotal for l in lines) * 1.10`)
 produces off-by-cent drift especially with multi-line invoices,
@@ -373,11 +379,12 @@ self.env.cr.execute("""
 ### Good
 
 ```python
-# v17+ — mutate lines via ORM, then trigger canonical recompute
+# v17+ — mutate lines via ORM; the amount_* computed fields recompute
+# through the account.tax._compute_taxes(base_lines) engine automatically
 def _recompute_total(self, move):
     move.invoice_line_ids = [(1, line.id, {'price_unit': new_price})
                               for line, new_price in updates]
-    move._compute_taxes()       # rounding, price-include, cascading all handled
+    # rounding, price-include, cascading all handled by the tax engine
     # amount_untaxed / amount_tax / amount_total are computed fields —
     # never assign them directly
 ```
@@ -385,10 +392,11 @@ def _recompute_total(self, move):
 ### Falsification recipe
 
 ```python
-# Drift probe — before/after _compute_taxes() must match if your manual
-# math is correct. Any delta = silent drift accumulating across batches.
+# Drift probe — the stored total must match the value the tax engine
+# (account.tax._compute_taxes(base_lines)) yields. Any delta = silent
+# drift accumulating across batches.
 before = move.amount_total
-move._compute_taxes()
+move.invalidate_recordset(['amount_total'])   # force recompute via the engine
 after  = move.amount_total
 assert before == after, f"drift detected: {before} != {after}"
 ```
@@ -398,9 +406,9 @@ assert before == after, f"drift detected: {before} != {after}"
 ```json
 {
   "id": "account-no-manual-total-recompute-on-v17plus",
-  "description": "Use account.move._compute_taxes() — never assign amount_total/amount_tax directly, never raw SQL on account_move_line.",
+  "description": "Recompute via the account.tax._compute_taxes(base_lines) engine (driven by ORM line edits) — never assign amount_total/amount_tax directly, never raw SQL on account_move_line.",
   "applies_to": ["**/models/*.py", "**/wizards/*.py"],
-  "rules": {"must_keep_regex": ["\\._compute_taxes\\(\\)"]},
+  "rules": {"must_not_contain_regex": ["\\.amount_(?:total|tax|untaxed)\\s*="]},
   "severity": "blocker",
   "rationale": "Manual recompute drifts cents; raw SQL desyncs parent_state — see odoo-account-move-overhaul SKILL §5."
 }
@@ -416,19 +424,19 @@ the running database before/after migration:
 ```python
 # 1. Does the legacy model still exist? (sanity check)
 self.env['ir.model'].search([('model','=','account.invoice')])
-# expected on v14+: empty
+# expected on v13+: empty
 
 # 2. Count dead state filters in actual data
 self.env['account.move'].search_count([('state','=','open')])
-# expected on v14+: 0
+# expected on v13+: 0
 
 # 3. Audit view references to the removed model
 self.env['ir.ui.view'].search_count([('arch_db','ilike','account.invoice')])
-# any non-zero on v14+ = dangling view inheritance
+# any non-zero on v13+ = dangling view inheritance
 
 # 4. Audit menu / action references
 self.env['ir.actions.act_window'].search([('res_model','=','account.invoice')])
-# any non-empty on v14+ = broken menu entry
+# any non-empty on v13+ = broken menu entry
 
 # 5. payment_state histogram — confirm tests exercise all 6 cases
 self.env['account.move'].read_group(
@@ -441,11 +449,11 @@ self.env['account.move'].read_group(
 
 | Check | Tag | Where |
 |---|---|---|
-| No `'account.invoice'` string in `.py` / `.xml` on v14+ | **H** | §1 |
+| No `'account.invoice'` string in `.py` / `.xml` on v13+ | **H** | §1 |
 | No `state == 'open'` on `account.move` | **H** | §2 |
 | `payment_state` compared against explicit value tuple, never bare-truthy | **H** | §3 |
-| Hardcoded `move_type` tuples replaced with `is_invoice()` / `is_purchase_document()` on v17+ | **M** | §4 |
-| Tax recompute via `_compute_taxes()`, never manual `sum * rate` | **H** | §5 |
+| Hardcoded `move_type` tuples replaced with `is_invoice()` / `is_purchase_document()` on v13+ | **M** | §4 |
+| Tax recompute via the `account.tax._compute_taxes(base_lines)` engine (ORM-driven), never manual `sum * rate` | **H** | §5 |
 | No raw SQL on `account_move_line` (parent_state / analytic / balance desync) | **H** | §5 |
 | `migrations/14.0.x.y.z/pre-*.py` renames `type` → `move_type` on legacy data | **M** | §1 + OCA OpenUpgrade |
 | Reports / QWeb templates use `payment_state` selection labels, not strings | **L** | §3 |
@@ -473,13 +481,16 @@ self.env['account.move'].read_group(
 
 ## 10. Hard rules summary
 
-- Never reference `account.invoice` on v14+ — model removed.
-- Never filter `account.move.state == 'open'` on v14+ — state is
+- Never reference `account.invoice` on v13+ — model removed (merged into
+  `account.move`; invoice-type field named `type` in v13, renamed to
+  `move_type` in v14).
+- Never filter `account.move.state == 'open'` on v13+ — state is
   `draft / posted / cancel`.
 - Never treat `payment_state` as a boolean — it is a 6-value Selection.
-- Never hardcode `move_type` tuples on v17+ — use `is_invoice()` /
-  `is_purchase_document()` helpers.
-- Never assign `amount_total` / `amount_tax` directly; recompute via
-  `_compute_taxes()` (v17+) or a draft/post round-trip (v14–v16).
+- Never hardcode `move_type` tuples on v13+ — use `is_invoice()` /
+  `is_purchase_document()` helpers (available since v13).
+- Never assign `amount_total` / `amount_tax` directly; let them recompute
+  via the `account.tax._compute_taxes(base_lines)` engine through ORM line
+  edits (v17+) or a draft/post round-trip (v13–v16).
 - Never `UPDATE account_move_line` via raw SQL — `parent_state`,
   analytic distribution, and balance cache desync silently.

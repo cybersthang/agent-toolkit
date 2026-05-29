@@ -1,26 +1,28 @@
 ---
 name: odoo-mail-v2-migration
-description: Odoo mail framework v1 (v12-18 — `mail.thread` + `mail.activity.mixin` + `mail.message` with `message_post()` / `message_subscribe()`) vs v2 (v19+ — refactored thread/follower/notification storage + APIs). CAVEAT — v19 mail-v2 docs are unstable at v0.27 time of writing; this skill describes v1 in depth and v2 abstractly. Agents working on v19+ MUST verify exact APIs against the installed Odoo source (`codebase.search_model_definitions({"model": "mail.thread"})`) before applying any pattern below. Top 5 v1 anti-patterns (mail.thread bloat, N+1 message_post in create, hardcoded subtype xmlids, bypassing _message_post_after_hook, direct INSERT into mail_message). Trigger phrases — "mail", "thread", "activity", "message_post", "subscribe", "follower", "subtype", "notification", "v19 mail", "mail.v2". Audience — Odoo consultancies migrating mail-heavy modules across v12→v19 boundaries.
+description: Odoo mail framework across v12→v19 — `mail.thread` + `mail.activity.mixin` + `mail.message` with `message_post()` / `message_subscribe()`. The core models + APIs are stable v17→v19; the verifiable deltas are the `<chatter/>` view element (v18+) and the OWL chatter component path under `static/src`. CAVEAT — agents working on v19+ MUST verify exact APIs against the installed Odoo source (`codebase.search_model_definitions({"model": "mail.thread"})`) before applying any pattern below. Top 5 v1 anti-patterns (mail.thread bloat, N+1 message_post in create, hardcoded subtype xmlids, bypassing _message_post_after_hook, direct INSERT into mail_message). Trigger phrases — "mail", "thread", "activity", "message_post", "subscribe", "follower", "subtype", "notification", "v19 mail", "mail.v2". Audience — Odoo consultancies migrating mail-heavy modules across v12→v19 boundaries.
 license: MIT
 ---
 
 # Odoo — Mail framework v1 → v2 migration (version-aware)
 
 Mail-framework code is the **most version-fragile** part of Odoo. The
-`mail.thread` + `mail.activity.mixin` + `mail.message` triad stayed
-stable v12-v18 — but v19 refactors it into "mail-v2" with different
-storage (separate notification table, denormalized follower index) and
-different APIs.
+`mail.thread` + `mail.activity.mixin` + `mail.message` triad — including
+the `mail.followers` / `mail.message` models and `message_post` — is
+stable v17→v19. The verifiable view/frontend deltas across this range:
+the `<chatter/>` view element (v18+; v17 still uses
+`<div class="oe_chatter">`) and the OWL chatter component, whose path
+moved under `static/src` after the 16→17 rewrite.
 
 This skill enumerates the **top 5 v1-era anti-patterns** + migration
 notes for multi-version modules (v15 + v17 + v19 in parallel support).
 
-> CAVEAT — Mail-v2 (v19+) is described **abstractly** here. Public docs
-> are unstable as of v0.27 (Jan 2026). Before pattern-matching any
-> v19+ codebase, **read the installed source**:
+> CAVEAT — Before pattern-matching any v19+ codebase, **verify against
+> the installed source**:
 > `codebase.search_model_definitions({"model": "mail.thread"})` plus
-> `mail.followers` and `mail.notification`. Do NOT assume v1 patterns
-> carry — name a method only after you've seen it in installed source.
+> `mail.followers` and `mail.notification`. The core models + APIs are
+> stable v17→v19, but name a method only after you've seen it in
+> installed source.
 
 Pair with `odoo-code-review` and `odoo-data-verification`.
 
@@ -32,12 +34,11 @@ Same protocol as `odoo-multi-company` / `odoo-code-review`:
    Pattern `^(\d+)\.0\.`.
 2. **Fallback signals** (only if manifest missing):
    - `_inherit = ['mail.thread', 'mail.activity.mixin']` with classic
-     `message_post(...)` call sites → v12-18 (mail-v1).
-   - Imports / refs to `mail.notification.web.push` or `discuss.channel`
-     as the new thread base, or absence of `mail.followers` rows → v19+
-     (mail-v2 candidate; verify against source).
-   - `@api.depends('message_ids', 'message_follower_ids')` compute
-     fields → v1 era; if those field names changed, you're on v2.
+     `message_post(...)` call sites → mail.thread present (all v12+).
+   - `<div class="oe_chatter">` in views → v12-17; `<chatter/>` view
+     element → v18+.
+   - Refs to `mail.channel` (the model) → v12-16; `discuss.channel` (the
+     v17 rename) → v17+.
 3. **Ask the user** only if signals are inconclusive.
 
 Then load the matching reference:
@@ -81,7 +82,7 @@ class CustomerComplaint(models.Model):
 ### Falsification recipe
 
 1. `grep -r "_inherit.*mail.thread" addons/` → list candidate models.
-2. Check `views/` for `<chatter/>` (v17+) or `<div class="oe_chatter">` (v12-16).
+2. Check `views/` for `<chatter/>` (v18+) or `<div class="oe_chatter">` (v12-17).
 3. No chatter view = decorative inheritance; row cost only.
 4. Probe: `SELECT COUNT(*) FROM mail_followers WHERE res_model='my.internal.scratchpad';`
    — non-zero on a chatter-less model confirms the bloat.
@@ -137,9 +138,8 @@ and rely on `tracking=True` changelog.
 
 ### Problem
 
-Subtype `xml_id`s are stable **within** a major Odoo version but rename
-across majors (some `mt_*` consolidated v15→v17; v19 mail-v2 reshuffles
-again). A hardcoded string either falls back silently to the note
+Subtype `xml_id`s are stable **within** a major Odoo version but can
+rename across majors. A hardcoded string either falls back silently to the note
 subtype (visibility leak — internal note becomes external) or raises
 `ValueError: External ID not found`.
 
@@ -216,8 +216,8 @@ Writing directly to `mail_message` via `cr.execute("INSERT ...")` or
 - Subtype-driven visibility filtering.
 - Bus events to the discuss client.
 
-The row exists but nobody is notified. In mail-v2 (v19+), denormalized
-follower indexes won't update either — chatter UI shows stale state.
+The row exists but nobody is notified — the chatter UI shows stale
+state because no notification or bus dispatch ran.
 
 ### Bad / Good
 
@@ -246,38 +246,35 @@ def _user_visible(self, body):
 
 ---
 
-## 6. v1 → v2 migration considerations (v18 → v19)
+## 6. Cross-version considerations (v17 → v19)
 
 ### Code patterns that need attention
 
-| v1 call (v12-18) | v2 strategy (v19+) — verify against source |
+The Python ORM surface (`message_post`, `message_subscribe`,
+`message_ids`, `_message_post_after_hook`, `mail.activity.mixin`) is
+**stable v17→v19**. The real deltas are in the view layer and the OWL
+frontend — verify each against installed source.
+
+| Item | What actually changes (verify against source) |
 |---|---|
-| `self.message_post(body=...)` | Likely renamed signature; verify on `mail.thread`. |
-| `self.message_subscribe(partner_ids=[...])` | Follower storage refactored; new API may take a unified record-or-partner ref. |
-| `self.message_ids` (One2many) | May be denormalized — check if field still exists or moved to a computed proxy. |
-| `subtype_xmlid='mail.mt_comment'` | Subtype set reshuffled in v2; verify each xmlid. |
-| `_message_post_after_hook()` | Hook name may have changed; grep `_after_hook` on installed `mail.thread`. |
-| `mail.activity` direct manipulation | `mail.activity.mixin` likely still works, but rendering moved — verify. |
+| `self.message_post(body=...)` | Keyword-only with `subtype_xmlid` / `subtype_id` from v17; same v17→v19. |
+| `self.message_subscribe(partner_ids=[...])` | Stable v17→v19; `mail.followers` model unchanged. |
+| `self.message_ids` (One2many) | Stable v17→v19; field still present on `mail.thread`. |
+| `<div class="oe_chatter">` view | Replaced by the `<chatter/>` view element in **v18+** (v17 still uses the div). |
+| `mail.channel` model | Renamed to `discuss.channel` in **v17**. |
+| OWL chatter component | Rewritten at the 16→17 boundary; component path moved under `static/src` — grep installed source for the import path. |
 
-### Testing the same module on v18 vs v19
+### Testing the same module on v17/v18 vs v19
 
-1. Spin two scratch DBs (v18, v19) from the same module source.
+1. Spin scratch DBs (e.g. v17, v18, v19) from the same module source.
 2. Run shared pytest: `odoo-bin -d <db> -i <module> --test-enable --stop-after-init`.
-3. **Always** read `mail.thread` source on both versions before writing
+3. **Always** read `mail.thread` source on each version before writing
    the test (`find odoo/addons/mail/models -name "mail_thread*.py"` and
-   diff signatures).
-4. Gate v19-only paths with `@unittest.skipUnless(MAIL_V2, ...)` where
-   `MAIL_V2` is detected via a v2-only field on `mail.thread`.
-
-### Backward-compat shim — DO NOT ship as-is
-
-```python
-# v17/v18/v19 compat shim — method name is illustrative; VERIFY first
-def _post_compat(self, body, subtype_xmlid='mail.mt_comment'):
-    if hasattr(self, '_message_post_v2'):   # placeholder — read source!
-        return self._message_post_v2(body=body, subtype_xmlid=subtype_xmlid)
-    return self.message_post(body=body, subtype_xmlid=subtype_xmlid)
-```
+   diff signatures) — confirm the API hasn't shifted on your exact build.
+4. The split that bites is the view/frontend layer: assert on
+   `<chatter/>` (v18+) vs `<div class="oe_chatter">` (v17), and resolve
+   the OWL chatter import path from installed `static/src` rather than
+   hardcoding it.
 
 ## 7. Code-review checklist (files matching `models/mail_*` or any `_inherit = ['mail.thread', ...]`)
 
@@ -288,7 +285,7 @@ def _post_compat(self, body, subtype_xmlid='mail.mt_comment'):
 | **H** | `_inherit = ['mail.thread']` on a model with no chatter view. |
 | **M** | Hardcoded `subtype_xmlid` without `raise_if_not_found=False` fallback. |
 | **M** | Side effects in `message_post()` super-override before calling `super()`. |
-| **M** | v19+ code that still uses v1-only field names (`message_ids`, `message_follower_ids`) without source verification. |
+| **M** | View asserts `<chatter/>` on v17 (or `oe_chatter` div on v18+) — mismatched against the installed major. |
 | **L** | `message_subscribe(partner_ids=...)` without checking whether the partner already follows. |
 | **L** | Activity creation via `self.env['mail.activity'].create({...})` instead of `self.activity_schedule(xmlid)`. |
 
@@ -301,9 +298,11 @@ def _post_compat(self, body, subtype_xmlid='mail.mt_comment'):
   stable `_message_post_after_hook`, enriched activity mixin,
   consolidated subtype xmlids).
 - `references/odoo-19-mail-v2.md` — **annotated stub. Mark "verify
-  against installed source" at the top.** Sketches v2 storage refactor
-  (separate notification index, denormalized follower cache); every
-  signature must be re-checked via `codebase.search_model_definitions`.
+  against installed source" at the top.** The core `mail.thread` /
+  `mail.followers` / `mail.message` models + `message_post` are stable
+  v17→v19; the documented deltas are the `<chatter/>` view element
+  (v18+) and the OWL chatter component path under `static/src`. Re-check
+  every signature via `codebase.search_model_definitions`.
 
 ## 9. Sibling skills to call BEFORE this one
 
@@ -322,5 +321,6 @@ def _post_compat(self, body, subtype_xmlid='mail.mt_comment'):
   `_message_post_after_hook` instead.
 - Never INSERT into `mail_message` directly — always go through
   `message_post()` (visible) or `_message_log()` (audit-only).
-- On v19+: **always read installed `mail.thread` source first**.
-  Mail-v2 APIs in this skill are abstract sketches, not contracts.
+- On v19+: **always read installed `mail.thread` source first**. The
+  core APIs are stable v17→v19, but confirm signatures against your
+  exact build before relying on them.

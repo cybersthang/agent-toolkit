@@ -318,7 +318,7 @@ Pair with `odoo-data-verification` for deeper post-install checks
 | H | `pre_init_hook` / `post_init_hook` / `uninstall_hook` resolve to real top-level callables in `__init__.py` |
 | H | `version` has 5 dotted segments (`17.0.1.0.0`), not 3 |
 | H | `depends` lists every module whose models the hooks touch |
-| M | `license` declared (LGPL-3 / OPL-1 — affects Enterprise compat) |
+| M | `license` declared (LGPL-3 / OEEL-1 — affects Enterprise compat) |
 | M | `data` files load BEFORE `post_init_hook` — don't seed in XML what the hook re-seeds |
 | L | `installable: True` (or absent) |
 
@@ -349,7 +349,7 @@ Pair with `odoo-data-verification` for deeper post-install checks
 References (this skill):
 - `references/odoo-pre-post-init-hooks.md` — hook signatures per major, manifest wiring, per-phase pitfalls
 - `references/odoo-migrations-convention.md` — OCA / openupgrade folder layout, idempotency patterns, end- vs post-migration
-- `references/odoo-community-vs-enterprise.md` — module list deltas, addons_path ordering, runtime detection, LGPL-3 vs OPL-1
+- `references/odoo-community-vs-enterprise.md` — module list deltas, addons_path ordering, runtime detection, LGPL-3 vs OEEL-1
 
 Sibling skills:
 - Runtime `with_company()` flavor → `odoo-multi-company` §1

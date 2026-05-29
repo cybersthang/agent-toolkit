@@ -66,7 +66,7 @@ class MyModel(models.Model):
 - **DELTA vs 17**: override `name_get()` for the display label on
   **16.0**. `name_get` is deprecated from **saas-16.4** in favour of
   `_compute_display_name` (verified: odoo/odoo PR #122085 on saas-16.4)
-  and removed in 17.0. Use `name_get` for 16.0 stable; switch to
+  and deprecated in 17.0 (removed in 18.0). Use `name_get` for 16.0 stable; switch to
   `_compute_display_name` if targeting 16.4+ SaaS.
 
 ## View template (16 syntax — DELTA vs 17)

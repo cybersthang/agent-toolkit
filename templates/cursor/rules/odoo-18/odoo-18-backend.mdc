@@ -10,7 +10,7 @@ alwaysApply: false
 - `@api.model` for class-level methods that do not need a recordset.
 - `@api.model_create_multi` is **mandatory** when overriding `create()`. A single-record `@api.model` `create()` override silently breaks batch creates and is rejected in review.
 - `@api.depends`, `@api.constrains`, `@api.onchange`, `@api.depends_context` behave as in 17.
-- `name_get()` is gone (removed in 17). Override `_compute_display_name` instead and declare `@api.depends` on the fields it reads.
+- `name_get()` is gone (deprecated in 17, removed in 18). Override `_compute_display_name` instead and declare `@api.depends` on the fields it reads.
 - Call `ensure_one()` when a method assumes a single record.
 - Use parameterized SQL only. Batch `write()` and `unlink()` operations.
 - Document every `sudo()` with a one-line reason in code.

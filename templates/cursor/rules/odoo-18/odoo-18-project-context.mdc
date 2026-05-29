@@ -19,6 +19,6 @@ alwaysApply: true
 - Avoid `search()` / `browse(id)` calls inside loops.
 - Do not introduce `@api.multi` — removed since 13. Recordset is the default.
 - Do not introduce `attrs="{...}"` or `states="…"` in views — both removed in 17 and stay removed in 18.
-- Do not define `name_get()` — removed in 17. Override `_compute_display_name` with `@api.depends`.
+- Do not define `name_get()` — deprecated in 17, removed in 18. Override `_compute_display_name` with `@api.depends`.
 - Use `@api.model_create_multi` for any `create()` override.
 - Treat v18 as "v17 + refinements": most v17 patterns work unchanged, but the OWL component surface and audit checks are tighter — verify against the live `web` addon before assuming a helper still exists.

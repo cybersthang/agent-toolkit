@@ -152,6 +152,44 @@ openupgrade.delete_records_safely_by_xml_id(
 separately fix the ORM metadata or the column is internal. For a
 user-visible field, `rename_fields` is the safe default.
 
+## Canonical rename data — `apriori.py`
+
+To **verify or look up** a model, module, or field rename for a target
+major **N**, read the OCA/OpenUpgrade branch **`N.0`** file
+`openupgrade_scripts/apriori.py`. It is the authoritative "what changed
+between N-1 and N" data — not just migration scripts. Branch **`N.0`**
+holds the **(N-1) → N** deltas (e.g. branch `17.0` records what changed
+going from 16 to 17).
+
+`apriori.py` defines these dicts:
+
+| Dict | Maps |
+|---|---|
+| `renamed_models` | old model name → new model name |
+| `merged_models` | model folded into another → target model |
+| `renamed_modules` | old module (technical) name → new module name |
+| `renamed_fields` | per-model field renames |
+
+```python
+# 16.0/apriori.py   — confirmed entry
+renamed_models = {"payment.acquirer": "payment.provider", ...}
+# 17.0/apriori.py   — confirmed entry
+renamed_models = {"mail.channel": "discuss.channel", ...}
+```
+
+For **field-level** diffs, also read the per-module
+`openupgrade_analysis.txt` shipped alongside each addon's migration in the
+same branch — it records the column/field-level changes module by module.
+
+Raw URL pattern (substitute the target major for `<N>`):
+
+```
+https://raw.githubusercontent.com/OCA/OpenUpgrade/<N>.0/openupgrade_scripts/apriori.py
+```
+
+Chain the lookups across every major between source and target (one
+`apriori.py` per major), the same way the upgrade itself chains.
+
 ## Hard rules
 
 - Never `ALTER TABLE … RENAME` directly — use `rename_columns` /

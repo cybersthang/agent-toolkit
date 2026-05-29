@@ -168,6 +168,9 @@ of things we will maybe do"). Treat as **stub-extends-v19** (SKILL.md §0).
   major. Both numbers are correct for their context.
 - For sign-off, cite the release-notes URL or OpenUpgrade commit per row
   (SKILL.md §4) — this map is a map, not the territory.
+- **How to verify a delta**: authoritative model/field/module renames live
+  in OCA/OpenUpgrade `<branch>/openupgrade_scripts/apriori.py` (branch
+  `N.0` = the (N-1)→N deltas). See `odoo-openupgrade-helpers.md`.
 
 > Sources — odoo/odoo:
 > [PR #33797 (account.move merge → saas-12.4/13.0)](https://github.com/odoo/odoo/pull/33797),

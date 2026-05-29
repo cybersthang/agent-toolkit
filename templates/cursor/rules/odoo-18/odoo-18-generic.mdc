@@ -19,7 +19,7 @@ This file applies to **any** addon under any addon root. Never embed a specific 
 
 - **Models**: `_name` for new model, `_inherit` for extension, `_inherits` for delegation. Never declare both `_name` and `_inherit` to the same string in one class.
 - **API**: methods are **recordset by default** — `@api.multi` is removed and must not be added. Use `@api.model` only for class-level methods. `@api.model_create_multi` is required for `create()` overrides.
-- **Display name**: override `_compute_display_name` (with proper `@api.depends`). Do **not** define `name_get()` — it was removed in 17 and remains absent in 18.
+- **Display name**: override `_compute_display_name` (with proper `@api.depends`). Do **not** define `name_get()` — it was deprecated in 17 and removed in 18.
 - **`ensure_one()`**: required when a method assumes a single record.
 - **Loops**: no `search()`, `browse(id)`, `write()`, or `unlink()` inside loops. Push filtering into domains, batch with `mapped` / `filtered` / `read_group`.
 - **Counts**: `search_count(domain)` over `len(search(domain))`.

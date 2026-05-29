@@ -3,6 +3,23 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
+## [Unreleased] — Odoo 13-16 skill references (12-20 parity)
+
+Closes the Q4-audit gap: v13/14/15/16 had ZERO version-specific skill
+references (they cascaded to v12/v17). Adds **28 files** — 7 reference types
+(`patterns`, `rules`, `pitfalls`, `scaffold`, `multicompany`, `perf`,
+`tdd-pitfalls`) × 4 versions — under
+`templates/cursor/skills/odoo/*/references/odoo-1{3,4,5,6}-*.md`. Each was
+**source-verified against the odoo/odoo branch** (api.py, models.py, fields.py,
+account_move.py, tests/common.py) + official docs, cascades unchanged sections
+explicitly to the nearest neighbour (v13/14/15→12, v16→17) instead of padding,
+and marks genuinely-unverifiable claims with `<!-- VERIFY(odoo-N) -->` for DEV
+confirmation (~13 flags total — see the per-version notes). Notable corrections
+surfaced: `@api.multi`/`@api.one` are removed in **v13** (not later);
+`account.invoice`→`account.move` merge is **v13**; `with_company()` arrives
+**v14**; the `assets` manifest dict is **v15**; OWL 2.x mainstreams in **v16**.
+Snapshot ceilings bumped (odoo-12/17 now 302/303 plan items).
+
 ## [Unreleased] — auto-parallel task waves for /implement
 
 `/implement` was sequential-only. Adds `tools/wave_planner.py`: a deterministic

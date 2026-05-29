@@ -3,7 +3,9 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
-## [Unreleased] — Odoo skill references: full 12-20 parity (7 types × 9 versions)
+## [0.29.0] — 2026-05-29 — Odoo 12-20 parity + auto-parallel waves + GitLab CI MCP
+
+### Odoo skill references: full 12-20 parity (7 types × 9 versions)
 
 Now COMPLETE: every Odoo major 12→20 ships all 7 reference types
 (`patterns`, `rules`, `pitfalls`, `scaffold`, `multicompany`, `perf`,
@@ -34,7 +36,7 @@ surfaced: `@api.multi`/`@api.one` are removed in **v13** (not later);
 **v14**; the `assets` manifest dict is **v15**; OWL 2.x mainstreams in **v16**.
 Snapshot ceilings bumped (odoo-12/17 now 302/303 plan items).
 
-## [Unreleased] — auto-parallel task waves for /implement
+### auto-parallel task waves for /implement
 
 `/implement` was sequential-only. Adds `tools/wave_planner.py`: a deterministic
 planner that turns a tasks.md into ordered **waves** of provably file-disjoint,
@@ -48,7 +50,7 @@ surfaces the wave preview at the review gate. Reuses `parallel_wave.py` +
 `parallel_conflict_guard.py` (no changes). +12 tests
 (`tests/test_wave_planner.py`). Spec: `specs/v0.29.0-auto-parallel-waves.md`.
 
-## [Unreleased] — read-only GitLab CI MCP server
+### read-only GitLab CI MCP server
 
 Adds an **optional, read-only** `gitlab` MCP server so an agent can check CI
 build status and pull failing job logs right after a push — the

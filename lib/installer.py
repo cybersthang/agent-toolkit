@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 # Toolkit version. Bump when schema_version of agent-toolkit.config.json
 # changes or when CLI flags break backward compatibility.
-__version__ = '0.27.0'
+__version__ = '0.29.0'
 
 
 # ----------------------------------------------------- preset loader ---

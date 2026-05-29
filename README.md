@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python: 3.8+](https://img.shields.io/badge/python-3.8%2B-blue)](setup.py)
-[![tests](https://github.com/cybersthang/agent-toolkit/actions/workflows/test.yml/badge.svg)](https://github.com/cybersthang/agent-toolkit/actions/workflows/test.yml)
+[![pipeline](https://gitlab.com/nosafarm/agent-toolkit/badges/main/pipeline.svg)](https://gitlab.com/nosafarm/agent-toolkit/-/pipelines)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-compatible-7c3aed)](https://docs.claude.com/en/docs/claude-code)
 [![Cursor](https://img.shields.io/badge/Cursor-rules%20%2B%20skills-1e40af)](https://cursor.com)
 [![Spec Kit](https://img.shields.io/badge/Spec_Kit-aligned-22c55e)](https://github.com/github/spec-kit)
@@ -38,7 +38,7 @@ Full release / mirror / tag procedure documented in [REBUILD.md](REBUILD.md).
 
 ## Why agent-toolkit?
 
-- 🛡️ **Mechanical enforcement, not honor system.** 31 hooks DENY at the
+- 🛡️ **Mechanical enforcement, not honor system.** 30+ hooks DENY at the
   Claude Code harness level — invariant strips, claim-without-proof,
   destructive git (`git_guardrails` blocks commit/push/add until DEV
   explicitly authorizes), hallucinated progress, **unresolved gaps on
@@ -210,7 +210,7 @@ DEV: (reads tasks.md, OK) /implement log-request-slowness
 Toolkit is in **active daily use** on a production Odoo 12 Enterprise
 workspace since 2026-Q1. Hook telemetry shows ~57
 fire-events per session avg, ~26% block rate, ~3.5% bypass rate.
-**31 hooks** active, **700 unit tests** in CI (matrix: Ubuntu / macOS /
+**30+ hooks** active, **770 unit tests** in CI (matrix: Ubuntu / macOS /
 Windows × Python 3.8 / 3.10 / 3.12 — all green).
 
 > 🤖 **AI agents installing into a project**: Read
@@ -958,7 +958,7 @@ Preset khác: `odoo-17`, `generic`. Thêm preset mới (Django/Rails/Go) chỉ l
 
 ### Tại sao dùng agent-toolkit?
 
-- 🛡️ **Enforce cơ học, không phải honor-system.** 27 hook DENY ở
+- 🛡️ **Enforce cơ học, không phải honor-system.** 30+ hook DENY ở
   Claude Code harness — strip invariant, claim không proof, git
   destructive, fake progress đều bị chặn.
 - 🔬 **Verify trên data thật hoặc không ship.** `/verify` chạy MCP probe
@@ -1004,7 +1004,7 @@ deviation + trade-off + follow-up + confidence để DEV review trước merge.
 
 Toolkit đang **dùng thực tế hằng ngày** trên một production Odoo 12
 Enterprise workspace từ 2026-Q1. Hook telemetry trung bình ~57 fire-event/session,
-~26% block, ~3.5% bypass. **27 hook** active, **607 unit test** trên CI
+~26% block, ~3.5% bypass. **30+ hook** active, **770 unit test** trên CI
 (matrix: Ubuntu / macOS / Windows × Python 3.8 / 3.10 / 3.12 — all green).
 
 ### Liên hệ tác giả

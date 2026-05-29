@@ -273,7 +273,7 @@ Windows × Python 3.8 / 3.10 / 3.12 — all green).
               │  codebase ◄─► postgres ◄─► realdata_test     │
               │   (search)    (DB read)    (run module test) │
               │                                              │
-              │  + jira (ticket), playwright (E2E)           │
+              │  + jira (ticket), gitlab (CI), playwright    │
               └──────────────────────────────────────────────┘
 
    ─────── 3-tier rule (cross-linked, auditable) ───────
@@ -370,7 +370,8 @@ DEV: /implement <slug>
 For any project where you run `setup.py init`:
 
 - **`.codex/`** — Odoo MCP server implementations (codebase, postgres,
-  realdata_test, jira) + canonical decisions registry + 120+ hook tests
+  realdata_test, jira; optional read-only `gitlab` CI server) + canonical
+  decisions registry + 120+ hook tests
 - **`.cursor/rules/`** — Cursor IDE rules (always-apply) for the chosen
   Odoo version
 - **`.cursor/skills/`** — Spec Kit workflow skills (plan-feature,

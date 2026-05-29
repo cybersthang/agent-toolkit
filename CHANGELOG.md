@@ -3,6 +3,41 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
+## [Unreleased] — read-only GitLab CI MCP server
+
+Adds an **optional, read-only** `gitlab` MCP server so an agent can check CI
+build status and pull failing job logs right after a push — the
+"every time I code, the build is red" loop. Opt-in (not in any default
+preset): add `"gitlab"` to a project's `mcp_servers`, fill
+`<PREFIX>_GITLAB_*` in `.codex/mcp.local.env`, re-run `setup.py update`.
+
+- **`templates/codex/mcp_servers/gitlab_server.py`** — stdlib-only
+  (dependency-free), `SimpleMcpServer`. 5 tools: `env_status`,
+  `latest_pipeline`, `pipeline_jobs`, `job_trace`, and the headline
+  **`build_errors`** (latest/given pipeline → failed jobs excluding
+  `allow_failure` → trace tail per job, in one call).
+- **`templates/codex/start_gitlab_mcp.py`** — start wrapper (mirrors the
+  jira wrapper; loads `.codex/mcp.local.env`).
+- **Read-only by design**: a PAT with `read_api` is enough; no
+  trigger/retry/cancel tools — taking authoring CI actions would conflict
+  with the `git_guardrails` philosophy.
+- Host-agnostic: `<PREFIX>_GITLAB_URL` defaults to gitlab.com, works with
+  self-hosted (trailing `/api/v4` tolerated). Project as numeric id or
+  `group/sub/project` path; per-call `project` override.
+- **Wiring**: installer copies the server + wrapper and emits the `.mcp.json`
+  entry automatically when `"gitlab"` is in `mcp_servers` (no setup.py
+  change needed — uses the generic `start_<name>_mcp.py` path). Credentials
+  block added to `mcp.local.env.example`; opt-in example in
+  `presets/_example_private_overlay.json.template`.
+- **Pagination**: `_fetch_pipeline_jobs` loops pages (per_page=100, cap 50
+  pages) so a pipeline with >100 jobs never silently drops a failing job
+  (would otherwise report false-green). `pipeline_id`/`job_id` are int-coerced.
+- **Tests**: +10 in `templates/codex/tests/test_mcp_wrappers.py` (wrapper
+  env-precedence, read-only tool contract, token-never-leaks, `build_errors`
+  trace composition, project-id encoding, >100-job pagination, per-tool
+  happy-paths for latest_pipeline/pipeline_jobs/job_trace, trace-fetch-error
+  resilience). Spec: `specs/v0.28.0-gitlab-ci-mcp.md`.
+
 ## [0.27.0] — 2026-05-28 — cognitive-load cut + Odoo 12-20 parity
 
 Cuts the cognitive overload introduced by stacked Stop gates (paper:

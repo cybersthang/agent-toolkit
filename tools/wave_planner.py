@@ -82,7 +82,7 @@ def parse_tasks(md: str) -> List[Dict[str, Any]]:
             cur["_touches_raw" if field == "touches" else "_deps_raw"] += " " + line.strip()
     for t in tasks:
         t["touches"] = _clean_touches(t.pop("_touches_raw"))
-        deps = re.findall(r"T\d+", t.pop("_deps_raw"))
+        deps = re.findall(r"\bT\d+\b", t.pop("_deps_raw"))
         t["deps"] = [d for d in dict.fromkeys(deps) if d != t["id"]]
     return tasks
 
@@ -106,6 +106,19 @@ def plan_waves(tasks: List[Dict[str, Any]]) -> Dict[str, Any]:
     by_id = {t["id"]: t for t in tasks}
     order = [t["id"] for t in tasks]
     known_deps = {tid: [d for d in by_id[tid]["deps"] if d in by_id] for tid in order}
+
+    # BUG#2: a dependency that references a task we never saw is unsatisfiable.
+    # Silently dropping it would mis-order the plan, so fall back to sequential.
+    for tid in order:
+        for d in by_id[tid]["deps"]:
+            if d not in by_id:
+                return {
+                    "tasks": len(tasks),
+                    "waves": [[t] for t in order],
+                    "parallel_waves": 0, "max_width": 1,
+                    "sequential_fallback": True,
+                    "reason": f"unsatisfiable dependency: {tid} -> {d} (not found)",
+                }
 
     done: set[str] = set()
     waves: List[List[str]] = []
@@ -151,11 +164,14 @@ def emit_wave(project_dir: Path, tasks_md: Path, wave_index: int,
     """Write .parallel_wave.json for wave `wave_index`: one zone per task
     (agent_id = task id, owned = its Touches). Reuses parallel_wave.emit so
     parallel_conflict_guard enforces the file-disjoint contract."""
-    plan = plan_waves(parse_tasks(tasks_md.read_text(encoding="utf-8")))
+    # BUG#3: parse the file exactly ONCE; build by_id and the plan from the
+    # SAME parsed list (no second read/parse → no TOCTOU mismatch).
+    tasks = parse_tasks(tasks_md.read_text(encoding="utf-8"))
+    plan = plan_waves(tasks)
     waves = plan["waves"]
     if wave_index < 0 or wave_index >= len(waves):
         raise ValueError(f"wave index {wave_index} out of range (0..{len(waves) - 1})")
-    by_id = {t["id"]: t for t in parse_tasks(tasks_md.read_text(encoding="utf-8"))}
+    by_id = {t["id"]: t for t in tasks}
     zone_args = [f"{tid}:{','.join(by_id[tid]['touches'])}" for tid in waves[wave_index]
                  if by_id[tid]["touches"]]
     if not zone_args:

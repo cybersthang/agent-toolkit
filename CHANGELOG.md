@@ -3,7 +3,10 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
-## [Unreleased] — Odoo 13-16 skill references (12-20 parity)
+## [Unreleased] — Odoo 13-16 skill references (completes 12-17; 18-20 partial)
+
+Note: v12-17 now have all 7 reference types; v18-20 still ship 5/7
+(missing multicompany + perf) — tracked as follow-up.
 
 Closes the Q4-audit gap: v13/14/15/16 had ZERO version-specific skill
 references (they cascaded to v12/v17). Adds **28 files** — 7 reference types

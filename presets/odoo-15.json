@@ -34,6 +34,15 @@
   "_overlay_doc": "Version-specific invariants merged on top of project invariants.json by a FUTURE installer step (setup.py --merge-invariants, not yet wired — Wave C). Same schema as .agent-toolkit/invariants.json entries. severity=warn (informational). Cite a confirmed Odoo release fact per entry.",
   "invariants_overlay": [
     {
+      "id": "odoo15-manifest-assets-dict",
+      "description": "Odoo 15 introduced the manifest `assets` dict — register JS/CSS bundles there, not via the legacy <template> asset-inheritance XML.",
+      "applies_to": ["**/__manifest__.py"],
+      "rules": {"must_keep_regex": ["[\"']assets[\"']\\s*:"]},
+      "severity": "warn",
+      "rationale": "Odoo 15 added the `assets` key to `__manifest__.py` (introduced in v15, NOT v14); new bundles should be declared there instead of the v12-era `<template inherit_id=\"web.assets_backend\">` XML pattern. Fix when violated: restore the `assets` manifest entry the edit dropped (or confirm bundles are intentionally declared elsewhere).",
+      "_version": "15+"
+    },
+    {
       "id": "odoo15-check-company-decorator",
       "description": "Odoo 15 provides the @api.constrains-friendly `_check_company` consistency helper + `check_company=True` field attr — use it on company-scoped relational fields instead of hand-rolled cross-company guards.",
       "applies_to": ["**/models/**/*.py"],

@@ -1,6 +1,6 @@
 ---
 name: odoo-multi-company
-description: Odoo multi-company anti-patterns — missing `with_company()` context, currency rounding mismatch across companies, `ir.rule` per-company gaps, multi-company SQL constraints, mail/notification routing wrong company. Version-aware: Step 0 detects the addon's Odoo version from `__manifest__.py`, then loads `references/odoo-12-multicompany.md` (pre-`with_company` era) or `references/odoo-17-multicompany.md` (mature `with_company` API). Cross-company currency conversion patterns in `references/odoo-multi-currency.md`. Audience: Odoo consultancies using Enterprise multi-company. Open whenever the user says "multi-company", "đa công ty", "company context", "cross-company", `with_company`, `company_id` issues, or when a code-review finding flags missing company guards.
+description: Odoo multi-company anti-patterns — missing `with_company()` context, currency rounding mismatch across companies, `ir.rule` per-company gaps, multi-company SQL constraints, mail/notification routing wrong company. Version-aware: Step 0 detects the addon's Odoo version from `__manifest__.py`, then loads the matching `references/odoo-<N>-multicompany.md` (v12 pre-`with_company` era; v13-16 dedicated packs; v17 mature `with_company` API). Cross-company currency conversion patterns in `references/odoo-multi-currency.md`. Audience: Odoo consultancies using Enterprise multi-company. Open whenever the user says "multi-company", "đa công ty", "company context", "cross-company", `with_company`, `company_id` issues, or when a code-review finding flags missing company guards.
 ---
 
 # Odoo — Multi-Company Anti-Patterns (version-aware)
@@ -43,7 +43,10 @@ Then load the matching reference:
 | Detected major | Reference (multi-company specifics) |
 |---|---|
 | 12 | `references/odoo-12-multicompany.md` (pre-`with_company` era) |
-| 13 / 14 / 15 / 16 | apply `odoo-17-multicompany.md` + flag LOW transitional |
+| 13 | load `references/odoo-13-multicompany.md` |
+| 14 | load `references/odoo-14-multicompany.md` |
+| 15 | load `references/odoo-15-multicompany.md` |
+| 16 | load `references/odoo-16-multicompany.md` (+ note: backports some v17 conventions) |
 | 17 | `references/odoo-17-multicompany.md` |
 | 18 / 19 / 20 | apply `odoo-17-multicompany.md` (no dedicated delta written yet — re-check the target major's multi-company release notes before relying on this for an audit) + flag LOW |
 

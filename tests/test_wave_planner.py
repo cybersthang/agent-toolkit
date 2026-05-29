@@ -113,3 +113,27 @@ def test_emit_rejects_out_of_range_wave(tmp_path: Path):
         assert False, "expected ValueError for out-of-range wave"
     except ValueError:
         pass
+
+
+# ── BUG#2 / BUG#3 regressions ─────────────────────────────────────────────
+def test_dangling_dep_falls_back_to_sequential():
+    # T1 depends on T99, which never appears → unsatisfiable, not silently dropped
+    plan = wp.plan_waves(wp.parse_tasks(_md(
+        _task("T1", "`a.py`", "T99"), _task("T2", "`b.py`"))))
+    assert plan["sequential_fallback"] is True
+    assert "unsatisfiable" in plan["reason"]
+    assert "T1" in plan["reason"] and "T99" in plan["reason"]
+    assert all(len(w) == 1 for w in plan["waves"])
+
+
+def test_emit_single_parse_consistent(tmp_path: Path):
+    # emit_wave parses ONCE; the zones it writes must match the plan's wave
+    md = tmp_path / "f.tasks.md"
+    md.write_text(_md(_task("T1", "`a.py`"), _task("T2", "`b.py`")), encoding="utf-8")
+    tasks = wp.parse_tasks(md.read_text(encoding="utf-8"))
+    plan = wp.plan_waves(tasks)
+    by_id = {t["id"]: t for t in tasks}
+    manifest = wp.emit_wave(tmp_path, md, 0)
+    agents = {z["agent_id"]: z["owned"] for z in manifest["zones"]}
+    expected = {tid: by_id[tid]["touches"] for tid in plan["waves"][0]}
+    assert agents == expected

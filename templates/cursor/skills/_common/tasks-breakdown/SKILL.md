@@ -132,7 +132,7 @@ Coverage:
   ✓ acceptance_evals: <evals-cited>/<evals-total>
   <warning if any story or eval uncovered>
 
-Parallelism (python tools/wave_planner.py plan <tasks.md>):
+Parallelism (python3 tools/wave_planner.py plan <tasks.md>):
   <K> parallel wave(s), max width <W> — e.g. wave 3 = [T3, T4] run concurrently
   (or "all sequential — no provably file-disjoint tasks")
 
@@ -141,7 +141,7 @@ Parallelism (python tools/wave_planner.py plan <tasks.md>):
 ```
 
 > **Parallelism is automatic at /implement, conservative by construction.**
-> Run `python tools/wave_planner.py plan <tasks.md>` to preview the waves.
+> Run `python3 tools/wave_planner.py plan <tasks.md>` to preview the waves.
 > `/implement` dispatches each ≥2-task wave as concurrent sub-agents (file
 > -disjoint zones enforced by `parallel_conflict_guard`); anything not
 > provably disjoint stays sequential. To MAKE tasks parallelizable, give each

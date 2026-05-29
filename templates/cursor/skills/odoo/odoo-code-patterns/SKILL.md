@@ -30,7 +30,10 @@ Then load the matching reference:
 | Detected major | Reference (newest first; cascade) |
 |---|---|
 | 12 | `references/odoo-12-patterns.md` (standalone) |
-| 13 / 14 / 15 / 16 | apply `odoo-17-patterns.md` + flag MEDIUM "transition era — v13-16 keep `attrs=`/`states=` valid, OWL adoption staged (v14 v1 introduced, v16 v2 mature), `_check_company_auto` mainstream only 16+, `account.invoice` lives v12-13 then merged into `account.move` from v14. Cross-check the dedicated `odoo-<N>` rule pack (now shipping for every v13-20) before applying." |
+| 13 | load `references/odoo-13-patterns.md` |
+| 14 | load `references/odoo-14-patterns.md` |
+| 15 | load `references/odoo-15-patterns.md` |
+| 16 | load `references/odoo-16-patterns.md` (+ note: backports some v17 conventions) |
 | 17 | `references/odoo-17-patterns.md` |
 | 18 | `references/odoo-18-patterns.md` ← 17 |
 | 19 | `references/odoo-19-patterns.md` ← 18 ← 17 |

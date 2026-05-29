@@ -98,7 +98,7 @@ Tất cả trong cùng phiên autonomy. DEV không phải confirm giữa các b�
    ```
 
 9. **Execute tasks** — wave-parallel where provably safe, else sequential:
-   - **Plan waves first**: `python tools/wave_planner.py plan <path/to/tasks.md>`.
+   - **Plan waves first**: `python3 tools/wave_planner.py plan <path/to/tasks.md>`.
      The planner groups tasks into ordered waves — tasks in the same wave have
      all deps satisfied by an earlier wave AND touch DISJOINT files. It is
      CONSERVATIVE: empty / glob / overlapping `Touches`, or a dependency cycle,
@@ -108,14 +108,14 @@ Tất cả trong cùng phiên autonomy. DEV không phải confirm giữa các b�
    - **Else, for each wave in order:**
      - **1-task wave** → run it via the per-task procedure below (inline).
      - **≥2-task wave** (provably file-disjoint):
-       1. `python tools/wave_planner.py emit <tasks.md> --wave <i>` — writes
+       1. `python3 tools/wave_planner.py emit <tasks.md> --wave <i>` — writes
           `.agent-toolkit/.parallel_wave.json`; `parallel_conflict_guard` now
           DENIES any sub-agent Edit outside its own task's `Touches` (its zone).
        2. Spawn **one sub-agent per task in the wave, in a SINGLE message**
           (Agent tool). Give each: its task block + its `Touches` (its zone) +
           "Edit ONLY files in your zone; run your Verification; report PASS/FAIL
           + evidence." Sub-agents do NOT commit.
-       3. **Wait for all**, then `python tools/parallel_wave.py declare-done`
+       3. **Wait for all**, then `python3 tools/parallel_wave.py declare-done`
           (release the zone lock before the next wave).
        4. Record each task's PASS/FAIL; any FAIL → the per-task 3-option prompt
           below. Do NOT start the next wave until the current one resolves.

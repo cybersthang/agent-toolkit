@@ -1,0 +1,28 @@
+---
+description: {{PROJECT_NAME}} Odoo 19 project context and agent rules - always apply
+alwaysApply: true
+---
+
+**Stack**: Odoo 19 ({{STACK_LANGUAGE}} {{STACK_LANGUAGE_VERSION}}, OWL v2 frontend, PostgreSQL >= 14)
+**Root**: `{{WORKSPACE_ROOT}}`
+**Database**: `{{DEFAULT_DB}}`
+**Python**: `{{PYTHON_BIN}}` (3.11+ required by Odoo 19)
+**Run**: `{{PYTHON_BIN}} odoo-bin -d {{DEFAULT_DB}}` (cwd: `{{WORKSPACE_ROOT}}`)
+
+**Agent rules**:
+- Keep output concise and result-focused.
+- Reply in {{RESPONSE_LANGUAGE}} when the user writes in {{RESPONSE_LANGUAGE}}.
+- Read the target file before editing it.
+- Keep diffs small and stay inside scope.
+- Do not add features outside the request without asking first.
+- Prefer ORM helpers such as `mapped`, `filtered`, and `read_group`.
+- Avoid `search()` / `browse(id)` calls inside loops.
+- Do not introduce `@api.multi` — removed since v14. Recordset is the default.
+- Do not introduce `attrs="{...}"` or `states="..."` in views — both removed since v17.
+- Use `_compute_display_name`, not `name_get`, for display-string overrides.
+- Use `@api.model_create_multi` for any `create()` override.
+
+**Odoo 19 caveat — read before editing mail code**:
+- `mail.thread` and `mail.activity.mixin` were refactored (mail framework v2). Thread message storage and the follower model changed.
+- Before touching `message_post`, `_track_subtype`, follower logic, activity scheduling, or any subclass of these mixins, open the actual installed Odoo 19 source under the addon root and verify the current API. v18 patterns may compile but behave differently.
+- Run module tests (`--test-tags /<module>`) before claiming a mail-related change works.

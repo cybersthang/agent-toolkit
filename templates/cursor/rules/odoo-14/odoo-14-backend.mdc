@@ -1,0 +1,63 @@
+---
+description: Odoo 14 backend - ORM, views, performance, security, manifest. Single source of truth for "how do I write Odoo 14 code in this project".
+globs: "{{ADDON_GLOBS}}"
+alwaysApply: false
+---
+
+## ORM (Odoo 14 — first version without `@api.multi`)
+
+- Python 3.7+ (3.8 recommended). No Python 2 polyfills, no `from __future__`.
+- `@api.multi` is **removed in 14.0**. Methods are **recordset by default** — do not add or import it. Sweep any leftover decorators from a 13.0 migration.
+- `@api.one` and `@api.returns` remain removed — never introduce them.
+- `@api.model` for class-level methods that do not need a recordset.
+- `@api.model_create_multi` is **required** for `create()` overrides so batch creates work. A single-record `@api.model` `create()` will silently break batch create paths (e.g. import wizards, multi-line invoice creation).
+- `@api.depends`, `@api.constrains`, `@api.onchange` as usual. Declare every dependency explicitly.
+- Call `ensure_one()` when a method assumes one record.
+- Use parameterized SQL only. Batch `write()` and `unlink()` operations.
+- Document every `sudo()` with a one-line reason in code.
+- Prefer ORM over SQL. When SQL writes are unavoidable, invalidate or refresh affected caches.
+
+## Performance
+
+- Avoid `search()` or `browse(id)` inside loops.
+- Prefer `read_group(..., lazy=False)` for grouped counts and sums.
+- Push filtering into domains; do not filter in Python after a broad search.
+- Use `search_count()` instead of `len(search())`.
+- Batch recordset work with `mapped`, `filtered`, grouped domains, and set operations.
+- Keep computed fields prefetch-friendly; declare a complete `@api.depends`.
+- Store computed fields only when they are searched, grouped, sorted, or repeatedly displayed at scale.
+
+## Views and models
+
+- Inheritance edits use `<xpath>` with `position="after|before|inside|replace|attributes"`.
+- `attrs="{...}"` and `states="..."` are **still valid in 14** — keep using them for conditional `invisible` / `readonly` / `required`. (They are only deprecated in 16 and removed in 17; do not pre-migrate.)
+- New widgets shipped in 14.0 (e.g. `widget="image_url"`, refined `domain` evaluation) — check the field type before picking a widget.
+- Keep XML IDs stable across releases.
+- Mail features still use the v1 mixins: `mail.thread` / `mail.activity.mixin` (mail framework v2 lands later).
+- `account.invoice` is fully replaced by `account.move` in 14.0 (the 13.0 partial unification is complete) — never reference `account.invoice` in new code; migrate any leftover references.
+- `_check_company_auto` is not yet mainstream in 14 — guard company crossings manually with explicit domain checks.
+- Use `_sql_constraints` or `@api.constrains` for validation.
+
+## Frontend (the v14 pitfall: two frameworks coexist)
+
+- **OWL framework v1 is introduced in 14.0**, but it is **not** the whole frontend yet. Only some UI surfaces (mostly chatter / discuss / a few new widgets) ship as OWL components. The bulk of form views, list views, kanban, and existing widgets remain on **jQuery + legacy QWeb**.
+- **Always check which framework the target widget uses before patching**:
+  - Look for `owl.Component` / `static/src/components/**/*.js` + `.xml` with OWL `t-component` / hooks → patch as OWL v1.
+  - Look for `odoo.define('module.name', function (require) { ... })` AMD modules and `web.AbstractAction` / `FormController` / `FieldWidget` → patch as legacy jQuery/QWeb.
+- Do not port a legacy widget to OWL inside an unrelated task — that is a migration, not a bugfix.
+- Do not introduce new jQuery selectors inside an OWL component, and do not call `this.$el` on a class that does not extend a legacy Widget.
+
+## Security and style
+
+- Keep `ir.model.access.csv` and `ir.rule` aligned with new models.
+- Raise `UserError` for business rules, `ValidationError` for invalid data.
+- Use `_logger`, never `print()`.
+- Imports order: stdlib, third-party, `odoo`, local — in that order.
+- Respect multi-company and record rules unless the task explicitly requires privileged behaviour.
+
+## Verification
+
+- Module install/update: `{{PYTHON_BIN}} odoo-bin -u <module> --stop-after-init -d {{DEFAULT_DB}}`.
+- Module tests: `--test-enable --test-tags /<module> --stop-after-init`.
+- For algorithm correctness against real data, prefer `realdata_test.eval_orm_expression` and `consistency_check_eval` over UI-driven repro.
+- PostgreSQL >= 10 is required by 14.0; verify the cluster version before reproducing DB-level issues.

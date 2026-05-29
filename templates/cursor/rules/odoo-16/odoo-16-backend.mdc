@@ -1,0 +1,62 @@
+---
+description: Odoo 16 backend - ORM, views, performance, security, manifest. Single source of truth for "how do I write Odoo 16 code in this project".
+globs: "{{ADDON_GLOBS}}"
+alwaysApply: false
+---
+
+## ORM (Odoo 16 — pivot release between 12/13/14 and 17)
+
+- Methods are **recordset by default**. `@api.multi` is **removed**; do not import or apply it.
+- `@api.model` for class-level methods that don't need a recordset.
+- `@api.model_create_multi` is **required** when overriding `create()`. A single-record `@api.model` `create()` override will silently break batch creates.
+- `@api.depends`, `@api.constrains`, `@api.onchange`, `@api.depends_context` as in earlier versions.
+- `name_get()` is still the standard display-name contract (`_compute_display_name` arrives in 17 — do not back-port it).
+- Cache flush: prefer the new `recordset.flush_recordset([fnames])` / `self.env.flush_all()` API over ad-hoc `invalidate_cache` calls when an SQL statement must see in-memory writes.
+- Call `ensure_one()` when a method assumes one record.
+- Use parameterized SQL only. Batch `write()` and `unlink()` operations.
+- Document every `sudo()` with a one-line reason in code.
+- Prefer ORM over SQL. When SQL writes are unavoidable, `flush_recordset` first and invalidate or refresh affected caches after.
+
+## Multi-company
+
+- Set `_check_company_auto = True` on **any new model** that has company-scoped `Many2one` fields (i.e. fields whose comodel carries `company_id`). The ORM then validates cross-company references automatically — do not re-implement these checks by hand.
+- Declare `check_company=True` on the company-scoped relational fields and add a `company_id` field with the standard default.
+
+## Performance
+
+- Avoid `search()` or `browse(id)` inside loops.
+- Prefer `read_group(..., lazy=False)` for grouped counts and sums.
+- Push filtering into domains; do not filter in Python after a broad search.
+- Use `search_count()` instead of `len(search())`.
+- Batch recordset work with `mapped`, `filtered`, grouped domains, and set operations.
+- Keep computed fields prefetch-friendly; declare a complete `@api.depends`.
+- Store computed fields only when they are searched, grouped, sorted, or repeatedly displayed at scale.
+
+## Views and models
+
+- Inheritance edits use `<xpath>` with `position="after|before|inside|replace|attributes"`.
+- Keep XML IDs stable across releases.
+- **New code**: write view conditions as Python expressions on the field — `invisible="…"`, `readonly="…"`, `required="…"`. This is the 17-ready form and is already supported in 16.
+- **Legacy code**: `attrs="{...}"` and `states="…"` still parse in 16 (deprecated). Leave existing usages alone unless the task is an explicit migration; do not introduce new ones.
+- Keep model methods small and focused. Use `_sql_constraints` or `@api.constrains` for validation.
+
+## Frontend (OWL v2 by default)
+
+- The web client is OWL v2 in 16; new components use the **class-based** syntax (`class Foo extends Component { setup() {…} }`), with `static template = "…"` and explicit `static props`.
+- Templates use OWL XML with `t-*` directives.
+- Legacy OWL v1 widgets and any remaining `Widget`-style components are migration targets, not patterns to copy.
+- Do not introduce new jQuery selectors.
+
+## Security and style
+
+- Keep `ir.model.access.csv` and `ir.rule` aligned with new models.
+- Raise `UserError` for business rules, `ValidationError` for invalid data.
+- Use `_logger`, never `print()`.
+- Imports order: stdlib, third-party, `odoo`, local — in that order.
+- Respect multi-company and record rules unless the task explicitly requires privileged behaviour.
+
+## Verification
+
+- Module install/update: `{{PYTHON_BIN}} odoo-bin -u <module> --stop-after-init -d {{DEFAULT_DB}}` against the dev DB.
+- Module tests: `--test-enable --test-tags /<module> --stop-after-init`.
+- For algorithm correctness against real data, prefer `realdata_test.eval_orm_expression` and `consistency_check_eval` over UI-driven repro.

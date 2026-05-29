@@ -1,0 +1,25 @@
+---
+description: {{PROJECT_NAME}} Odoo 14 project context and agent rules - always apply
+alwaysApply: true
+---
+
+**Stack**: Odoo 14 ({{STACK_LANGUAGE}} {{STACK_LANGUAGE_VERSION}}, OWL v1 + jQuery/QWeb hybrid frontend, PostgreSQL >= 10)
+**Root**: `{{WORKSPACE_ROOT}}`
+**Custom addons**: see `agent-toolkit.config.json` -> `addon_roots[0]`
+**Database**: `{{DEFAULT_DB}}`
+**Python**: `{{PYTHON_BIN}}` (3.7+, 3.8 recommended)
+**Run**: `{{PYTHON_BIN}} odoo-bin -d {{DEFAULT_DB}}` (cwd: `{{WORKSPACE_ROOT}}`). The toolkit exposes the venv path as `{{ENV_PREFIX}}_PYTHON_BIN` in `.codex/mcp.local.env`.
+
+**Agent rules**:
+- Keep output concise and result-focused.
+- Reply in {{RESPONSE_LANGUAGE}} when the user writes in {{RESPONSE_LANGUAGE}}; otherwise mirror the user's language.
+- Read the target file before editing it.
+- Keep diffs small and stay inside scope.
+- Do not add features outside the request without asking first.
+- Prefer ORM helpers such as `mapped`, `filtered`, and `read_group`.
+- Avoid `search()` / `browse(id)` calls inside loops.
+- Do not introduce `@api.multi` — it is removed in Odoo 14. Recordset is the default.
+- Use `@api.model_create_multi` for `create()` overrides — single-record `create()` overrides silently break batch creates.
+- `attrs="{...}"` and `states="..."` remain valid in 14 — do not strip them.
+- `account.invoice` is gone in 14 — use `account.move` (with `move_type`) for invoice work.
+- Frontend has **two coexisting frameworks** (OWL v1 and legacy jQuery/QWeb). Always identify which one the target widget uses before patching; do not port between them inside an unrelated task.

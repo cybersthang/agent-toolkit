@@ -1,0 +1,23 @@
+---
+description: {{PROJECT_NAME}} Odoo 15 project context and agent rules - always apply
+alwaysApply: true
+---
+
+**Stack**: Odoo 15 ({{STACK_LANGUAGE}} {{STACK_LANGUAGE_VERSION}}, OWL v1 + legacy QWeb/jQuery, PostgreSQL ≥ 12)
+**Root**: `{{WORKSPACE_ROOT}}`
+**Database**: `{{DEFAULT_DB}}`
+**Python**: `{{PYTHON_BIN}}` (Odoo 15 requires Python 3.8+)
+**Run**: `{{PYTHON_BIN}} odoo-bin -d {{DEFAULT_DB}}` (cwd: `{{WORKSPACE_ROOT}}`)
+
+**Agent rules**:
+- Keep output concise and result-focused.
+- Reply in {{RESPONSE_LANGUAGE}} when the user writes in {{RESPONSE_LANGUAGE}}.
+- Read the target file before editing it.
+- Keep diffs small and stay inside scope.
+- Do not add features outside the request without asking first.
+- Prefer ORM helpers such as `mapped`, `filtered`, and `read_group`.
+- Avoid `search()` / `browse(id)` calls inside loops.
+- Do not introduce `@api.multi` — removed since 14; recordset is the default. Use `@api.model_create_multi` for `create()` overrides.
+- `attrs="{...}"` and `states="..."` are **still valid** in 15. Match the file's existing style; do not pre-emptively migrate to 17-style inline `invisible="<expr>"` unless the task asks.
+- **OWL is the default for new components**, but legacy QWeb/jQuery widgets continue to work. Do NOT rewrite them wholesale.
+- **The legacy kanban JS framework was removed in 15** — before touching a kanban widget, map every dependant via `codebase` MCP; deleting blindly will break dependants.

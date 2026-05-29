@@ -1,0 +1,63 @@
+---
+description: Odoo 20 backend - ORM, views, performance, security, manifest. Cutting-edge release; rules are best-effort stub-extends-v19 until verified.
+globs: "{addons,custom_addons,enterprise,odoo/addons}/**/*"
+alwaysApply: false
+---
+
+> **Stub-extends-v19 disclaimer.** Odoo 20 is the most recent stable release. The toolkit's coverage is extrapolated from v19 trajectory. Verify any non-trivial pattern against the actually installed Odoo source (`codebase` MCP: `search_text` / `find_inheritance_chain` / `search_model_definitions`) before assuming v19 carryover.
+
+## ORM (Odoo 20)
+
+- Methods are **recordset by default**. `@api.multi` was removed in v14 and must never reappear.
+- `@api.model` for class-level methods that don't need a recordset.
+- `@api.model_create_multi` is **mandatory** when overriding `create()`. Single-record `@api.model` `create()` overrides silently break batch create.
+- `@api.depends`, `@api.constrains`, `@api.onchange`, `@api.depends_context` as in 17–19.
+- `_compute_display_name` is the standard hook for display names (no `name_get` overrides).
+- `_check_company_auto = True` is standard on multi-company models — pair it with `company_id` and a matching `check_company` on related fields.
+- `ensure_one()` when a method assumes one record.
+- Parameterized SQL only. Batch `write()` and `unlink()`.
+- Document every `sudo()` with a one-line reason.
+- Prefer ORM over SQL. When SQL writes are unavoidable, invalidate or refresh affected caches (`self.env.invalidate_all()` / `modified(...)`).
+
+## Performance
+
+- No `search()` / `browse(id)` inside loops.
+- `read_group(..., lazy=False)` for grouped counts and sums.
+- Push filtering into domains; never filter in Python after a broad search.
+- `search_count()` over `len(search())`.
+- Batch with `mapped`, `filtered`, `filtered_domain`, grouped domains, set operations.
+- Computed fields: declare a complete `@api.depends`. Store only when searched / grouped / sorted / displayed at scale.
+
+## Views and models
+
+- Inheritance edits use `<xpath>` with `position="after|before|inside|replace|attributes"`.
+- View conditions are **Python expressions**: `invisible="…"`, `readonly="…"`, `required="…"`, `column_invisible="…"`. **`attrs="{...}"` and `states="…"` are removed since 17 — never reintroduce.**
+- Keep XML IDs stable across releases.
+- `account.move` is the canonical invoice/journal-entry model (no `account.invoice` carryover).
+- Verify any new widget against the installed `web` / `web_enterprise` source — widget catalogue keeps evolving.
+
+## Frontend (OWL)
+
+- Mature **OWL v2**: class-based components, declarative `.xml` templates, hooks-style composition.
+- No jQuery, no QWeb-only widgets, no legacy `Widget` from 12.x.
+- Templates use OWL XML with `t-*` directives + `setup()` lifecycle.
+- Verify component APIs against installed `web/static/src/` before mirroring v17/v19 examples — OWL surface drifts between majors.
+
+## Mail framework
+
+- Assume **mail framework v2** (carrying over from 19). Before touching mail subtypes, message-post hooks, or notification routing, **grep installed source** for the symbol — v2 reshuffled internals vs v1.
+
+## Security and style
+
+- Keep `ir.model.access.csv` and `ir.rule` aligned with new models.
+- Raise `UserError` for business rules, `ValidationError` for invalid data.
+- Use `_logger`; never `print()`.
+- Imports order: stdlib, third-party, `odoo`, local.
+- Respect multi-company and record rules unless the task explicitly requires privileged behaviour.
+
+## Verification
+
+- Module install/update: `{{PYTHON_BIN}} odoo-bin -u <module> --stop-after-init -d {{DEFAULT_DB}}`.
+- Module tests: `--test-enable --test-tags /<module> --stop-after-init`.
+- For algorithm correctness against real data, prefer `realdata_test.eval_orm_expression` + `consistency_check_eval`.
+- PostgreSQL ≥ 14 required, 16 preferred — check `SHOW server_version;` if behaviour differs from staging.

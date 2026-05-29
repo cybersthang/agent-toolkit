@@ -11,6 +11,7 @@ alwaysApply: false
 - `@api.model_create_multi` to override `create()` so batch creates work properly. Single-record `@api.model` `create()` overrides will silently break batch create.
 - `@api.depends`, `@api.constrains`, `@api.onchange`, `@api.depends_context` as in earlier versions.
 - Call `ensure_one()` when a method assumes one record.
+- `_compute_display_name` replaces the legacy `name_get()` (removed in 17). Declare `@api.depends(...)` on the fields the display name reads. Overriding `name_get` is no longer the canonical path.
 - Use parameterized SQL only. Batch `write()` and `unlink()` operations.
 - Document every `sudo()` with a one-line reason in code.
 - Prefer ORM over SQL. When SQL writes are unavoidable, invalidate or refresh affected caches.

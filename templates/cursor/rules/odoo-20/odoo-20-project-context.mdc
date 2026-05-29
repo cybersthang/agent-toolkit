@@ -1,0 +1,27 @@
+---
+description: {{PROJECT_NAME}} Odoo 20 project context and agent rules - always apply
+alwaysApply: true
+---
+
+**Stack**: Odoo 20 ({{STACK_LANGUAGE}} {{STACK_LANGUAGE_VERSION}}, OWL v2 frontend, PostgreSQL ≥ 14 / 16 preferred)
+**Root**: `{{WORKSPACE_ROOT}}`
+**Database**: `{{DEFAULT_DB}}`
+**Python**: `{{PYTHON_BIN}}` (3.11+, 3.12 standard)
+**Run**: `{{PYTHON_BIN}} odoo-bin -d {{DEFAULT_DB}}` (cwd: `{{WORKSPACE_ROOT}}`)
+
+> **Heads-up — stub-extends-v19.** v20 is the most recent stable release; the toolkit's rule coverage for it is extrapolated from v19. Before relying on any pattern that materially differs from v19, **verify against the actually installed Odoo source** via the `codebase` MCP. See `odoo-20-generic.mdc` for the full disclaimer.
+
+**Agent rules**:
+- Keep output concise and result-focused.
+- Reply in {{RESPONSE_LANGUAGE}} when the user writes in {{RESPONSE_LANGUAGE}}.
+- Read the target file before editing it.
+- Keep diffs small and stay inside scope.
+- Do not add features outside the request without asking first.
+- Prefer ORM helpers such as `mapped`, `filtered`, `filtered_domain`, `read_group`.
+- Avoid `search()` / `browse(id)` calls inside loops.
+- Do not introduce `@api.multi` — removed since v14. Recordset is the default.
+- Do not introduce `attrs="{...}"` or `states="…"` in views — both removed since v17.
+- Override `_compute_display_name`, not `name_get`.
+- Use `@api.model_create_multi` for any `create()` override.
+- For OWL components and mail-framework code, **grep installed source first** (`codebase.search_text`) before mirroring v17/v19 examples — both surfaces have drifted.
+- When the installed Odoo source disagrees with these rules, the installed source wins; capture the delta as an ADR.

@@ -1,0 +1,57 @@
+---
+description: Odoo 13 backend - ORM, views, performance, security, manifest. Single source of truth for "how do I write Odoo 13 code in this project".
+globs: "{{ADDON_GLOBS}}"
+alwaysApply: false
+---
+
+## ORM (Odoo 13 — transitional between 12 and 14)
+
+- Python 3.6+ only; Python 2 support was dropped in 13.0. No `from __future__` polyfills.
+- `@api.multi` is **deprecated but still tolerated** in 13.0 (removed in 14.0). Prefer **no decorator** — recordsets are the default. Do not add new `@api.multi`; leave existing ones for migration sweeps.
+- `@api.one` and `@api.returns` are **removed** in 13.0 — never introduce them.
+- `@api.model` for class-level methods that do not need a recordset.
+- `@api.model_create_multi` is **available** in 13.0 — use it for `create()` overrides so batch creates work. A single-record `@api.model` `create()` will silently break batch create paths.
+- `@api.depends`, `@api.constrains`, `@api.onchange` as usual. `@api.depends` evaluation is stricter than in 12 — declare every dependency.
+- Call `ensure_one()` when a method assumes one record.
+- Use parameterized SQL only. Batch `write()` and `unlink()` operations.
+- Document every `sudo()` with a one-line reason in code.
+- Prefer ORM over SQL. When SQL writes are unavoidable, invalidate or refresh affected caches.
+
+## Performance
+
+- Avoid `search()` or `browse(id)` inside loops.
+- Prefer `read_group(..., lazy=False)` for grouped counts and sums.
+- Push filtering into domains; do not filter in Python after a broad search.
+- Use `search_count()` instead of `len(search())`.
+- Batch recordset work with `mapped`, `filtered`, grouped domains, and set operations.
+- Keep computed fields prefetch-friendly; declare a complete `@api.depends`.
+- Store computed fields only when they are searched, grouped, sorted, or repeatedly displayed at scale.
+
+## Views and models
+
+- Inheritance edits use `<xpath>` with `position="after|before|inside|replace|attributes"`.
+- `attrs="{...}"` and `states="..."` are **still valid in 13** — keep using them for conditional `invisible` / `readonly` / `required`. (They are only removed in 17.0; do not pre-migrate.)
+- Keep XML IDs stable across releases.
+- Mail features still use `mail.thread` / `mail.activity.mixin` (no v2 mixin yet in 13).
+- `account.invoice` model still exists in 13.0 alongside the partial `account.move` unification — confirm which one a target field lives on before editing accounting code.
+- Use `_sql_constraints` or `@api.constrains` for validation.
+
+## Frontend
+
+- jQuery + QWeb templates only. **OWL does not exist in 13.0** (introduced in 14.0). Do not write `.owl.xml` components or `@odoo-module` JS modules.
+- JS lives under `static/src/js/` as `odoo.define('module.name', function (require) { ... })` AMD modules.
+- Reuse `web.AbstractAction`, `FormController`, `FieldWidget` base classes from the legacy web module.
+
+## Security and style
+
+- Keep `ir.model.access.csv` and `ir.rule` aligned with new models.
+- Raise `UserError` for business rules, `ValidationError` for invalid data.
+- Use `_logger`, never `print()`.
+- Imports order: stdlib, third-party, `odoo`, local — in that order.
+- Respect multi-company and record rules unless the task explicitly requires privileged behaviour. `_check_company_auto` does **not** apply in 13 — guard company crossings manually.
+
+## Verification
+
+- Module install/update: `{{PYTHON_BIN}} odoo-bin -u <module> --stop-after-init -d {{DEFAULT_DB}}`.
+- Module tests: `--test-enable --test-tags /<module> --stop-after-init`.
+- For algorithm correctness against real data, prefer `realdata_test.eval_orm_expression` and `consistency_check_eval` over UI-driven repro.

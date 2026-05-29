@@ -1,0 +1,70 @@
+---
+description: Generic, module-agnostic Odoo 14 rules. Hard-coded module names are forbidden in invariant rules; everything is discovered at runtime.
+alwaysApply: true
+---
+
+# Odoo 14 — Generic Rules (Module-Agnostic)
+
+This file applies to **any** addon under any addon root. Never embed a specific module name into an invariant rule. When you need a concrete module, discover it at runtime via the `codebase` MCP.
+
+## Discovery (always before edits)
+
+1. `workspace_status` -> confirm addon roots.
+2. `discover_modules({ root_hint })` -> narrow to one module.
+3. `read_manifest({ module_path })` -> understand depends and data load order.
+4. `find_inheritance_chain({ model })` -> see every place a model is extended.
+5. `list_test_targets({ module_path })` -> learn the test entry points.
+
+## Invariants (Odoo 14)
+
+- **Models**: `_name` for new model, `_inherit` for extension, `_inherits` for delegation. Never declare both `_name` and `_inherit` to the same string in one class.
+- **API**: methods are **recordset by default** — `@api.multi` is removed in 14.0 and must not be added. Use `@api.model` only for class-level methods. `@api.model_create_multi` is **required** for `create()` overrides.
+- **`ensure_one()`**: required when a method assumes a single record.
+- **Loops**: no `search()`, `browse(id)`, `write()`, or `unlink()` inside loops. Push filtering into domains, batch with `mapped` / `filtered` / `read_group`.
+- **Counts**: `search_count(domain)` over `len(search(domain))`.
+- **Computed fields**: declare a complete `@api.depends`. Store only when searched / grouped / sorted at scale.
+- **SQL**: prefer ORM. If SQL is unavoidable, use parameters and invalidate or refresh affected caches when writing.
+- **`sudo()`**: avoided unless clearly required; document the reason in a one-line comment.
+- **Errors**: `UserError` for business rules, `ValidationError` for invalid data.
+- **Logging**: use `_logger`, never `print`.
+- **Imports**: stdlib, third-party, `odoo`, local — in that order.
+- **Accounting**: `account.invoice` is replaced by `account.move` in 14.0 — never reference `account.invoice` in new code.
+
+## Manifest hygiene (any module)
+
+- `data` order: `security/` first, then `data/`, then `views/`, then menus.
+- `depends` lists exactly what the module imports / inherits.
+- `version` follows the existing project pattern (e.g. `14.0.x.y.z`).
+- `installable: True`, `application` only when the module is a top-level app.
+
+## XML / view hygiene
+
+- Inheritance edits use `xpath` with `position="after|before|inside|replace|attributes"`.
+- `attrs="{...}"` and `states="..."` are **valid in 14** — do not strip or pre-migrate them. (They are only removed in 17.)
+- XML IDs are stable across releases.
+
+## Frontend (OWL v1 coexists with jQuery/QWeb)
+
+- OWL v1 ships in 14.0 but covers only a subset of the UI (chatter, discuss, a few new widgets). The rest is still jQuery + legacy QWeb.
+- **Before editing any frontend file, identify the framework**: OWL component (`owl.Component`, `static/src/components/**`) vs legacy AMD module (`odoo.define(...)`, `FormController`, `FieldWidget`). Patching the wrong framework is the most common v14 pitfall.
+- Do not introduce OWL into a legacy widget mid-task; do not introduce jQuery into an OWL component.
+
+## Security / ACL
+
+- Every new model has at least one `ir.model.access.csv` row.
+- Record rules align with the model's `_inherit` chain — check the parent's rules before adding new ones.
+- `_check_company_auto` is not mainstream in 14 — guard company crossings manually.
+
+## Verification recipes (narrowest first)
+
+1. `{{PYTHON_BIN}} odoo-bin -u <module> --stop-after-init -d {{DEFAULT_DB}}` against the dev DB.
+2. `--test-enable --test-tags /<module> --stop-after-init`.
+3. For algorithm correctness: `eval_orm_expression` + `consistency_check_eval`.
+
+## What this rule **does not** mention by design
+
+- Specific module names.
+- Specific menu / model paths.
+- Specific JIRA project keys.
+
+If you need any of those, look them up via the `codebase` MCP or the canonical decisions registry — do not hard-code them here.

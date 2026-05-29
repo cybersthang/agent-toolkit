@@ -1,0 +1,70 @@
+---
+description: Generic, module-agnostic Odoo 15 rules. Hard-coded module names are forbidden in invariant rules; everything is discovered at runtime.
+alwaysApply: true
+---
+
+# Odoo 15 — Generic Rules (Module-Agnostic)
+
+This file applies to **any** addon under any addon root. Never embed a specific module name into an invariant rule. When you need a concrete module, discover it at runtime via the `codebase` MCP.
+
+## Discovery (always before edits)
+
+1. `workspace_status` -> confirm addon roots.
+2. `discover_modules({ root_hint })` -> narrow to one module.
+3. `read_manifest({ module_path })` -> understand depends and data load order.
+4. `find_inheritance_chain({ model })` -> see every place a model is extended.
+5. `list_test_targets({ module_path })` -> learn the test entry points.
+
+## Invariants (Odoo 15)
+
+- **Models**: `_name` for new model, `_inherit` for extension, `_inherits` for delegation. Never declare both `_name` and `_inherit` to the same string in one class.
+- **API**: methods are **recordset by default** — `@api.multi` is removed (since 14) and must not be added. Use `@api.model` only for class-level methods. `@api.model_create_multi` for `create()` overrides.
+- **`ensure_one()`**: required when a method assumes a single record.
+- **Loops**: no `search()`, `browse(id)`, `write()`, or `unlink()` inside loops. Push filtering into domains, batch with `mapped` / `filtered` / `read_group`.
+- **Counts**: `search_count(domain)` over `len(search(domain))`.
+- **Computed fields**: declare a complete `@api.depends`. Store only when searched / grouped / sorted at scale.
+- **SQL**: prefer ORM. If SQL is unavoidable, use parameters and invalidate or refresh affected caches when writing.
+- **`sudo()`**: avoided unless clearly required; document the reason in a one-line comment.
+- **Errors**: `UserError` for business rules, `ValidationError` for invalid data.
+- **Logging**: use `_logger`, never `print`.
+- **Imports**: stdlib, third-party, `odoo`, local — in that order.
+- **Python**: 3.8+ is the runtime contract for 15.
+
+## Manifest hygiene (any module)
+
+- `data` order: `security/` first, then `data/`, then `views/`, then menus.
+- `depends` lists exactly what the module imports / inherits.
+- `version` follows the existing project pattern (e.g. `15.0.x.y.z`).
+- `installable: True`, `application` only when the module is a top-level app.
+
+## XML / view hygiene
+
+- Inheritance edits use `xpath` with `position="after|before|inside|replace|attributes"`.
+- View conditions: **both** `attrs="{...}"` / `states="..."` AND inline `invisible="<expr>"` are valid in 15. Match the surrounding file's existing style; do not flip styles inside one PR. Reserve a full conversion for an explicit 16/17 migration task.
+- XML IDs are stable across releases. Never rename a published XML ID without a migration step.
+- Use modern widgets where available (`widget="domain"`, `widget="json_editor"`, …) rather than hand-rolled inputs.
+
+## Frontend (the v15-specific landmine)
+
+- **OWL v1 is wired in** as the default for new components, but the web client still ships QWeb / jQuery legacy. New widgets → OWL. Old widgets → leave them in their current framework unless the task is an explicit migration.
+- **Legacy kanban JS framework is removed in 15.** Any module still importing it will break at registry boot. Before deleting or rewriting a kanban widget, run `find_inheritance_chain` / `search_text` to map every dependant.
+
+## Security / ACL
+
+- Every new model has at least one `ir.model.access.csv` row.
+- Multi-company models inherit `mail.thread` only when chatter is needed (mail framework is still v1 in 15).
+- Record rules align with the model's `_inherit` chain — check the parent's rules before adding new ones.
+
+## Verification recipes (narrowest first)
+
+1. `{{PYTHON_BIN}} odoo-bin -u <module> --stop-after-init -d {{DEFAULT_DB}}`.
+2. `--test-enable --test-tags /<module> --stop-after-init`.
+3. For algorithm correctness: `eval_orm_expression` + `consistency_check_eval`.
+
+## What this rule **does not** mention by design
+
+- Specific module names.
+- Specific menu / model paths.
+- Specific JIRA project keys.
+
+If you need any of those, look them up via the `codebase` MCP or the canonical decisions registry — do not hard-code them here.

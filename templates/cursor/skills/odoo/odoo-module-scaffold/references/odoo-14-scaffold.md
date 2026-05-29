@@ -101,10 +101,43 @@ class MyModel(models.Model):
 - This XML-inheritance form is the 14 way (verified: manifest `'assets'`
   dict is 15+).
 - For a custom backend widget, the legacy `web.Widget`/jQuery form is the
-  default in 14. OWL exists in 14 but most backend widgets are still legacy.
-  <!-- VERIFY(odoo-14): the exact static/src layout + `/** @odoo-module **/`
-  convention for an OWL component in 14 vs 15 — confirm against a 14.0
-  addon before scaffolding an OWL widget. -->
+  default in 14. OWL exists in 14 (OWL 1.4.11) but most backend widgets are
+  still legacy.
+
+### OWL component scaffold (14 — `odoo.define` + global `owl`, NOT ES6)
+
+Verified against a real 14.0 component
+(`addons/mail/static/src/components/messaging_menu/messaging_menu.js`): in 14
+OWL components are NOT ES6 modules. The `/** @odoo-module **/` header and
+`import`/`export` are **15+ only** (14 has no JS transpiler — verified: no
+`odoo/tools/js_transpiler.py` and no `is_odoo_module` in 14.0
+`assetsbundle.py`). Scaffold a 14 OWL component as:
+
+```
+my_module/
+  static/src/
+    components/my_widget/
+      my_widget.js      # odoo.define(...) wrapper, no /** @odoo-module **/
+      my_widget.xml      # OWL QWeb template <templates><t t-name="...">
+```
+
+```javascript
+// my_module/static/src/components/my_widget/my_widget.js
+odoo.define('my_module/static/src/components/my_widget/my_widget.js', function (require) {
+'use strict';
+
+const { Component } = owl;          // global `owl` (UMD), NOT import from "@odoo/owl"
+
+class MyWidget extends Component {}
+MyWidget.template = 'my_module.MyWidget';
+
+return MyWidget;
+});
+```
+
+Register both the `.js` and the OWL `.xml` template via the XML asset bundle
+above (the `.xml` template goes in `web.assets_backend`'s `qweb` list / a
+`<template>` with the OWL templates).
 
 ## Verification command
 

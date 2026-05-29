@@ -19,12 +19,18 @@ Load when Step 0 detected major = **16**. Structural model is
 ## Test framework classes (Odoo 16)
 
 - `TransactionCase` — sub-transaction per test (same as v17).
-- `SavepointCase` — **still present in 16** as a distinct class; the full
-  merge of savepoint behaviour into `TransactionCase` is a later-version
-  cleanup. (Verified-tentative — see flag below.) For new 16 tests,
-  `TransactionCase` is the safe default; if a 16 codebase uses
-  `SavepointCase`, do not flag it as removed.
-  <!-- VERIFY(odoo-16): exact status of SavepointCase in 16.0 — distinct class vs alias of TransactionCase. Confirm against odoo/odoo 16.0 odoo/tests/common.py before asserting either in a customer-facing report. -->
+- `SavepointCase` — **present in 16.0 but already deprecated and merged
+  into `TransactionCase`** — it is NOT a distinct implementation. In 16.0
+  it is defined as `class SavepointCase(TransactionCase)` with no body
+  except an `__init_subclass__` that emits a `DeprecationWarning`:
+  *"Deprecated class SavepointCase has been merged into TransactionCase"*
+  (verified: odoo/odoo 16.0 `odoo/tests/common.py`). So the savepoint
+  merge happened **in 16, not a later version** — `SavepointCase` is just
+  a deprecated thin subclass. For new 16 tests use `TransactionCase`
+  (every `TransactionCase` already gets a savepoint per test). If a 16
+  codebase uses `SavepointCase` it still works (it IS `TransactionCase`)
+  but will log a deprecation warning — flag new `SavepointCase` use as
+  LOW (deprecated alias), do NOT flag it as "removed".
 - `HttpCase` — controller/browser tests; `self.url_open` works (same as v17).
 - `tagged()` decorator for filtering test runs (same as v17).
 

@@ -3,10 +3,21 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
-## [Unreleased] — Odoo 13-16 skill references (completes 12-17; 18-20 partial)
+## [Unreleased] — Odoo skill references: full 12-20 parity (7 types × 9 versions)
 
-Note: v12-17 now have all 7 reference types; v18-20 still ship 5/7
-(missing multicompany + perf) — tracked as follow-up.
+Now COMPLETE: every Odoo major 12→20 ships all 7 reference types
+(`patterns`, `rules`, `pitfalls`, `scaffold`, `multicompany`, `perf`,
+`tdd-pitfalls`). v13-16 added (28 files); v18-20 finished by adding the 5
+missing `odoo-18/19/20-multicompany.md` + `odoo-19/20-perf.md` (routing
+in the multi-company + performance skills now loads them per-version, not
+a v17 fallback). All 7 skills' Step-0 routing tables load the dedicated
+`odoo-<N>-*.md` for 13-20 (no more orphaned files). The 14 v13-16 `VERIFY`
+flags were source-verified against the odoo/odoo branch and resolved inline
+(e.g. v13 `norecompute()` is a no-op `api.py:704`; v14 OWL is 1.4.11 on the
+global `owl` namespace, `/** @odoo-module **/` is 15+; v15 `flush()` is the
+only flush method — fixing a wrong `flush_all` instruction; v16 `fields.Json`
+exists as beta). Only genuinely-unverifiable items remain flagged: the v19
+`res.currency._convert` signature and v20 (pre-GA, master) deltas.
 
 Closes the Q4-audit gap: v13/14/15/16 had ZERO version-specific skill
 references (they cascaded to v12/v17). Adds **28 files** — 7 reference types

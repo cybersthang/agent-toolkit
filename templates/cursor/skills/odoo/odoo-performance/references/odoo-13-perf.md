@@ -71,7 +71,20 @@ Unchanged from v12 — see odoo-12-perf.md §"`@api.depends` with
 `store=True`". Long stored-compute chains cost real time on every write;
 measure with `env.cr.sql_log = True`.
 
-<!-- VERIFY(odoo-13): a community report (odoo/odoo#38178) claims `env.norecompute()` "has no effect in v13"; the context manager still exists in 13.0 models.py. If a perf finding hinges on manual recompute batching via `norecompute()`, DEV must confirm whether it actually defers recomputation in 13. -->
+## `env.norecompute()` does NOT batch recomputes in 13 — deprecated no-op
+
+Do NOT base a 13 perf finding on `env.norecompute()` deferring work — it
+is a no-op. In 13.0 `odoo/api.py` (line ~704) the `@contextmanager` body
+is just `yield`, docstring *"Delay recomputations (deprecated: this is
+not the default behavior)."* (the manager lives on `Environment` in
+`api.py`; `models.py` only *uses* it at ~line 3380). This confirms
+community report odoo/odoo#38178 ("no effect in v13"). Recomputation in
+13 is already deferred lazily via the env `tocompute` set and flushed on
+read/commit, so manual `norecompute()` batching is neither needed nor
+effective. If you see ported v11/v12 code wrapping writes in
+`with self.env.norecompute():` expecting fewer recomputes, treat it as a
+no-op — the batching it once provided is gone; rely on the built-in
+deferred-compute / `flush()` mechanism instead.
 
 ## `read_group(lazy=False)` behavior in 13
 

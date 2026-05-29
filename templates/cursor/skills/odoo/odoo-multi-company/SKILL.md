@@ -48,7 +48,9 @@ Then load the matching reference:
 | 15 | load `references/odoo-15-multicompany.md` |
 | 16 | load `references/odoo-16-multicompany.md` (+ note: backports some v17 conventions) |
 | 17 | `references/odoo-17-multicompany.md` |
-| 18 / 19 / 20 | apply `odoo-17-multicompany.md` (no dedicated delta written yet — re-check the target major's multi-company release notes before relying on this for an audit) + flag LOW |
+| 18 | load `references/odoo-18-multicompany.md` (cascades to v17; ORM renames + `check_company` rules + `name_get`→`_compute_display_name`) |
+| 19 | load `references/odoo-19-multicompany.md` (cascades to v18→v17; `read_group`→`_read_group`/`formatted_read_group`) |
+| 20 | load `references/odoo-20-multicompany.md` (**PRE-GA** — cascade stub from v19→v18→v17; flag any 20-specific finding LOW / version-tentative) |
 
 Currency conversion is **not version-locked** — always load
 `references/odoo-multi-currency.md` regardless of detected version.

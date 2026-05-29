@@ -14,7 +14,7 @@ gone and `create()` is batch.
 | Batch-create test asserts wrong record count | Tested `create()` is single-record while test passes a `vals_list` | Override with `@api.model_create_multi`; pass/assert on the list form (v14+) |
 | Constraint test silently passes | `_constrains` fires on write not pre-validated create | Force a `record.write({...})` after create — unchanged from v12 |
 | Mock partner `email` rejected | Default email validator | Use `<prefix>.test@example.com` — unchanged from v12 |
-| `@api.depends` test never recomputes | Reading a stored compute on a non-flushed record | Flush before reading; verify the exact 15.0 flush method name (see below) |
+| `@api.depends` test never recomputes | Reading a stored compute on a non-flushed record | Flush before reading with `record.flush()` (see below) — `env.flush_all()`/`flush_recordset()` do NOT exist in 15.0 |
 | OWL component test fails to mount in a tour | Missing `/** @odoo-module **/` header or `owl="1"` template attr | Add the v15 header / attr (web-verified) |
 
 ## Test framework classes (Odoo 15)
@@ -28,7 +28,21 @@ gone and `create()` is batch.
   in v15.
 - No async test helpers — Odoo 15 ORM is sync.
 
-<!-- VERIFY(odoo-15): exact flush API on the test recordset in 15.0 (record.flush() vs env.flush_all()/flush_recordset() — the rename spans 13–16). Confirm against 15.0 models.py before asserting a name in test docs. -->
+## Flush API in v15 — `record.flush()`, NOT `flush_all()`/`flush_recordset()`
+
+In a v15 test, flush a recordset with **`record.flush()`**. The 15.0 ORM
+exposes exactly one flush method on `BaseModel`:
+`flush(self, fnames=None, records=None)` (verified: `odoo/models.py`
+line 5668 in odoo/odoo 15.0). Usage:
+
+- `record.flush()` — flush everything (all pending computes + writes).
+- `record.flush(['field_a', 'field_b'])` — limit to named fields.
+- `self.env['my.model'].flush(fnames, records=recs)` — scoped.
+
+The `env.flush_all()` / `flush_recordset()` / `flush_model()` names do
+**NOT** exist in 15.0 — they are the **Odoo 16** rename (`flush()` was
+split/renamed into `env.flush_all()`, `flush_recordset()`,
+`flush_model()` in v16). Do not use them in v15 tests.
 
 ## Hard rules (Odoo 15 TDD)
 

@@ -104,11 +104,12 @@ registry.category("actions").add("my_module.my_widget", MyWidget);
 ```
 
 v15 OWL specifics (web-verified deltas vs the v17 template):
-- OWL is the **1.x era** in v15; the global is `owl` (e.g.
+- OWL is the **1.x era** in v15 — the bundled version is **`1.4.11`**
+  (verified: `addons/web/static/lib/owl/owl.js` in odoo/odoo 15.0 has
+  `__info__.version = '1.4.11'`). The global is `owl` (e.g.
   `const { useState } = owl.hooks;` / `owl.Component`). The modern
   `import { Component } from "@odoo/owl"` package import is the **OWL 2 /
   v16+** form — do NOT use it in v15.
-  <!-- VERIFY(odoo-15): exact bundled OWL version string (docs say "all versions since 14 share the same Owl version" but do not print the number; confirm it is a 1.x tag, not 2.x) -->
 - OWL QWeb templates must carry the `owl="1"` attribute on the root
   `<templates>`/`<t>` node (web-verified, 15.0 owl_components docs).
 - Components register via `registry.category("<cat>").add(...)` — same

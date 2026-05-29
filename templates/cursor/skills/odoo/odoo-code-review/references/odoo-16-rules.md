@@ -110,7 +110,16 @@ Unchanged from v17 — see `odoo-17-rules.md` §F.
   field translations). A 16 module that still reads/writes
   `ir.translation` rows for model field translations → MEDIUM (wrong
   storage model). This migration is NEW in 16 vs 15.
-- <!-- VERIFY(odoo-16): whether a dedicated `fields.Json` field type is exposed in 16.0 (translations use JSONB internally; the public `fields.Json` author-facing type's exact intro version is unconfirmed). The v17 rules assert "Json field type introduced in 17" — do not assume 16 lacks it without checking odoo/odoo 16.0 fields.py. -->
+- **`fields.Json` IS exposed as a public author-facing field type in 16.0**
+  — `class Json(Field)` with `type = 'json'`,
+  `column_type = ('jsonb', 'jsonb')` (verified: odoo/odoo 16.0
+  `odoo/fields.py` line 3207). It is marked *"still in beta"* in 16.0, with
+  searching, indexing and in-place value mutation explicitly NOT
+  implemented (per the class docstring). So the v17 "Json field type
+  introduced in 17" claim is WRONG for 16 — do NOT flag a `fields.Json`
+  declaration in a 16 module as "17-only". Treat it instead as a
+  beta-storage field: reliance on `search()`/`index=`/in-place mutation
+  over a `fields.Json` column (all unimplemented on 16) → MEDIUM.
 
 ## Severity anchors (Odoo-16)
 

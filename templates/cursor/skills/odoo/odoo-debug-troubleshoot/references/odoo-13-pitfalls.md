@@ -40,4 +40,17 @@ The following are identical in 13 — see odoo-12-pitfalls.md:
 - `web.Widget` / `odoo.define` frontend frames (still jQuery in 13; OWL
   backend frames would indicate ported-forward 14+/17 code).
 
-<!-- VERIFY(odoo-13): `self.env.norecompute()` reported to "have no effect in v13" in a community GitHub issue (#38178) — the context manager still exists in 13.0 models.py but its observable effect on recompute batching is unconfirmed. DEV confirm before asserting as a pitfall. -->
+## `self.env.norecompute()` is a no-op in 13 — do NOT rely on it for batching
+
+`self.env.norecompute()` exists in 13 but does NOT defer recomputation —
+it is a deprecated no-op. In 13.0 `odoo/api.py` (line ~704) the context
+manager body is literally just `yield` with the docstring *"Delay
+recomputations (deprecated: this is not the default behavior)."* So
+wrapping a write loop in `with self.env.norecompute():` (the manager
+lives on `Environment` in `api.py`, not `models.py` — `models.py` only
+*uses* it at ~line 3380) changes nothing: recomputes are not batched by
+it. This matches community issue odoo/odoo#38178. Pitfall: porting v11/v12
+code that leaned on `norecompute()` for a perf win will silently lose that
+batching in 13 — recomputation is already lazy/triggered by the new
+`tocompute` mechanism, so remove the call rather than expecting it to
+defer work.

@@ -59,7 +59,14 @@ class MyModel(models.Model):
 
 DELTA vs v12: the v12 `_company_default_get('<model>')` helper is the old
 API. In v15 use `default=lambda s: s.env.company`.
-<!-- VERIFY(odoo-15): whether res.company._company_default_get is fully removed in 15.0 or merely deprecated/still-callable — confirm against 15.0 res_company.py before asserting removal -->
+
+NOTE: `_company_default_get` is **NOT removed in 15.0 — it is deprecated
+but still callable**. In `addons/base/models/res_company.py` (odoo/odoo
+15.0) it is defined as a thin `@api.model` shim that logs a deprecation
+warning and returns `self.env.company`:
+`_logger.warning("The method '_company_default_get' ... is deprecated ...")`.
+So old code calling it won't crash, but new v15 code MUST use
+`default=lambda s: s.env.company`.
 
 ## 4. `_check_company_auto` — automatic company-consistency check (NEW vs v12)
 

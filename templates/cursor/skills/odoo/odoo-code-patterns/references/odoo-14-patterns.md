@@ -121,12 +121,32 @@ return MyWidget;
 ```
 
 Delta vs v12: OWL components *do* exist in 14 (the `owl` runtime is
-bundled). A 14 OWL component uses `Component` from `owl` and the
-`/** @odoo-module **/` header. <!-- VERIFY(odoo-14): exact OWL 1.x import
-path / component API in 14 (`owl.Component` vs `@odoo/owl`) — confirm
-against addons/web/static/lib/owl on the 14.0 branch before asserting an
-OWL template in customer-facing code. --> When in doubt for a 14 widget,
-prefer the legacy `web.Widget` form above (always valid in 14).
+bundled — OWL **1.4.11**, verified `addons/web/static/lib/owl/owl.js` 14.0).
+In 14 OWL is exposed as a **global namespace**, NOT an ES module: the
+library is a UMD bundle ending in `(this.owl = this.owl || {})`, so a 14
+component pulls the class via `const { Component } = owl;` — there is **no**
+`import { Component } from "@odoo/owl"` in 14 (that ESM path is 15+). And
+the `/** @odoo-module **/` header is a **no-op comment in 14** (the
+transpiler that honors it arrived in 15 — see "Hard rules" below); a 14
+component is still wrapped in `odoo.define(...)`. Verified against a real
+14.0 component, `addons/mail/static/src/components/messaging_menu/messaging_menu.js`:
+
+```javascript
+odoo.define('my_module/static/src/components/my_widget/my_widget.js', function (require) {
+'use strict';
+
+const { Component } = owl;          // global owl namespace — NOT @odoo/owl
+const { useState } = owl.hooks;     // hooks live under owl.hooks in 1.x
+
+class MyWidget extends Component {}
+MyWidget.template = 'my_module.MyWidget';
+
+return MyWidget;
+});
+```
+
+When in doubt for a 14 widget, prefer the legacy `web.Widget` form above
+(always valid in 14).
 
 ## Hard rules (Odoo 14 specific)
 

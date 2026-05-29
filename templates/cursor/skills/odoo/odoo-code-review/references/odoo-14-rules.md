@@ -61,11 +61,21 @@ loops → batch; `len(search())` → `search_count`; stored-compute fan-out;
 
 - jQuery / `web.Widget` selectors are **legal** in 14 and are still the
   default for custom backend widgets — do NOT flag as deprecated.
-- OWL exists in 14 (first shipped this version) but most of the web client
-  is the legacy widget framework. An OWL component in a 14 module is
-  legitimate — but verify the import path matches the 14 runtime.
-  <!-- VERIFY(odoo-14): whether `/** @odoo-module **/` is honored in 14 or
-  only 15+ — confirm before flagging its presence/absence in a 14 widget. -->
+- OWL exists in 14 (first shipped this version, OWL 1.4.11) but most of the
+  web client is the legacy widget framework. An OWL component in a 14 module
+  is legitimate — but it must use the **global `owl` namespace**
+  (`const { Component } = owl;`), NOT `import ... from "@odoo/owl"`, and must
+  be wrapped in `odoo.define(...)`.
+- The `/** @odoo-module **/` header is **NOT honored in 14 — it is 15+**
+  (verified: 14.0 has no `odoo/tools/js_transpiler.py` and no
+  `transpile_javascript` / `is_odoo_module` import in
+  `odoo/addons/base/models/assetsbundle.py`; both first appear on the 15.0
+  branch). In 14 the header is just a comment and the file is NOT transpiled,
+  so ES6 `import`/`export` in a 14 asset will **not** resolve — the bundle
+  loads raw and the module errors at runtime. **Flag `import`/`export` (or a
+  load-bearing `/** @odoo-module **/`) in a 14 JS asset as a version
+  mismatch.** A bare `/** @odoo-module **/` comment with no ES6 syntax is
+  harmless (ignored).
 - Asset bundles: new JS / SCSS must be registered via **XML** inheriting
   `web.assets_backend` / `web.assets_frontend`. The manifest `'assets'`
   dict is **15+** (verified) — flag an `'assets': {...}` block in a 14
@@ -123,6 +133,9 @@ fix?"; JIRA URLs only in `.codex/mcp.local.env`).
 - Suggesting `@api.ondelete` — that is 15+; in 14 override `unlink()`.
 - Suggesting the manifest `'assets'` dict — that is 15+; 14 uses XML asset
   bundles.
+- Suggesting ES6 `import`/`export` modules or relying on `/** @odoo-module **/`
+  transpilation — that is 15+; a 14 OWL component uses `odoo.define(...)` +
+  the global `owl` namespace (`const { Component } = owl;`).
 - Suggesting `with_context(force_company=...)` — deprecated and ignored in
   14; use `with_company()`.
 - Re-deriving "what to fix" without consulting

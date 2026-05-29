@@ -38,6 +38,12 @@
 - `odoo.addons.base.models.ir_ui_view._validate_attrs` for malformed `attrs`.
 - A `force_company`/`_company_default_get` deprecation warning in the log
   (not an exception) — signals legacy multi-company code surviving into 14.
-- OWL is present in 14; an OWL stack frame (`owl.`) in a frontend traceback
-  is legitimate. <!-- VERIFY(odoo-14): exact OWL module/runtime namespace in
-  14 frontend tracebacks before asserting a specific OWL frame shape. -->
+- OWL is present in 14 (OWL **1.4.11**, verified
+  `addons/web/static/lib/owl/owl.js` 14.0) and is exposed as a **global
+  namespace**: the lib is a UMD bundle ending in `(this.owl = this.owl || {})`,
+  so the runtime classes are `owl.Component`, `owl.QWeb`, `owl.Store`, with
+  internal machinery `Scheduler` / `Fiber` and the per-instance `__owl__`
+  marker. A 14 frontend (browser) traceback therefore shows frames inside the
+  bundled `owl.js` (e.g. `Component`, `QWeb`, `Scheduler`, `render`) reached
+  via the global `owl` object — there is **no** `@odoo/owl` ESM module path in
+  14 (that is 15+). An `owl.`/`__owl__` frame in a 14 traceback is legitimate.

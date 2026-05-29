@@ -91,14 +91,18 @@ CREATE INDEX IF NOT EXISTS <table>_<col>_idx ON <table> ((data->>'key'));
   `Text`/`Char` with manual `json.loads`/`dumps`; large JSON columns are a
   read-amplification surface, mitigate with `prefetch=False`.
 
-## QWeb `t-cache` — 14 (same as 12)
+## QWeb `t-cache` — NOT honored in 14 (do not rely on it)
 
-`t-cache="<key-expression>"` caches a sub-template render server-side; cache
-key fragments must be **stable strings**. Unchanged from v12 — see
-odoo-12-perf.md "QWeb t-cache". <!-- VERIFY(odoo-14): confirm `t-cache` is
-still honored in the 14 QWeb engine (it was deprecated/removed somewhere
-between 12 and the OWL-era client) before relying on it in a 14 perf
-finding. -->
+`t-cache` is **not a directive in the Odoo 14 server-side QWeb engine**
+(verified `odoo/addons/base/models/qweb.py` 14.0: `_directives_eval_order()`
+is `debug, groups, foreach, if, elif, else, field, esc, raw, tag, call, set`
+— there is no `cache` entry and no `_compile_directive_cache` method; a grep
+for `cache` in 14.0 `qweb.py` returns nothing). It is also absent from 12.0
+`qweb.py`, so the old "same as 12" claim was wrong on both ends. A
+`t-cache="..."` attribute in a 14 template is silently treated as an unknown
+attribute (no caching, no error) — **do NOT base a 14 perf finding on it.**
+For server-side render caching in 14, rely on the ORM/record caches and
+`ir.qweb` compiled-template caching rather than a `t-cache` directive.
 
 ## Frontend perf — legacy widgets default; OWL is new
 

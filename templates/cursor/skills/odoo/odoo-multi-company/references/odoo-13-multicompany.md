@@ -166,8 +166,16 @@ class TestMultiCompany(SavepointCase):
 ```
 
 DELTA vs v12: no `@api.multi` on helper methods (removed in 13). Switch
-the active company in tests via the `allowed_company_ids` context (or
-the `company=` kwarg on `self.env(...)`<!-- VERIFY(odoo-13): confirm the `company=` kwarg on the test `env(...)` constructor is present in 13.0 — confirmed for 17, not source-checked for 13 -->).
+the active company in tests via the `allowed_company_ids` context.
+There is NO `company=` kwarg on the `self.env(...)` constructor in 13 —
+13.0 `odoo/api.py` (line ~485) defines
+`Environment.__call__(self, cr=None, user=None, context=None, su=None)`
+(and `__new__(cls, cr, uid, context, su=False)`), neither of which
+accepts `company`. The active company is derived from the
+`allowed_company_ids` context key, so set it with
+`.with_context(allowed_company_ids=company.ids)` (as in the example
+above), never `self.env(company=...)`. (The `company=` env kwarg used in
+some 14+/17 examples does not exist in 13.)
 
 ## 8. Currency rate lookup in 13
 

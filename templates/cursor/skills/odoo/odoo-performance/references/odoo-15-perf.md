@@ -38,9 +38,12 @@ odoo-12-perf.md "@api.depends with store=True".
 
 In v15 the recompute/flush machinery is the modern (v13+) form: pending
 computes/writes flush before SQL reads. When a perf claim hinges on flush
-timing, call `self.env.flush_all()` / `record.flush_recordset()` shapes
-rather than assuming the v12 `record.flush()` signature.
-<!-- VERIFY(odoo-15): exact flush method names available in 15.0 (flush() vs flush_all/flush_recordset which were renamed across 13–16) — confirm against 15.0 models.py before relying on a specific name -->
+timing, the **only** flush method in 15.0 is `flush(self, fnames=None,
+records=None)` (verified: `odoo/models.py` line 5668 in odoo/odoo 15.0),
+i.e. `record.flush()` / `record.flush(fnames)` /
+`self.env['model'].flush(fnames, records=recs)`. The
+`self.env.flush_all()` / `flush_recordset()` / `flush_model()` names do
+NOT exist in v15 — they are the **Odoo 16** rename. Use `record.flush()`.
 
 ## `read_group(lazy=False)` — Unchanged from v12
 
@@ -76,5 +79,7 @@ indexes in a migration script. Unchanged from v12 — see odoo-12-perf.md
   (unchanged).
 - Frontend bundle perf is governed by the manifest `assets` dict; OWL is
   client-rendered (no server `t-cache`), server QWeb still caches.
-- Verify exact flush/prefetch method names against the 15.0 source when a
-  claim hinges on them (renames happened across 13–16).
+- Flush in v15 is `record.flush()` (single `flush(fnames=None,
+  records=None)` method); `env.flush_all()`/`flush_recordset()` are v16+,
+  not v15. Verify exact prefetch method names against the 15.0 source when
+  a claim hinges on them (renames happened across 13–16).

@@ -21,13 +21,13 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # Import shared resume-state core (hooks dir) + notify (tools dir).
 _HERE = Path(__file__).resolve().parent
-import sys
 sys.path.insert(0, str(_HERE))  # tools/
 sys.path.insert(0, str(_HERE.parent / "templates" / "claude" / "hooks"))
 import notify  # noqa: E402
@@ -37,6 +37,68 @@ except ImportError:  # pragma: no cover — degrade if hooks not on path
     _resume_state = None  # type: ignore
 
 CONFIG_REL = ".agent-toolkit/resilience.json"
+
+
+def _last_tool_use_is_pending(transcript_path: Path,
+                              tail_bytes: int = 262144) -> bool:
+    """Tail-peek the JSONL transcript and return True iff the latest
+    `assistant.tool_use` record has NO matching `user.tool_result`.
+
+    Used as a content-aware suppressor for the mtime-only stall detector:
+    Claude Code does NOT write to the transcript between a `tool_use`
+    emission and its matching `tool_result` arrival, so a long-running
+    Bash / MCP / WebFetch / sub-agent Task freezes mtime even though the
+    agent is mid-tool-call (waiting on a tool reply), NOT idle.
+
+    Reads at most ~256 KiB from the tail; fails OPEN (returns False) on
+    any IO / JSON / decode error so current behavior is preserved on
+    truncated or weird transcripts."""
+    try:
+        with open(transcript_path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            start = max(0, size - tail_bytes)
+            f.seek(start)
+            blob = f.read()
+        text = blob.decode("utf-8", errors="ignore")
+        # If we started mid-line (start > 0), drop the first partial line.
+        lines = text.split("\n")
+        if start > 0 and lines:
+            lines = lines[1:]
+        tool_use_ids: list = []
+        tool_result_ids: set = set()
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if not isinstance(rec, dict):
+                continue
+            msg = rec.get("message")
+            if not isinstance(msg, dict):
+                continue
+            content = msg.get("content")
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                btype = block.get("type")
+                if btype == "tool_use":
+                    tu_id = block.get("id")
+                    if tu_id:
+                        tool_use_ids.append(tu_id)
+                elif btype == "tool_result":
+                    tr_id = block.get("tool_use_id")
+                    if tr_id:
+                        tool_result_ids.add(tr_id)
+        return any(tu not in tool_result_ids for tu in tool_use_ids)
+    except (OSError, ValueError):
+        return False
+
 
 DEFAULTS: Dict[str, Any] = {
     "stall_seconds": 180,
@@ -106,11 +168,49 @@ def autonomy_active(workspace: Path, now: Optional[float] = None) -> bool:
     return now_dt < exp
 
 
+def _active_child_work(workspace: Path, now: float, stall_seconds: int,
+                       projects_root: Optional[Path] = None) -> bool:
+    """True iff a sub-agent / background-workflow transcript under this
+    session is FRESH (mtime within stall_seconds).
+
+    Closes the ASYNC blind spot that `_last_tool_use_is_pending` cannot see:
+    when the agent launches a background Workflow (or background Bash), the
+    `tool_use` returns its `tool_result` IMMEDIATELY and the main loop then
+    AWAITS the async completion. So the main transcript goes silent with NO
+    pending tool_use — yet the session is actively working. The child
+    transcript (under `<proj>/<session>/subagents/**/*.jsonl`, where
+    Workflows also write) is being updated, which proves not-idle.
+
+    Fails OPEN (False) on any error so detection degrades to mtime-only."""
+    try:
+        if projects_root is None:
+            projects_root = Path.home() / ".claude" / "projects"
+        proj = projects_root / encode_project_path(workspace)
+        if not proj.is_dir():
+            return False
+        for p in proj.glob("*/subagents/**/*.jsonl"):
+            try:
+                if now - p.stat().st_mtime <= stall_seconds:
+                    return True
+            except OSError:
+                continue
+    except Exception:  # noqa: BLE001 — best-effort suppressor, never raises
+        return False
+    return False
+
+
 def is_stalled(transcript_path: Optional[Path], autonomy_on: bool,
-               stall_seconds: int, now: float, proc_alive: bool = True) -> bool:
+               stall_seconds: int, now: float, proc_alive: bool = True,
+               check_pending_tool_use: bool = True,
+               workspace: Optional[Path] = None,
+               projects_root: Optional[Path] = None) -> bool:
     """READ-ONLY stall decision. Stalled when autonomy is on AND (the claude
     process is gone OR the transcript has not advanced for > stall_seconds).
-    Busy-but-silent long tasks keep writing the transcript → not stalled."""
+    Two busy-but-silent cases are excluded as NOT idle:
+      - a long SYNCHRONOUS tool call (unmatched `tool_use` at the tail) —
+        `_last_tool_use_is_pending`;
+      - an active ASYNC background Workflow / Bash / sub-agent (a fresh child
+        transcript) — `_active_child_work` (needs `workspace`)."""
     if not autonomy_on:
         return False
     if not proc_alive:
@@ -121,7 +221,13 @@ def is_stalled(transcript_path: Optional[Path], autonomy_on: bool,
         age = now - transcript_path.stat().st_mtime
     except OSError:
         return False
-    return age > stall_seconds
+    if age <= stall_seconds:
+        return False
+    if check_pending_tool_use and _last_tool_use_is_pending(transcript_path):
+        return False  # mid SYNCHRONOUS tool-call (long Bash/MCP/Task) → not idle
+    if workspace is not None and _active_child_work(workspace, now, stall_seconds, projects_root):
+        return False  # active ASYNC background work (Workflow/bg-Bash/sub-agent) → not idle
+    return True
 
 
 def check_once(workspace: Path, transcript_path: Optional[Path],
@@ -134,7 +240,7 @@ def check_once(workspace: Path, transcript_path: Optional[Path],
         now = time.time()
     on = autonomy_active(workspace, now)
     if not is_stalled(transcript_path, on, int(config.get("stall_seconds", 180)),
-                      now, proc_alive):
+                      now, proc_alive, workspace=workspace):
         return ("ok", last_notify_ts)
     cooldown = float(config.get("notify_cooldown", 300))
     if now - last_notify_ts < cooldown:
@@ -362,6 +468,8 @@ def check_subagent_transcripts(workspace: Path,
             continue
         if idle <= threshold:
             continue
+        if _last_tool_use_is_pending(tp):
+            continue  # sub-agent mid-tool-call (long Bash/MCP/Task) → not idle
         key = str(tp)
         if now - last_notify_per_transcript.get(key, 0.0) < cooldown:
             continue

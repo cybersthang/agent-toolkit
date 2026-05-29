@@ -184,6 +184,89 @@ class TestDetect:
         assert any("sub-A" in str(p) for p in result["stalled"])
         assert not any("sub-B" in str(p) for p in result["stalled"])
 
+    def test_pending_tool_use_suppresses_stall(self, ws, tmp_path, monkeypatch):
+        """v0.28 regression — sub-agent mid-tool-call must NOT be flagged.
+
+        Mirrors the main-session fix on `check_subagent_transcripts`:
+        when a sub-agent transcript's last record is an `assistant.tool_use`
+        with no matching `user.tool_result`, the sub-agent is awaiting a
+        long Bash / MCP / Task and is NOT idle."""
+        _seed_autonomy(ws)
+        _seed_manifest(ws, created_offset=-1200)
+        manifest = sup.read_parallel_wave_manifest(ws)
+        proj_root = tmp_path / "proj-root"
+        proj_dir = _projects_dir(proj_root, ws)
+        _make_jsonl(proj_dir, "main", age_seconds=1)
+        # Sub-agent with stale mtime AND unmatched tool_use → mid-tool-call.
+        sub = proj_dir / "sub-A.jsonl"
+        sub.write_text(json.dumps({
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "id": "tu_pending", "name": "Bash",
+                     "input": {"command": "sleep 999"}},
+                ],
+            },
+        }) + "\n", encoding="utf-8")
+        past = time.time() - 600
+        os.utime(sub, (past, past))
+
+        calls = []
+        monkeypatch.setattr(notify, "dispatch",
+                            lambda alert, cfg, ws: calls.append(alert) or {})
+        cfg = {"stall_seconds": 180, "notify_cooldown": 300}
+        result = sup.check_subagent_transcripts(
+            ws, manifest, cfg, projects_root=proj_root,
+            last_notify_per_transcript={})
+        assert result is not None
+        assert len(calls) == 0, "mid-tool-call sub-agent must NOT notify"
+        assert result["stalled"] == [], "no transcripts must be marked stalled"
+
+    def test_completed_tool_use_still_stalls(self, ws, tmp_path, monkeypatch):
+        """Positive control — sub-agent with completed tool_use + stale
+        mtime is still flagged (truly idle between turns)."""
+        _seed_autonomy(ws)
+        _seed_manifest(ws, created_offset=-1200)
+        manifest = sup.read_parallel_wave_manifest(ws)
+        proj_root = tmp_path / "proj-root"
+        proj_dir = _projects_dir(proj_root, ws)
+        _make_jsonl(proj_dir, "main", age_seconds=1)
+        sub = proj_dir / "sub-A.jsonl"
+        lines = [
+            json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "tool_use", "id": "tu_done", "name": "Bash",
+                         "input": {"command": "echo hi"}},
+                    ],
+                },
+            }),
+            json.dumps({
+                "type": "user",
+                "message": {
+                    "content": [
+                        {"type": "tool_result", "tool_use_id": "tu_done",
+                         "content": "hi\n"},
+                    ],
+                },
+            }),
+        ]
+        sub.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        past = time.time() - 600
+        os.utime(sub, (past, past))
+
+        calls = []
+        monkeypatch.setattr(notify, "dispatch",
+                            lambda alert, cfg, ws: calls.append(alert) or {})
+        cfg = {"stall_seconds": 180, "notify_cooldown": 300}
+        result = sup.check_subagent_transcripts(
+            ws, manifest, cfg, projects_root=proj_root,
+            last_notify_per_transcript={})
+        assert result is not None
+        assert len(calls) == 1, "completed tool_use + stale → still notify"
+        assert any("sub-A" in str(p) for p in result["stalled"])
+
     def test_cooldown_suppresses_same_transcript(self, ws, tmp_path, monkeypatch):
         _seed_autonomy(ws)
         _seed_manifest(ws, created_offset=-1200)

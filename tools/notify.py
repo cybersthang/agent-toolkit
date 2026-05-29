@@ -27,7 +27,7 @@ import time
 import urllib.request
 from email.mime.text import MIMEText
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 STALL_ALERT_REL = ".agent-toolkit/.stall_alert.json"
 

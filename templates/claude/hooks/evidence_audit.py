@@ -197,6 +197,13 @@ def main() -> int:
         envelope = json.loads(raw)
     except json.JSONDecodeError:
         sys.exit(0)
+    if not isinstance(envelope, dict):
+        # Non-dict JSON (`null`, a list, a bare string) is not a valid Stop
+        # envelope. Fail open here rather than AttributeError on `.get()` below:
+        # under run_main_safe's fail-CLOSED default (v0.20.0) that exception
+        # would exit 1 and BLOCK the Stop — worst on evidence_audit, the FIRST
+        # Stop hook, whose crash cascades to the whole audit chain.
+        sys.exit(0)
 
     # Don't recurse — Claude Code re-runs the agent if we block; bail out
     # the second time so we never loop forever.

@@ -263,6 +263,8 @@ def _main() -> int:
         envelope = json.loads(raw) if raw.strip() else {}
     except json.JSONDecodeError:
         return _exit_allow(detail="bad-json")
+    if not isinstance(envelope, dict):
+        return _exit_allow(detail="non-dict-envelope")
 
     workspace = _find_workspace(envelope.get("cwd"))
     gaps_path = workspace / OPEN_GAPS_REL

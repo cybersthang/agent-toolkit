@@ -211,7 +211,7 @@ Toolkit is in **active use** on a real Odoo 12 Enterprise
 workspace since May 2026. As illustrative figures from local dogfooding
 (not a benchmark), a typical session shows ~57 hook fire-events, ~26%
 block rate, and ~3.5% bypass rate.
-**30+ hooks** active, **948 unit tests** (as of v0.30.0) in CI (matrix: Ubuntu / macOS /
+**30+ hooks** active, **995 unit tests** (as of v0.30.0) in CI (matrix: Ubuntu / macOS /
 Windows × Python 3.8 / 3.10 / 3.12 — all green).
 The reported coverage % measures `setup.py` + `lib/` only; the enforcement hooks (`templates/claude/hooks/`, ~11k LOC) are ruff-lint-checked and behavior-tested via subprocess (`tests/test_hooks.py` + per-hook suites) but are not line-coverage-measured because they run as subprocesses.
 
@@ -1011,7 +1011,7 @@ deviation + trade-off + follow-up + confidence để DEV review trước merge.
 Toolkit đang **dùng thực tế** trên một Odoo 12
 Enterprise workspace thật từ tháng 5/2026. Các con số minh hoạ từ dogfooding cục bộ
 (không phải benchmark): mỗi session điển hình ~57 hook fire-event, ~26% block,
-~3.5% bypass. **30+ hook** active, **948 unit test** (tính đến v0.30.0) trên CI
+~3.5% bypass. **30+ hook** active, **995 unit test** (tính đến v0.30.0) trên CI
 (matrix: Ubuntu / macOS / Windows × Python 3.8 / 3.10 / 3.12 — all green).
 Con số coverage % chỉ đo `setup.py` + `lib/`; các enforcement hook (`templates/claude/hooks/`, ~11k LOC) được ruff-lint check và behavior-test qua subprocess (`tests/test_hooks.py` + các suite per-hook) nhưng không được đo line-coverage vì chúng chạy dưới dạng subprocess.
 

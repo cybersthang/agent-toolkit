@@ -3,40 +3,65 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
-## [0.30.0] — 2026-05-30 — Odoo version-fact accuracy + Stop-hook resilience + installer hygiene
+## [0.30.0] — 2026-05-30 — Odoo version-fact accuracy + enforcement resilience + release hygiene
 
-### Stop-hook resilience
-- `evidence_audit` / `gap_completeness_gate` / `scope_completeness_gate` now guard
-  against non-dict Stop envelopes (`null` / list / bare string) — previously an
-  `AttributeError` under run_main_safe's fail-CLOSED default (v0.20.0) would exit 1
-  and BLOCK the agent's Stop. Regression test `test_malformed_envelope.py`.
-- Stall-watcher (`agent_supervisor`) no longer false-positives while a legitimate
-  async background workflow is producing fresh child transcripts (`_active_child_work`).
+### Stop-hook & watcher resilience
+- `evidence_audit` / `gap_completeness_gate` / `scope_completeness_gate` guard against
+  non-dict Stop envelopes (`null` / list / bare string) — previously an `AttributeError`
+  under run_main_safe's fail-CLOSED default (v0.20.0) exited 1 and BLOCKED the Stop.
+- `gap_completeness_gate` + `scope_completeness_gate` now read the assistant done-claim
+  from the **transcript** (a real Stop envelope has no `response` field) — they were
+  previously **inert in production**, always allowing.
+- `clarification_gate_enforcer` falls back to the last assistant message and fails OPEN
+  on an unreadable (tool-call) turn — was false-blocking every tool-call turn.
+- `agent_supervisor` stall watcher: `_active_child_work` (async bg work) +
+  `_agent_owes_next_action` (a clean end-of-turn waiting for the user is NOT a hang) +
+  session-scoped sub-agent globs (no cross-session over-match) + default-TTL for a
+  manifest missing `ttl_seconds`. `notify.py` desktop toast is now transient +
+  auto-expiring (no sticky stall-toast lingering in the GNOME tray).
+- `evidence_audit` phantom-citation no longer false-flags paths the turn wrote
+  (Write/MultiEdit/NotebookEdit), paths echoed in tool_result output, or absence-reporting
+  ("no such file / not found / removed / 404 / …").
 
 ### Odoo version-fact corrections (source-verified vs odoo/odoo + OCA/OpenUpgrade)
-- `account.invoice`→`account.move` unification = **v13** (not v14; the `move_type`
-  rename is v14); `@api.multi` / `@api.one` removed in **v13**; `@api.returns`
-  retained; `payment.acquirer`→`payment.provider` = **v16**; `<chatter/>` element = **v18**;
-  `name_get` deprecated 17 / removed 18; Python/PostgreSQL minimums; EE license = **OEEL-1**.
-- Applied across 5 specialty SKILL.md, `rules/odoo-13..20`, memory, and the
-  code-review / code-patterns / data-verification references; removed an unverified
-  "v19 mail-v2 storage refactor" narrative (real deltas: `mail.channel`→`discuss.channel`
-  v17 + `<chatter/>` v18 + OWL chatter path moves).
-- Added 21 web-verified Odoo reference docs across 9 specialty skills.
-- Wired OCA/OpenUpgrade `apriori.py` (per-branch `renamed_models` / `merged_models` /
-  `renamed_modules`) as the authoritative model/field-rename source in `odoo-upgrade-scripts`.
+- `account.invoice`→`account.move` = **v13** (`move_type` rename is v14); `@api.multi` /
+  `@api.one` removed **v13** (`@api.returns` retained); `@api.model_create_multi` exists
+  since **v12** (not v14); `payment.acquirer`→`payment.provider` = **v16**; manifest
+  `assets` dict = **v15**; inline `invisible/readonly/required="<expr>"` (replacing
+  `attrs`/`states`) = **v17**; `name_get` deprecated 17 / removed 18; `<chatter/>` = **v18**;
+  EE license = **OEEL-1**; per-preset `language_version` = real Python minimums.
+- Applied across the specialty SKILL.md set, `rules/odoo-13..20`, memory, and the
+  code-review / code-patterns / data-verification references + version-detection
+  heuristics; removed an unverified "v19 mail-v2 storage refactor" narrative.
+- 21 web-verified Odoo reference docs across 9 specialty skills; OCA/OpenUpgrade
+  `apriori.py` (`renamed_models` / `merged_models` / `renamed_modules`) wired as the
+  authoritative rename source.
+
+### Workflow, docs & DX
+- Removed stale `/go`→`/implement` and `/grill`→`/clarify` references across the commands.
+- README corrected: **6–8 phase** workflow (not "5-phase"), default autonomy **+1h**
+  (not 4h), every Odoo 12-19 version ships its own rule/memory/canonical packs (only v20
+  is a pre-GA stub); coverage caveat documented (the hooks tree is lint + subprocess-tested,
+  not line-coverage-measured).
+- `make lint` now covers `templates/claude/hooks/` (was excluded); +`pyproject.toml`
+  ruff config (per-file E402 ignore for the sys.path-insert pattern); 28 hook lint findings fixed.
+- `/review` (manual) + `/implement-notes` (WARN) documented as opt-in + how to harden
+  (`enforce_mode` strict). `generic` preset defaults to English (`odoo-*` stay Vietnamese).
+  Fleshed out `odoo-codebase-discovery` + `odoo-jira-workflow` skills (MCP tool names
+  verified). Shipped `smoke_test.py.tmpl`.
 
 ### Bug fixes
-- `agent_toolkit_init._starter_settings`: escape `${CLAUDE_PROJECT_DIR}` inside the
-  f-strings (was a reachable `NameError` that crashed codex `init`).
-- Installer (`build_plan`): new `_is_copy_noise` excludes gitignored runtime junk
-  (`.agent-toolkit/.hook_*log`, `__pycache__`, `*.pyc`, `*.bak.*`) from copied
-  templates — a dogfooded/dirty tree was shipping hook runtime logs to consumers.
+- `agent_toolkit_init._starter_settings`: escape `${CLAUDE_PROJECT_DIR}` in f-strings
+  (was a reachable `NameError` crashing codex `init`).
+- Installer `build_plan` (`_is_copy_noise`): exclude gitignored runtime junk
+  (`.agent-toolkit/.hook_*log`, `__pycache__`, `*.pyc`, `*.bak.*`) from copied templates.
 
 ### Tests / CI
-- New regression suites: malformed-envelope, skill dangling-references (every routed
-  `references/*.md` must exist), codex compile+import gate, agent_toolkit_init,
-  installer noise. Full suite: 928 passing.
+- New regression suites: malformed-envelope, skill dangling-references, codex
+  compile+import gate, agent_toolkit_init, installer noise, MCP guards (read-only SQL /
+  prod-detect / identifier), notify-toast, clarification-enforcer fail-open,
+  stall owes-next-action, phantom-citation credit. **Full suite: 995 passing**; lint
+  covers `setup.py lib/ tests/ templates/claude/hooks/`.
 
 ## [0.29.0] — 2026-05-29 — Odoo 12-20 parity + auto-parallel waves + GitLab CI MCP
 

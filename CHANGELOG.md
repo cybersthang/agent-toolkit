@@ -43,6 +43,10 @@ breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
   (not 4h), every Odoo 12-19 version ships its own rule/memory/canonical packs (only v20
   is a pre-GA stub); coverage caveat documented (the hooks tree is lint + subprocess-tested,
   not line-coverage-measured).
+- README restructured into a tight **~160-line landing page** (value-prop + install +
+  one quick-start + honest production status); the detail (worked example, architecture,
+  full DEV-vs-AGENT workflow, preset table, add-a-version guide, credits, full usage/VN
+  guide) moved into `docs/*.md` and linked. Every README link resolves.
 - `make lint` now covers `templates/claude/hooks/` (was excluded); +`pyproject.toml`
   ruff config (per-file E402 ignore for the sys.path-insert pattern); 28 hook lint findings fixed.
 - `/review` (manual) + `/implement-notes` (WARN) documented as opt-in + how to harden

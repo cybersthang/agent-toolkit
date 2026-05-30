@@ -19,8 +19,8 @@ v15 is transitional: the **ORM decorator surface matches v17** but the
 - `create()` override should be `@api.model_create_multi` taking
   `vals_list` (list). A single-record `@api.model create(self, vals)`
   override in v15 silently breaks batch inserts — flag MEDIUM/BLOCKER
-  per blast radius. `@api.model_create_multi` exists since v14
-  (web-verified).
+  per blast radius. `@api.model_create_multi` exists since v12
+  (web-verified: defined in 12.0 odoo/api.py).
 - `@api.depends(...)` complete on every computed field — unchanged from
   v12 (see odoo-12-rules.md §A).
 - `ensure_one()` whenever a method assumes a single record — unchanged.

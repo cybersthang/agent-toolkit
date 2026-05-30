@@ -100,6 +100,57 @@ def _last_tool_use_is_pending(transcript_path: Path,
         return False
 
 
+def _agent_owes_next_action(transcript_path: Path,
+                            tail_bytes: int = 262144) -> bool:
+    """True iff the AGENT owes the next step — the last conversational record
+    (message.role / top-level `type` in {user, assistant}) is a `user` turn:
+    a human message OR a tool_result handed back to the agent, with no
+    assistant turn after it.
+
+    Returns False when the last conversational record is an `assistant` turn
+    (the agent finished → it is the HUMAN's turn) or when nothing has been
+    asked yet. In those cases an idle transcript is NORMAL waiting, not a
+    hang. This is the line that separates "agent hung mid-work" (notify) from
+    "session idle / waiting for the user" (do NOT notify).
+
+    Non-conversational records (system / queue-operation / attachment /
+    file-history-snapshot) bump mtime without being a turn — they are ignored.
+
+    Fails OPEN (returns False → treated as NOT stalled) on any error so the
+    detector never false-alarms on a weird/truncated transcript."""
+    try:
+        with open(transcript_path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            start = max(0, size - tail_bytes)
+            f.seek(start)
+            blob = f.read()
+        text = blob.decode("utf-8", errors="ignore")
+        lines = text.split("\n")
+        if start > 0 and lines:
+            lines = lines[1:]
+        last_role = None
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if not isinstance(rec, dict):
+                continue
+            msg = rec.get("message")
+            role = msg.get("role") if isinstance(msg, dict) else None
+            if role not in ("user", "assistant"):
+                role = rec.get("type")
+            if role in ("user", "assistant"):
+                last_role = role
+        return last_role == "user"
+    except (OSError, ValueError):
+        return False
+
+
 DEFAULTS: Dict[str, Any] = {
     "stall_seconds": 180,
     "notify_cooldown": 300,
@@ -212,13 +263,16 @@ def is_stalled(transcript_path: Optional[Path], autonomy_on: bool,
                check_pending_tool_use: bool = True,
                workspace: Optional[Path] = None,
                projects_root: Optional[Path] = None) -> bool:
-    """READ-ONLY stall decision. Stalled when autonomy is on AND (the claude
-    process is gone OR the transcript has not advanced for > stall_seconds).
-    Two busy-but-silent cases are excluded as NOT idle:
+    """READ-ONLY stall decision. Stalled when autonomy is on, the agent OWES
+    the next action, AND (the claude process is gone OR the transcript has not
+    advanced for > stall_seconds). Three NOT-a-stall cases are excluded:
       - a long SYNCHRONOUS tool call (unmatched `tool_use` at the tail) —
         `_last_tool_use_is_pending`;
       - an active ASYNC background Workflow / Bash / sub-agent (a fresh child
-        transcript) — `_active_child_work` (needs `workspace`)."""
+        transcript) — `_active_child_work` (needs `workspace`);
+      - the last conversational turn is the agent's own completed reply (or
+        nothing was asked yet) → it is the HUMAN's turn, so an idle transcript
+        is normal waiting, not a hang — `_agent_owes_next_action`."""
     if not autonomy_on:
         return False
     if not proc_alive:
@@ -235,6 +289,12 @@ def is_stalled(transcript_path: Optional[Path], autonomy_on: bool,
         return False  # mid SYNCHRONOUS tool-call (long Bash/MCP/Task) → not idle
     if workspace is not None and _active_child_work(workspace, now, stall_seconds, projects_root):
         return False  # active ASYNC background work (Workflow/bg-Bash/sub-agent) → not idle
+    if not _agent_owes_next_action(transcript_path):
+        # Last conversational turn is the agent's own completed reply (or
+        # nothing asked yet) → it is the HUMAN's turn. Idle here is normal
+        # waiting, NOT a hang — only a turn the agent OWES (user msg /
+        # tool_result with no follow-up) counts as stalled.
+        return False
     return True
 
 

@@ -438,7 +438,8 @@ class TestLifecycle:
         multi-mode never touches main-session logic."""
         _seed_autonomy(ws)
         tp = ws / "transcript.jsonl"
-        tp.write_text('{"type":"assistant"}\n', encoding="utf-8")
+        # User turn last → agent OWES next action → a stale mtime is a real hang.
+        tp.write_text('{"type":"user","message":{"role":"user","content":[{"type":"text","text":"go"}]}}\n', encoding="utf-8")
         past = time.time() - 600
         os.utime(tp, (past, past))
         action, _ = sup.check_once(

@@ -33,9 +33,16 @@ def _seed_autonomy(ws: Path, spec: str = "feat", hours: int = 1):
                  encoding="utf-8")
 
 
-def _make_transcript(ws: Path, age_seconds: float) -> Path:
+def _make_transcript(ws: Path, age_seconds: float,
+                     last_role: str = "user") -> Path:
     p = ws / "transcript.jsonl"
-    p.write_text('{"type":"assistant"}\n', encoding="utf-8")
+    # last_role="user" → agent OWES the next action (idle here = a real hang);
+    # "assistant" → agent finished, it's the human's turn (idle = normal).
+    p.write_text(json.dumps({
+        "type": last_role,
+        "message": {"role": last_role,
+                    "content": [{"type": "text", "text": "x"}]},
+    }) + "\n", encoding="utf-8")
     past = time.time() - age_seconds
     os.utime(p, (past, past))
     return p
@@ -59,6 +66,21 @@ class TestDetect:
         action, _ = sup.check_once(ws, tp, cfg, now=time.time(), proc_alive=True)
         assert action == "notify"
         assert calls["n"] == 1
+
+    def test_completed_assistant_turn_not_stalled(self, ws, monkeypatch):
+        """Core fix — agent finished its turn and is WAITING for the human
+        (last conversational record is an assistant reply). A stale transcript
+        here is normal idle, NOT a hang → must NOT notify, even with autonomy
+        on and a 10-min-old mtime."""
+        _seed_autonomy(ws)
+        tp = _make_transcript(ws, age_seconds=600, last_role="assistant")
+        calls = {"n": 0}
+        monkeypatch.setattr(notify, "dispatch",
+                            lambda *a, **k: calls.__setitem__("n", calls["n"] + 1) or {})
+        cfg = {"stall_seconds": 180, "notify_cooldown": 300}
+        action, _ = sup.check_once(ws, tp, cfg, now=time.time(), proc_alive=True)
+        assert action == "ok", "completed assistant turn = waiting for human, not a stall"
+        assert calls["n"] == 0
 
     def test_fresh_transcript_no_notify(self, ws, monkeypatch):
         _seed_autonomy(ws)
@@ -166,6 +188,67 @@ class TestDetect:
         assert calls["n"] == 1
 
 
+class TestAgentOwesNextAction:
+    """STALL idle-vs-treo guard — `_agent_owes_next_action` separates
+    "agent finished, human's turn" (idle = normal) from "agent owes the
+    next step" (idle = a real hang)."""
+
+    def test_assistant_last_record_owes_nothing(self, ws):
+        """Last conversational record is an assistant reply → it's the
+        HUMAN's turn, agent owes nothing → False."""
+        tp = _make_transcript(ws, age_seconds=5, last_role="assistant")
+        assert sup._agent_owes_next_action(tp) is False
+
+    def test_user_last_record_owes_action(self, ws):
+        """Last conversational record is a user turn → agent owes the
+        reply → True."""
+        tp = _make_transcript(ws, age_seconds=5, last_role="user")
+        assert sup._agent_owes_next_action(tp) is True
+
+    def test_tool_result_user_record_owes_action(self, ws):
+        """A tool_result handed back as a `user` record with no assistant
+        turn after it → agent still owes the next step → True."""
+        tp = ws / "transcript.jsonl"
+        lines = [
+            json.dumps({
+                "type": "assistant",
+                "message": {"role": "assistant", "content": [
+                    {"type": "tool_use", "id": "tu1", "name": "Bash",
+                     "input": {"command": "echo hi"}},
+                ]},
+            }),
+            json.dumps({
+                "type": "user",
+                "message": {"role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": "tu1",
+                     "content": "hi\n"},
+                ]},
+            }),
+        ]
+        tp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        assert sup._agent_owes_next_action(tp) is True
+
+
+class TestIsStalledTurnOwnership:
+    """`is_stalled` honors `_agent_owes_next_action`: a stale transcript
+    whose last turn is the agent's own reply is NOT a hang; one whose last
+    turn is a user message IS."""
+
+    def test_assistant_last_stale_not_stalled(self, ws):
+        """Last record = assistant, autonomy on, age > stall_seconds,
+        proc alive → clean end-of-turn waiting, NOT a hang → False."""
+        tp = _make_transcript(ws, age_seconds=600, last_role="assistant")
+        assert sup.is_stalled(tp, autonomy_on=True, stall_seconds=180,
+                              now=time.time(), proc_alive=True) is False
+
+    def test_user_last_stale_is_stalled(self, ws):
+        """Last record = user, same conditions → agent owes the reply and
+        the transcript is stale → genuine hang → True."""
+        tp = _make_transcript(ws, age_seconds=600, last_role="user")
+        assert sup.is_stalled(tp, autonomy_on=True, stall_seconds=180,
+                              now=time.time(), proc_alive=True) is True
+
+
 class TestCliRelaunch:
     """us4: --relaunch auto-relaunch cap 10 + backoff → notify on exhaustion."""
 
@@ -217,7 +300,9 @@ def test_active_async_child_work_suppresses_main_stall(tmp_path):
     # The active main transcript lives under proj_root so its stem ("sess")
     # is the CURRENT session UUID that _active_child_work scopes its glob to.
     main = proj / "sess.jsonl"
-    main.write_text('{"message":{"content":[{"type":"text","text":"hi"}]}}\n', encoding="utf-8")
+    # User turn last → the agent OWES the next action, so when no child work
+    # is active and mtime is stale this is a genuine hang.
+    main.write_text('{"type":"user","message":{"role":"user","content":[{"type":"text","text":"go"}]}}\n', encoding="utf-8")
     os.utime(main, (now - 9999, now - 9999))            # main transcript stale
     child = (proj / "sess" / "subagents"
              / "workflows" / "wf1" / "agent-1.jsonl")

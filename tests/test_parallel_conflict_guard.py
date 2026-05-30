@@ -258,6 +258,24 @@ class TestLifecycle:
         assert r.returncode == 0
         assert r.stdout.strip() == ""
 
+    def test_missing_ttl_defaults_to_expired(self, ws):
+        """STALL-2 regression: a manifest with created_ts in the past and NO
+        `ttl_seconds` field used to be treated as active FOREVER (falsy ttl
+        short-circuited the expiry check). With the 3600s default TTL it is
+        now expired → silent allow."""
+        p = ws / MANIFEST_REL
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({
+            "version": 1, "wave": "w-no-ttl",
+            "created_ts": int(time.time()) - 7200,  # 2h ago, past 1h default
+            # NOTE: no ttl_seconds key at all.
+            "zones": [{"agent_id": "agent-a", "owned": ["src/a.py"]}],
+            "wave_done": False,
+        }, ensure_ascii=False), encoding="utf-8")
+        r = _run_hook(ws, self._envelope(ws))
+        assert r.returncode == 0
+        assert r.stdout.strip() == "", "missing-ttl + old created → expired → silent allow"
+
     def test_clear_via_cli(self, ws):
         _seed_manifest(ws, [{"agent_id": "agent-a", "owned": ["src/a.py"]}])
         _run_cli(ws, ["clear"])

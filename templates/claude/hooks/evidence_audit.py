@@ -48,8 +48,7 @@ from _audit.claim_audit import (
     find_claims, has_disclaimer, has_evidence,
 )
 from _audit.pass_contract import (
-    DEFAULT_PASS_CLAIM_REGEX, DEFAULT_PASS_EXEMPT_MARKERS, DEFAULT_REQUIRED_TOOL_PREFIXES,
-    additional_evidence_satisfied, default_pass_evidence_satisfied,
+    DEFAULT_PASS_CLAIM_REGEX, DEFAULT_PASS_EXEMPT_MARKERS, additional_evidence_satisfied, default_pass_evidence_satisfied,
     discover_required_prefixes, edited_paths_in_turn,
     load_additional_evidence_patterns, load_probes_registry, matching_probes,
     meta_review_mode, pass_claim_present, probe_evidence_satisfied,

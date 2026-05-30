@@ -58,7 +58,7 @@ from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
-    run_main_safe, emit_fire_event, get_enforce_mode, parse_expires_at,
+    run_main_safe, emit_fire_event, get_enforce_mode,
 )
 
 # UTF-8 stdin/stdout/stderr — Vietnamese-friendly + Windows-safe.
@@ -137,12 +137,18 @@ def _read_json(path: Path) -> Optional[Dict[str, Any]]:
 
 
 def _manifest_active(manifest: Dict[str, Any], now: float) -> bool:
-    """Manifest is active when wave_done is false and TTL has not expired."""
+    """Manifest is active when wave_done is false and TTL has not expired.
+
+    A manifest with a missing / zero `ttl_seconds` previously short-circuited
+    the expiry check (`created and ttl and ...`) and was treated as active
+    FOREVER. Apply a 1h default TTL so a stale, un-TTL'd manifest expires."""
     if manifest.get("wave_done"):
         return False
+    DEFAULT_TTL_SECONDS = 3600
+    ttl = manifest.get("ttl_seconds")
+    ttl = int(ttl) if ttl else DEFAULT_TTL_SECONDS
     created = int(manifest.get("created_ts") or 0)
-    ttl = int(manifest.get("ttl_seconds") or 0)
-    if created and ttl and now > created + ttl:
+    if created and now > created + ttl:
         return False
     return True
 
@@ -268,8 +274,8 @@ def _main() -> int:
         f"cross-zone conflict (xem v0.25 parallel-subagent-guard).",
         "Cách xử lý:",
         f"  1. Đổi sub-agent: chỉ `{owner_id}` được sửa file này trong wave.",
-        f"  2. Bypass 1 lần: DEV gõ `bypass-parallel-guard: <reason ≥ 8 chars>`.",
-        f"  3. Wave xong: `python tools/parallel_wave.py declare-done` (hoặc `clear`).",
+        "  2. Bypass 1 lần: DEV gõ `bypass-parallel-guard: <reason ≥ 8 chars>`.",
+        "  3. Wave xong: `python tools/parallel_wave.py declare-done` (hoặc `clear`).",
     ]
     reason = "\n".join(reason_lines)
 

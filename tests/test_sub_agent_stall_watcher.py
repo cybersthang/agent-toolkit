@@ -115,10 +115,11 @@ class TestDiscovery:
             (ws / ".agent-toolkit/.parallel_wave.json").read_text(encoding="utf-8"))
         proj_root = tmp_path / "projects-root"
         proj_dir = _projects_dir(proj_root, ws)
-        # Main session at top level (real layout).
+        # Main session at top level (real layout). Sub-agents nest under the
+        # CURRENT session's UUID dir (= the main transcript stem) since the
+        # watcher scopes discovery to the active session (STALL-1).
         _make_jsonl(proj_dir, "session-uuid-mainjsonl", age_seconds=5)
-        # Sub-agents nested under session subdir.
-        sess_dir = proj_dir / "session-uuid-deadbeef"
+        sess_dir = proj_dir / "session-uuid-mainjsonl"
         subagents_dir = sess_dir / "subagents"
         subagents_dir.mkdir(parents=True)
         sub_a = _make_jsonl(subagents_dir, "agent-aaa111", age_seconds=30)
@@ -137,10 +138,12 @@ class TestDiscovery:
             (ws / ".agent-toolkit/.parallel_wave.json").read_text(encoding="utf-8"))
         proj_root = tmp_path / "projects-root"
         proj_dir = _projects_dir(proj_root, ws)
-        # Main + 1 flat sub + 1 nested sub.
+        # Main + 1 flat sub + 1 nested sub. Nested sub lives under the CURRENT
+        # session's UUID dir (= main transcript stem "main") since discovery
+        # is scoped to the active session (STALL-1).
         _make_jsonl(proj_dir, "main", age_seconds=1)  # newest = main
         flat_sub = _make_jsonl(proj_dir, "sub-flat", age_seconds=30)
-        nested_dir = proj_dir / "session-uuid" / "subagents"
+        nested_dir = proj_dir / "main" / "subagents"
         nested_dir.mkdir(parents=True)
         nested_sub = _make_jsonl(nested_dir, "agent-nested", age_seconds=45)
         found = sup.discover_sub_agent_transcripts(ws, manifest, projects_root=proj_root)

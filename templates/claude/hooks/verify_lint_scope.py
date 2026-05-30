@@ -34,7 +34,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Set
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
@@ -250,7 +250,7 @@ def main() -> int:
     lines = [
         f"[verify-lint-scope] Scope creep detected for slug `{slug}`:",
         "",
-        f"Files modified but not declared in spec.affected_modules / SD-N / bypass:",
+        "Files modified but not declared in spec.affected_modules / SD-N / bypass:",
     ]
     for f in sample:
         lines.append(f"  - {f}")

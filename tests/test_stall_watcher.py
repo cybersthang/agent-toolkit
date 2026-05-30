@@ -211,11 +211,15 @@ def test_active_async_child_work_suppresses_main_stall(tmp_path):
     now = 1_000_000.0
     ws = tmp_path / "ws"
     ws.mkdir()
-    main = tmp_path / "main.jsonl"
+    proj_root = tmp_path / "projects"
+    proj = proj_root / sup.encode_project_path(ws)
+    proj.mkdir(parents=True, exist_ok=True)
+    # The active main transcript lives under proj_root so its stem ("sess")
+    # is the CURRENT session UUID that _active_child_work scopes its glob to.
+    main = proj / "sess.jsonl"
     main.write_text('{"message":{"content":[{"type":"text","text":"hi"}]}}\n', encoding="utf-8")
     os.utime(main, (now - 9999, now - 9999))            # main transcript stale
-    proj_root = tmp_path / "projects"
-    child = (proj_root / sup.encode_project_path(ws) / "sess" / "subagents"
+    child = (proj / "sess" / "subagents"
              / "workflows" / "wf1" / "agent-1.jsonl")
     child.parent.mkdir(parents=True, exist_ok=True)
     child.write_text('{"x":1}\n', encoding="utf-8")
@@ -226,3 +230,41 @@ def test_active_async_child_work_suppresses_main_stall(tmp_path):
     os.utime(child, (now - 9999, now - 9999))           # child also stale → genuinely idle
     assert sup.is_stalled(main, True, 180, now, True,
                           workspace=ws, projects_root=proj_root) is True
+
+
+def test_child_work_scoped_to_current_session_uuid(tmp_path):
+    """STALL-1 regression: a FRESH sub-agent transcript belonging to ANOTHER
+    same-project session must NOT suppress the current session's stall.
+    `_active_child_work` scopes its glob to the current session UUID (the
+    stem of the active main transcript)."""
+    now = 1_000_000.0
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    proj_root = tmp_path / "projects"
+    proj = proj_root / sup.encode_project_path(ws)
+    proj.mkdir(parents=True)
+
+    # The active main transcript (newest mtime) defines the CURRENT session.
+    main = proj / "session-current.jsonl"
+    main.write_text('{"x":1}\n', encoding="utf-8")
+    os.utime(main, (now - 9999, now - 9999))  # main stale (older but newest? see below)
+
+    # An OTHER session's sub-agent transcript — FRESH. Must be ignored.
+    other_child = proj / "session-other" / "subagents" / "agent-x.jsonl"
+    other_child.parent.mkdir(parents=True)
+    other_child.write_text('{"x":1}\n', encoding="utf-8")
+    os.utime(other_child, (now - 5, now - 5))  # fresh, but DIFFERENT session
+
+    # Make `main` the most-recently-modified top-level *.jsonl so
+    # find_active_transcript picks it as the current session.
+    os.utime(main, (now - 100, now - 100))
+
+    # Only a fresh child under ANOTHER session → current session is idle.
+    assert sup._active_child_work(ws, now, 180, projects_root=proj_root) is False
+
+    # Now add a FRESH child under the CURRENT session → not idle.
+    cur_child = proj / "session-current" / "subagents" / "agent-y.jsonl"
+    cur_child.parent.mkdir(parents=True)
+    cur_child.write_text('{"x":1}\n', encoding="utf-8")
+    os.utime(cur_child, (now - 5, now - 5))
+    assert sup._active_child_work(ws, now, 180, projects_root=proj_root) is True

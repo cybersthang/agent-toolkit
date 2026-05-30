@@ -64,7 +64,10 @@ CITATION_READING_TOOLS = {"Read", "Grep", "Glob", "NotebookRead"}
 CITATION_MISSING_NEAR_RE = re.compile(
     r"missing|absent|does\s*not\s*exist|does\s*n[o']t\s*exist|not\s*exist|"
     r"dead[\s-]*link|broken\s*link|\(planned\)|placeholder|ch(ư|u)a\s*(t(ồ|o)n\s*t(ạ|a)i|"
-    r"c(ó|o)|vi(ế|e)t|t(ạ|a)o)|kh(ô|o)ng\s*(t(ồ|o)n\s*t(ạ|a)i|c(ó|o))|thi(ế|e)u|TBD",
+    r"c(ó|o)|vi(ế|e)t|t(ạ|a)o)|kh(ô|o)ng\s*(t(ồ|o)n\s*t(ạ|a)i|c(ó|o))|thi(ế|e)u|TBD|"
+    r"no\s*such\s*file|file\s*not\s*found|not\s*found|n['o]t\s*found|removed|deleted|"
+    r"\bgone\b|404|not\s*there|ENOENT|"
+    r"đã\s*xoá|đã\s*xóa|đã\s*gỡ|bị\s*xoá",
     re.IGNORECASE | re.UNICODE,
 )
 
@@ -327,17 +330,22 @@ def run_progress_checks(
     violations: List[str] = []
     if "action_ghost" not in disabled:
         v = check_action_ghost(text, tool_calls)
-        if v: violations.append(v)
+        if v:
+            violations.append(v)
     if "tool_result_fabrication" not in disabled:
         v = check_tool_result_fabrication(text, tool_calls, results_by_id)
-        if v: violations.append(v)
+        if v:
+            violations.append(v)
     if "phantom_citation" not in disabled:
         v = check_phantom_citation(text, tool_calls, workspace)
-        if v: violations.append(v)
+        if v:
+            violations.append(v)
     if "todo_inconsistency" not in disabled:
         v = check_todo_inconsistency(text, all_messages)
-        if v: violations.append(v)
+        if v:
+            violations.append(v)
     if "overcount" not in disabled:
         v = check_overcount(text, tool_calls)
-        if v: violations.append(v)
+        if v:
+            violations.append(v)
     return violations

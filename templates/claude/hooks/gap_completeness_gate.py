@@ -49,7 +49,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import run_main_safe, emit_fire_event, get_enforce_mode, parse_expires_at, atomic_write_json  # noqa: E402
+from _common import run_main_safe, emit_fire_event, get_enforce_mode, parse_expires_at, atomic_write_json, read_jsonl_transcript  # noqa: E402
 from _patterns import (  # noqa: E402
     DONE_CLAIM_GAP_RE, GAP_DEFER_RE, GAP_CANT_FIX_RE, GAP_LIST_EMIT_RE,
     SCOPE_DONE_RE, SCOPE_DEFER_RE, SCOPE_CANT_RE,
@@ -235,16 +235,38 @@ def _consume_bypass(workspace: Path, state: Dict[str, Any]) -> Optional[str]:
 
 def _extract_assistant_text(envelope: Dict[str, Any]) -> str:
     """Pull current assistant response text from the Stop envelope.
-    Mirrors clarification_gate_enforcer pattern."""
+    Mirrors clarification_gate_enforcer pattern.
+
+    A REAL Claude Code Stop envelope has NO `response` field (only
+    transcript_path/stop_hook_active/cwd) — so fall back to the transcript
+    tail's last assistant message. Without this, the gate is INERT in
+    production (always no-done-claim)."""
     response = envelope.get("response")
-    if isinstance(response, str):
+    if isinstance(response, str) and response:
         return response
     if isinstance(response, list):
         out: List[str] = []
         for block in response:
             if isinstance(block, dict) and block.get("type") == "text":
                 out.append(block.get("text") or "")
-        return "\n".join(out)
+        joined = "\n".join(out)
+        if joined:
+            return joined
+    tp = envelope.get("transcript_path")
+    if tp:
+        msgs = read_jsonl_transcript(Path(tp))
+        for msg in reversed(msgs):
+            m = msg.get("message") if isinstance(msg.get("message"), dict) else msg
+            if m.get("role") == "assistant":
+                content = m.get("content")
+                if isinstance(content, str):
+                    return content
+                if isinstance(content, list):
+                    return "\n".join(
+                        b.get("text", "") for b in content
+                        if isinstance(b, dict) and b.get("type") == "text"
+                    )
+                break
     return ""
 
 

@@ -72,18 +72,35 @@ HOOK_NAME = "git_guardrails"
 # Use word-boundary / lookahead to avoid false positives like `git committed/`
 # being a directory name. Patterns assume normal shell tokenization
 # (whitespace-separated).
+# Shared lead-in for git invocations. It matches:
+#   - start-of-string, whitespace, or a shell separator/grouping char
+#     (`;`, `&`, `|`, `(`, `)`, `{`, `}`, backtick) so chained and
+#     command-substituted forms (`$(git …)`, `` `git …` ``) are caught;
+#   - PLUS `/` via the optional path prefix `(?:\S*/)?` so absolute /
+#     relative invocations (`/usr/bin/git`, `./git`) match too.
+# Combined with `re.IGNORECASE` (below) this also catches `GIT COMMIT`.
+# The `git\s+<subcmd>` core keeps word-like false positives out.
+_GIT_LEAD = r"(?:^|[\s;&|(){`])(?:\S*/)?"
+# Trailing boundary for bare subcommands — whitespace, end-of-string, or a
+# shell separator/grouping char so `$(git commit)` and `git push;` match.
+_END = r"(?:\s|$|[;&|()}`])"
+_IGNORECASE = re.IGNORECASE
+
 _DANGEROUS_PATTERNS: List[Tuple[re.Pattern, str]] = [
-    (re.compile(r"(?:^|\s|;|&&|\|\|)git\s+commit(?:\s|$)"),       "git commit"),
-    (re.compile(r"(?:^|\s|;|&&|\|\|)git\s+push(?:\s|$)"),         "git push"),
-    (re.compile(r"(?:^|\s|;|&&|\|\|)git\s+add(?:\s|$)"),          "git add"),
-    (re.compile(r"(?:^|\s|;|&&|\|\|)git\s+reset\s+--hard\b"),     "git reset --hard"),
-    (re.compile(r"(?:^|\s|;|&&|\|\|)git\s+clean\s+-[A-Za-z]*f"),  "git clean -f"),
-    (re.compile(r"(?:^|\s|;|&&|\|\|)git\s+branch\s+-D\b"),        "git branch -D"),
-    (re.compile(r"(?:^|\s|;|&&|\|\|)git\s+checkout\s+\.(?:\s|$)"),"git checkout ."),
-    (re.compile(r"(?:^|\s|;|&&|\|\|)git\s+restore\s+\.(?:\s|$)"), "git restore ."),
-    (re.compile(r"--no-verify\b"),                                "--no-verify flag"),
-    (re.compile(r"--no-gpg-sign\b"),                              "--no-gpg-sign flag"),
-    (re.compile(r"(?:^|\s)git\s+\S+\s+(?:--force|-f)\b"),         "--force flag"),
+    (re.compile(_GIT_LEAD + r"git\s+commit" + _END, _IGNORECASE),        "git commit"),
+    (re.compile(_GIT_LEAD + r"git\s+push" + _END, _IGNORECASE),          "git push"),
+    (re.compile(_GIT_LEAD + r"git\s+add" + _END, _IGNORECASE),           "git add"),
+    (re.compile(_GIT_LEAD + r"git\s+reset\s+--hard\b", _IGNORECASE),     "git reset --hard"),
+    (re.compile(_GIT_LEAD + r"git\s+clean\s+-[A-Za-z]*f", _IGNORECASE),  "git clean -f"),
+    # `git` is case-insensitive but the `-D` force flag is NOT — `-d` is a
+    # safe delete and must not be blocked. Inline `(?i:…)` scopes IGNORECASE
+    # to the `git\s+branch\s+` lead only, leaving `-D` case-sensitive.
+    (re.compile(r"(?i:" + _GIT_LEAD + r"git\s+branch\s+)-D\b"),           "git branch -D"),
+    (re.compile(_GIT_LEAD + r"git\s+checkout\s+\.(?:\s|$)", _IGNORECASE),"git checkout ."),
+    (re.compile(_GIT_LEAD + r"git\s+restore\s+\.(?:\s|$)", _IGNORECASE), "git restore ."),
+    (re.compile(r"--no-verify\b", _IGNORECASE),                          "--no-verify flag"),
+    (re.compile(r"--no-gpg-sign\b", _IGNORECASE),                        "--no-gpg-sign flag"),
+    (re.compile(_GIT_LEAD + r"git\s+\S+\s+(?:--force|-f)\b", _IGNORECASE), "--force flag"),
 ]
 
 

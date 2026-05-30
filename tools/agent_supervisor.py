@@ -188,7 +188,15 @@ def _active_child_work(workspace: Path, now: float, stall_seconds: int,
         proj = projects_root / encode_project_path(workspace)
         if not proj.is_dir():
             return False
-        for p in proj.glob("*/subagents/**/*.jsonl"):
+        # Scope to the CURRENT session UUID only — a fresh sub-agent
+        # transcript from ANOTHER same-project session must NOT suppress
+        # this session's stall (cross-session bleed). Fail open if the
+        # active transcript / session dir can't be resolved.
+        main = find_active_transcript(workspace, projects_root)
+        if main is None:
+            return False
+        sess = main.stem
+        for p in (proj / sess).glob("subagents/**/*.jsonl"):
             try:
                 if now - p.stat().st_mtime <= stall_seconds:
                     return True
@@ -388,8 +396,13 @@ def discover_sub_agent_transcripts(workspace: Path,
     seen: set = set()
     out: List[Path] = []
 
-    # Primary: nested layout `<sessionUUID>/subagents/agent-*.jsonl`.
-    for p in proj.glob("*/subagents/*.jsonl"):
+    # Primary: nested layout `<sessionUUID>/subagents/agent-*.jsonl`,
+    # scoped to the CURRENT session UUID only so sub-agents from ANOTHER
+    # same-project session don't leak in. Fail open (skip nested scan) if
+    # the active main transcript can't be resolved.
+    sess = main.stem if main is not None else None
+    nested_iter = (proj / sess).glob("subagents/**/*.jsonl") if sess else []
+    for p in nested_iter:
         try:
             mtime = p.stat().st_mtime
         except OSError:

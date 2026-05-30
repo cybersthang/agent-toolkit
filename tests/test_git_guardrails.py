@@ -76,6 +76,24 @@ class TestAllowPaths:
         proc = _run(workspace, "cat my_git_notes.txt")
         assert _decision(proc) == "allow"
 
+    def test_benign_word_containing_git(self, workspace: Path):
+        # B2 false-positive guard: `digit_count` contains "git" but is not a
+        # git invocation — the broadened lead-in must NOT match it.
+        proc = _run(workspace, "python -c 'digit_count()'")
+        assert _decision(proc) == "allow"
+
+    def test_benign_chained_non_git(self, workspace: Path):
+        # B2 false-positive guard: a separator followed by a non-git command
+        # must still pass.
+        proc = _run(workspace, "legitimate ; ls")
+        assert _decision(proc) == "allow"
+
+    def test_git_branch_safe_delete_allowed(self, workspace: Path):
+        # `-d` (lowercase) is a SAFE delete — must not be caught by the
+        # `git branch -D` force-delete pattern even with IGNORECASE on `git`.
+        proc = _run(workspace, "git branch -d merged-feature")
+        assert _decision(proc) == "allow"
+
 
 class TestDenyPaths:
     @pytest.mark.parametrize("cmd,label", [
@@ -91,6 +109,10 @@ class TestDenyPaths:
         ("git branch -D feature",      "git branch -D"),
         ("git checkout .",             "git checkout ."),
         ("git restore .",              "git restore ."),
+        # B2 bypass-vector regressions:
+        ("GIT COMMIT -m x",            "git commit"),   # uppercase / mixed case
+        ("/usr/bin/git commit -m x",   "git commit"),   # absolute path prefix
+        ("$(git commit)",              "git commit"),   # command substitution
     ])
     def test_dangerous_blocked(self, workspace: Path, cmd: str, label: str):
         proc = _run(workspace, cmd)

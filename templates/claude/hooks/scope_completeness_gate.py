@@ -164,15 +164,36 @@ def _autonomy(workspace: Path) -> Optional[Dict[str, Any]]:
 
 
 def _extract_assistant_text(envelope: Dict[str, Any]) -> str:
+    """A REAL Claude Code Stop envelope has NO `response` field (only
+    transcript_path/stop_hook_active/cwd) — so fall back to the transcript
+    tail's last assistant message. Without this, the gate is INERT in
+    production (always no-done-claim)."""
     response = envelope.get("response")
-    if isinstance(response, str):
+    if isinstance(response, str) and response:
         return response
     if isinstance(response, list):
         out: List[str] = []
         for block in response:
             if isinstance(block, dict) and block.get("type") == "text":
                 out.append(block.get("text") or "")
-        return "\n".join(out)
+        joined = "\n".join(out)
+        if joined:
+            return joined
+    tp = envelope.get("transcript_path")
+    if tp:
+        msgs = read_jsonl_transcript(Path(tp))
+        for msg in reversed(msgs):
+            m = msg.get("message") if isinstance(msg.get("message"), dict) else msg
+            if m.get("role") == "assistant":
+                content = m.get("content")
+                if isinstance(content, str):
+                    return content
+                if isinstance(content, list):
+                    return "\n".join(
+                        b.get("text", "") for b in content
+                        if isinstance(b, dict) and b.get("type") == "text"
+                    )
+                break
     return ""
 
 

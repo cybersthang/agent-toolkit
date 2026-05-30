@@ -162,6 +162,11 @@
           },
           {
             "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/independent_review_gate.py",
+            "timeout": 15
+          },
+          {
+            "type": "command",
             "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/post_edit_verify_gate.py",
             "timeout": 6
           },

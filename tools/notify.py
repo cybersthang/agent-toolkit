@@ -27,7 +27,7 @@ import time
 import urllib.request
 from email.mime.text import MIMEText
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 STALL_ALERT_REL = ".agent-toolkit/.stall_alert.json"
 
@@ -87,8 +87,17 @@ def _toast_command(title: str, body: str) -> List[str]:
     if sys.platform == "darwin":
         script = f'display notification "{body}" with title "{title}"'
         return ["osascript", "-e", script]
-    # Linux / others.
-    return ["notify-send", title, body]
+    # Linux / others. Transient + auto-expiring so a stall toast clears itself
+    # and never lingers sticky in the notification tray (the log channel +
+    # `.stall_alert.json` are the durable record; the toast is ephemeral).
+    return [
+        "notify-send",
+        "--app-name=agent-toolkit",
+        "--urgency=normal",
+        "--expire-time=30000",       # 30s, then the banner auto-dismisses
+        "--hint=int:transient:1",    # don't pile up in the message tray
+        title, body,
+    ]
 
 
 def notify_toast(alert: Dict[str, Any]) -> bool:

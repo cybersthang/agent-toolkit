@@ -144,3 +144,50 @@ def test_content_will_change_skip_exists_returns_false(tmp_path):
     src.write_text('x', encoding='utf-8')
     dst = tmp_path / 'd.txt'
     assert setup._content_will_change(src, dst, 'SKIP_EXISTS', {}) is False
+
+
+# --------------------------------------------------------- seed_mcp_local_env (v0.27 B3) ---
+
+def _setup_seed_fixture(tmp_path, *, gitignored=True, example_present=True):
+    """Build the minimal layout `seed_mcp_local_env(target)` expects."""
+    codex = tmp_path / '.codex'
+    codex.mkdir()
+    if example_present:
+        (codex / 'mcp.local.env.example').write_text(
+            'KEY=replace-me\n', encoding='utf-8')
+    if gitignored:
+        (tmp_path / '.gitignore').write_text(
+            '.codex/mcp.local.env\n', encoding='utf-8')
+    return tmp_path
+
+
+def test_seed_mcp_local_env_creates_from_example_when_gitignored(tmp_path):
+    target = _setup_seed_fixture(tmp_path)
+    setup.seed_mcp_local_env(target)
+    real = target / '.codex' / 'mcp.local.env'
+    assert real.exists()
+    assert real.read_text(encoding='utf-8') == 'KEY=replace-me\n'
+
+
+def test_seed_mcp_local_env_preserves_existing_user_creds(tmp_path):
+    target = _setup_seed_fixture(tmp_path)
+    real = target / '.codex' / 'mcp.local.env'
+    real.write_text('KEY=my-real-prod-cred\n', encoding='utf-8')
+    setup.seed_mcp_local_env(target)
+    # Must NOT overwrite real creds.
+    assert real.read_text(encoding='utf-8') == 'KEY=my-real-prod-cred\n'
+
+
+def test_seed_mcp_local_env_refuses_when_not_gitignored(tmp_path):
+    """Cred-leak protection: never seed an env file in a tree that isn't
+    gitignoring it."""
+    target = _setup_seed_fixture(tmp_path, gitignored=False)
+    setup.seed_mcp_local_env(target)
+    assert not (target / '.codex' / 'mcp.local.env').exists()
+
+
+def test_seed_mcp_local_env_silent_when_example_missing(tmp_path):
+    target = _setup_seed_fixture(tmp_path, example_present=False)
+    # Should not raise, should not create the env file.
+    setup.seed_mcp_local_env(target)
+    assert not (target / '.codex' / 'mcp.local.env').exists()

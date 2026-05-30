@@ -423,6 +423,7 @@ def cmd_init(args):
     seed_memory(preset, ctx, target, force=args.force)
     write_mcp_configs(ctx, target, force=args.force)
     write_gitignore(target)
+    seed_mcp_local_env(target)
     write_project_config(target, ctx, args.preset)
 
     print()
@@ -569,6 +570,25 @@ def _run_merge_invariants(target: Path, dry_run: bool,
         info(f'  skipped (already present): {inv_id}')
 
 
+def _is_copy_noise(rel: Path) -> bool:
+    """Machine-local / runtime junk that must never ship into a project.
+
+    A maintainer's working tree (or a dogfooded checkout) can accumulate
+    gitignored runtime state under the templates — e.g. a hook writing
+    `.agent-toolkit/.hook_fire_log.json` when its cwd drifts into a skill
+    dir. The installer copies from disk (not git), so without this guard
+    that junk would be propagated to every consumer project.
+    """
+    parts = set(rel.parts)
+    if '__pycache__' in parts or '.agent-toolkit' in parts:
+        return True
+    if rel.suffix == '.pyc':
+        return True
+    if rel.name.startswith('.hook_') or '.bak.' in rel.name:
+        return True
+    return False
+
+
 # -----------------------------------------------------------------------
 def build_plan(preset, ctx, target):
     """Decide for each toolkit file: copy raw, template, or skip.
@@ -599,7 +619,7 @@ def build_plan(preset, ctx, target):
         rel = src.relative_to(codex_src)
         rel_str = str(rel).replace('\\', '/')
         # Skip noise that's machine-local or project-specific
-        if '__pycache__' in rel.parts or src.suffix == '.pyc':
+        if _is_copy_noise(rel):
             continue
         if rel.name.startswith('_') and src.suffix == '.py' and len(rel.parts) <= 1:
             # Skip top-level `.codex/_foo.py` ad-hoc probe scripts (toolkit
@@ -672,7 +692,10 @@ def build_plan(preset, ctx, target):
         for src in stack_dir.rglob('*'):
             if not src.is_file():
                 continue
-            dst = target / '.cursor' / 'skills' / src.relative_to(stack_dir)
+            rel = src.relative_to(stack_dir)
+            if _is_copy_noise(rel):
+                continue
+            dst = target / '.cursor' / 'skills' / rel
             plan.append((src, dst, 'TEMPLATE' if _looks_templated(src) else 'COPY'))
 
     # 4. AGENTS.md + CLAUDE.md + .pre-commit-config.yaml
@@ -694,7 +717,7 @@ def build_plan(preset, ctx, target):
             if not src.is_file():
                 continue
             rel = src.relative_to(claude_src)
-            if '__pycache__' in rel.parts or src.suffix == '.pyc':
+            if _is_copy_noise(rel):
                 continue
             dst = target / '.claude' / rel
             is_template = src.suffix in ('.j2', '.tmpl') or _looks_templated(src)
@@ -1039,6 +1062,55 @@ def write_gitignore(target):
         gi.write_text('# agent-toolkit\n' + '\n'.join(snippets) + '\n',
                       encoding='utf-8')
         info('  created .gitignore')
+
+
+def seed_mcp_local_env(target):
+    """v0.27 (B3 fix): auto-seed `.codex/mcp.local.env` from the `.example`
+    template if (and only if) the gitignore covers it.
+
+    Before v0.27 the post-install checklist told the user to manually copy
+    `.codex/mcp.local.env.example` → `.codex/mcp.local.env`. Users skipped
+    that step and MCP server boots failed because the env file was
+    missing. We now do the copy automatically, BUT only after asserting
+    `.gitignore` contains `.codex/mcp.local.env` — never seed an env file
+    in a tree that isn't gitignoring it (cred-leak prevention).
+
+    Safety rules:
+      - Skip silently if `.codex/mcp.local.env` already exists (preserve
+        user's filled-in credentials).
+      - Skip + warn if `.codex/mcp.local.env.example` is missing (the
+        template should have been rendered earlier in the install pipeline;
+        absence means a real bug worth surfacing, not silent recovery).
+      - Skip + warn if `.gitignore` does NOT cover the env path — never
+        write secrets-bearing-stub into an un-gitignored tree.
+
+    Result file is a verbatim copy of `.example` with `replace-me`
+    placeholder values intact — the agent / user must still fill in real
+    creds before MCP servers connect to live DBs.
+    """
+    codex_dir = target / '.codex'
+    example = codex_dir / 'mcp.local.env.example'
+    real = codex_dir / 'mcp.local.env'
+    gi = target / '.gitignore'
+
+    if real.exists():
+        return  # silent — user-managed credentials, don't touch
+
+    if not example.exists():
+        warn('  .codex/mcp.local.env.example missing — skipping auto-seed '
+             '(expected the install pipeline to render it earlier)')
+        return
+
+    gi_text = gi.read_text(encoding='utf-8') if gi.exists() else ''
+    if '.codex/mcp.local.env' not in gi_text:
+        warn('  .gitignore does NOT cover .codex/mcp.local.env — refusing '
+             'to auto-seed env file (cred-leak protection). Run '
+             'write_gitignore() first or add the entry manually.')
+        return
+
+    real.write_text(example.read_text(encoding='utf-8'), encoding='utf-8')
+    ok(f'  seeded {real.relative_to(target)} from .example '
+       f'(values still need filling — search `replace-me`)')
 
 
 # -----------------------------------------------------------------------

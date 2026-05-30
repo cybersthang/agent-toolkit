@@ -37,7 +37,7 @@ from typing import Any, Dict, List, Optional
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
     wrap_utf8_stdio, read_jsonl_transcript, split_current_turn,
-    find_workspace_root, run_main_safe)
+    find_workspace_root, run_main_safe, get_enforce_mode)
 from _patterns import (  # noqa: E402
     COMPLETION_RE as _COMPLETION_RE,
     VERIFY_INVOCATION_RE as _VERIFY_INVOCATION_RE,
@@ -49,6 +49,7 @@ from _patterns import (  # noqa: E402
 wrap_utf8_stdio()
 
 
+HOOK_NAME = "post_edit_verify_gate"
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit"}
 VERIFY_TOOL_PATTERNS = (
     "mcp__",   # any postgres/test/playwright probe counts
@@ -62,6 +63,12 @@ def _exit_allow() -> None:
 
 def _emit_block(reason: str) -> None:
     print(json.dumps({"decision": "block", "reason": reason}, ensure_ascii=False))
+    sys.exit(0)
+
+
+def _emit_warn(reason: str) -> None:
+    # v0.27 — emit advisory to stderr, do NOT block.
+    sys.stderr.write(f"[post-edit-verify-gate] warn: {reason}\n")
     sys.exit(0)
 
 
@@ -226,8 +233,8 @@ def main() -> int:
     if _turn_has_verify_invocation(turn, text):
         _exit_allow()
 
-    _emit_block(
-        f"[post-edit-verify-gate] Turn này có Edit trên file thuộc spec "
+    reason = (
+        f"Turn này có Edit trên file thuộc spec "
         f"`{matched_spec}` (status implementing/gaps-found) VÀ response "
         "claim completion (done/ready/verified/xong/...) — NHƯNG agent CHƯA "
         f"chạy `/verify {matched_spec}` hoặc tương đương trong turn.\n\n"
@@ -239,6 +246,16 @@ def main() -> int:
         "Override 1 lần (work-in-progress, intentionally not closing): thêm "
         f"`{SKIP_MARKER}` vào response."
     )
+
+    # v0.27 enforce-mode aware: warn-by-default (cuts paralysis when
+    # evidence_audit / scope_completeness_gate already raise voice on the
+    # same claim). DEV opts back into block via enforce_mode.json.
+    mode = get_enforce_mode(workspace, HOOK_NAME, default="warn")
+    if mode == "off":
+        _exit_allow()
+    if mode == "warn":
+        _emit_warn(reason)
+    _emit_block(f"[post-edit-verify-gate] {reason}")
     return 0
 
 

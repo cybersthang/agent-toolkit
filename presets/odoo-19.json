@@ -1,11 +1,11 @@
 {
-  "_comment": "Odoo 19 differentiation from odoo-17 base: Python 3.11+ minimum (3.12 recommended per upstream), controller @http.route(type='jsonrpc') renamed from type='json', Domain class + 'any!' operator, declarative _constraints/_indexes class attributes, first-class AI server actions. Reuses odoo-17 rule pack — see templates/cursor/skills/odoo/odoo-code-patterns/references/odoo-19-patterns.md for full delta list.",
-  "description": "Odoo 19 Community / Enterprise — Python 3.11+, OWL, type='jsonrpc' route, Domain API, declarative _constraints. Reuses odoo-17 rule pack — see odoo-19-patterns.md for deltas.",
+  "_comment": "Odoo 19 differentiation from odoo-17 base: Python 3.10+ minimum (3.11/3.12 recommended per upstream), controller @http.route(type='jsonrpc') renamed from type='json', Domain class + 'any!' operator, declarative _constraints/_indexes class attributes, first-class AI server actions. Reuses odoo-17 rule pack — see templates/cursor/skills/odoo/odoo-code-patterns/references/odoo-19-patterns.md for full delta list.",
+  "description": "Odoo 19 Community / Enterprise — Python 3.10+, OWL, type='jsonrpc' route, Domain API, declarative _constraints. Reuses odoo-17 rule pack — see odoo-19-patterns.md for deltas.",
   "stack_label": "Odoo 19",
   "response_language": "Vietnamese",
   "stack": {
     "language": "python",
-    "language_version": "3.11",
+    "language_version": "3.10",
     "framework": "odoo",
     "framework_version": "19",
     "frontend": "OWL framework",
@@ -27,10 +27,10 @@
     "default_port": 5432,
     "default_user": "odoo"
   },
-  "rules": ["_common", "odoo-17"],
+  "rules": ["_common", "odoo-19"],
   "_rules_comment": "TODO: differentiate from odoo-17 base when templates/cursor/rules/odoo-19/ is authored. v19 deltas (jsonrpc route, Domain API, declarative constraints) covered in skill references only.",
   "skills": ["_common", "odoo"],
-  "memory_packs": ["odoo-17"],
+  "memory_packs": ["odoo-19"],
   "_overlay_doc": "Version-specific invariants merged on top of project invariants.json by a FUTURE installer step (setup.py --merge-invariants, not yet wired — Wave C). Inherits the odoo-17 + odoo-18 overlays conceptually, plus the v19 deltas below. Same schema as .agent-toolkit/invariants.json entries. severity=warn. Cite a confirmed Odoo release fact per entry.",
   "_inherits_overlay": "odoo-18",
   "invariants_overlay": [

@@ -21,6 +21,7 @@
     "_replace_with_your_actual_addon_root"
   ],
 
+  "_mcp_servers_doc": "Add optional Python MCP servers shipped by the toolkit. 'jira_production' / 'jira_preproduction' enable the JIRA server; 'gitlab' enables the read-only GitLab CI server (check pipeline status + pull failing job traces — fill {{ENV_PREFIX}}_GITLAB_* in .codex/mcp.local.env).",
   "mcp_servers_append": [],
 
   "external_mcp_servers": {},

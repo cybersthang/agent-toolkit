@@ -18,7 +18,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import wrap_utf8_stdio, run_main_safe, parse_expires_at  # noqa: E402
@@ -144,7 +144,7 @@ def _format_audit_locks(workspace: Path) -> str:
             head = []
         # Best-effort: extract a count-looking line if present.
         summary = next(
-            (l.strip() for l in head if re.search(r"\d+\s*(BLOCKER|MEDIUM|LOW)", l, re.IGNORECASE)),
+            (ln.strip() for ln in head if re.search(r"\d+\s*(BLOCKER|MEDIUM|LOW)", ln, re.IGNORECASE)),
             "",
         )
         rel = lock.relative_to(workspace).as_posix()

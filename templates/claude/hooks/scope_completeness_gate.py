@@ -39,8 +39,9 @@ Whole-gate single-shot bypass (D5): prior prompt `bypass-scope-gate:
 this hook consumes it on Stop.
 
 Enforce mode via `get_enforce_mode(workspace, "scope_completeness_gate")`:
-  - `block` (default — D2, matches gap gate / feedback_exhaustive_analysis)
-  - `warn`  (allow + stderr nudge)
+  - `warn`  (default v0.27 — surface pending items but don't block; cuts
+             paralysis from stacked Stop gates)
+  - `block` (opt-in via enforce_mode.json — D2, strict mode)
   - `off`   (silent allow)
 
 Fails open on any unexpected error (wrapped by run_main_safe).
@@ -163,15 +164,36 @@ def _autonomy(workspace: Path) -> Optional[Dict[str, Any]]:
 
 
 def _extract_assistant_text(envelope: Dict[str, Any]) -> str:
+    """A REAL Claude Code Stop envelope has NO `response` field (only
+    transcript_path/stop_hook_active/cwd) — so fall back to the transcript
+    tail's last assistant message. Without this, the gate is INERT in
+    production (always no-done-claim)."""
     response = envelope.get("response")
-    if isinstance(response, str):
+    if isinstance(response, str) and response:
         return response
     if isinstance(response, list):
         out: List[str] = []
         for block in response:
             if isinstance(block, dict) and block.get("type") == "text":
                 out.append(block.get("text") or "")
-        return "\n".join(out)
+        joined = "\n".join(out)
+        if joined:
+            return joined
+    tp = envelope.get("transcript_path")
+    if tp:
+        msgs = read_jsonl_transcript(Path(tp))
+        for msg in reversed(msgs):
+            m = msg.get("message") if isinstance(msg.get("message"), dict) else msg
+            if m.get("role") == "assistant":
+                content = m.get("content")
+                if isinstance(content, str):
+                    return content
+                if isinstance(content, list):
+                    return "\n".join(
+                        b.get("text", "") for b in content
+                        if isinstance(b, dict) and b.get("type") == "text"
+                    )
+                break
     return ""
 
 
@@ -429,6 +451,8 @@ def _main() -> int:
         envelope = json.loads(raw) if raw.strip() else {}
     except json.JSONDecodeError:
         return _exit_allow(detail="bad-json")
+    if not isinstance(envelope, dict):
+        return _exit_allow(detail="non-dict-envelope")
 
     workspace = _find_workspace(envelope.get("cwd"))
     cfg = _read_config(workspace)
@@ -504,7 +528,9 @@ def _main() -> int:
 
     atomic_write_json(manifest_path, manifest)
 
-    mode = get_enforce_mode(workspace, HOOK_NAME, default="block")
+    # v0.27 default flipped block → warn. DEV opts back into block via
+    # enforce_mode.json or AGENT_TOOLKIT_STRICT=1.
+    mode = get_enforce_mode(workspace, HOOK_NAME, default="warn")
     if mode == "off":
         return _exit_allow(detail=f"off;pending={len(pending)}")
     if mode == "warn":

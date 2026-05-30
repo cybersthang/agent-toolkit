@@ -1,6 +1,6 @@
 ---
 name: odoo-multi-company
-description: Odoo multi-company anti-patterns — missing `with_company()` context, currency rounding mismatch across companies, `ir.rule` per-company gaps, multi-company SQL constraints, mail/notification routing wrong company. Version-aware: Step 0 detects the addon's Odoo version from `__manifest__.py`, then loads `references/odoo-12-multicompany.md` (pre-`with_company` era) or `references/odoo-17-multicompany.md` (mature `with_company` API). Cross-company currency conversion patterns in `references/odoo-multi-currency.md`. Audience: Odoo consultancies using Enterprise multi-company. Open whenever the user says "multi-company", "đa công ty", "company context", "cross-company", `with_company`, `company_id` issues, or when a code-review finding flags missing company guards.
+description: Odoo multi-company anti-patterns — missing `with_company()` context, currency rounding mismatch across companies, `ir.rule` per-company gaps, multi-company SQL constraints, mail/notification routing wrong company. Version-aware: Step 0 detects the addon's Odoo version from `__manifest__.py`, then loads the matching `references/odoo-<N>-multicompany.md` (v12 pre-`with_company` era; v13-16 dedicated packs; v17 mature `with_company` API). Cross-company currency conversion patterns in `references/odoo-multi-currency.md`. Audience: Odoo consultancies using Enterprise multi-company. Open whenever the user says "multi-company", "đa công ty", "company context", "cross-company", `with_company`, `company_id` issues, or when a code-review finding flags missing company guards.
 ---
 
 # Odoo — Multi-Company Anti-Patterns (version-aware)
@@ -32,8 +32,10 @@ Same protocol as `odoo-code-review` / `odoo-code-patterns`:
 2. **Fallback signals** (only if manifest missing):
    - `@api.multi` decorator → ≤13 (treat as 12 in our scope).
    - `with_company()` ORM call anywhere in the addon → ≥14.
-   - `_check_company_auto = True` class attribute → ≥13.
-   - `@api.model_create_multi` decorator → ≥14.
+   - `_check_company_auto = True` class attribute → **mainstream from 16+**
+     (introduced earlier as opt-in around 13 partial / 14, but typical
+     v13-15 code does NOT set it; default-True only became standard in 16).
+   - `@api.model_create_multi` decorator → exists since v12; not a version marker on its own.
 3. **Ask the user** only if signals are inconclusive.
 
 Then load the matching reference:
@@ -41,9 +43,14 @@ Then load the matching reference:
 | Detected major | Reference (multi-company specifics) |
 |---|---|
 | 12 | `references/odoo-12-multicompany.md` (pre-`with_company` era) |
-| 13 / 14 / 15 / 16 | apply `odoo-17-multicompany.md` + flag LOW transitional |
+| 13 | load `references/odoo-13-multicompany.md` |
+| 14 | load `references/odoo-14-multicompany.md` |
+| 15 | load `references/odoo-15-multicompany.md` |
+| 16 | load `references/odoo-16-multicompany.md` (+ note: backports some v17 conventions) |
 | 17 | `references/odoo-17-multicompany.md` |
-| 18 / 19 / 20 | apply `odoo-17-multicompany.md` (no dedicated delta written yet — re-check the target major's multi-company release notes before relying on this for an audit) + flag LOW |
+| 18 | load `references/odoo-18-multicompany.md` (cascades to v17; ORM renames + `check_company` rules + `name_get`→`_compute_display_name`) |
+| 19 | load `references/odoo-19-multicompany.md` (cascades to v18→v17; `read_group`→`_read_group`/`formatted_read_group`) |
+| 20 | load `references/odoo-20-multicompany.md` (**PRE-GA** — cascade stub from v19→v18→v17; flag any 20-specific finding LOW / version-tentative) |
 
 Currency conversion is **not version-locked** — always load
 `references/odoo-multi-currency.md` regardless of detected version.

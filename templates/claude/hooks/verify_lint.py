@@ -159,7 +159,6 @@ def main() -> int:
     if not matches:
         # Slug parsed but spec file missing — agent typo'd; fail-open.
         _exit_allow()
-    spec_path = matches[0]
 
     lint_script = workspace / ".codex" / "lint_verify_report.py"
     if not lint_script.exists():

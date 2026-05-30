@@ -27,6 +27,10 @@ Then load `references/odoo-<detected>-scaffold.md`.
 | Detected major | Reference |
 |---|---|
 | 12 | `references/odoo-12-scaffold.md` |
+| 13 | load `references/odoo-13-scaffold.md` |
+| 14 | load `references/odoo-14-scaffold.md` |
+| 15 | load `references/odoo-15-scaffold.md` |
+| 16 | load `references/odoo-16-scaffold.md` (+ note: backports some v17 conventions) |
 | 17 | `references/odoo-17-scaffold.md` |
 | 18 | `references/odoo-18-scaffold.md` ← 17 |
 | 19 | `references/odoo-19-scaffold.md` ← 18 ← 17 |

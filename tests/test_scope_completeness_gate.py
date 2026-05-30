@@ -43,6 +43,43 @@ def _run(workspace: Path, response_text: str, transcript: Path = None,
     )
 
 
+def _run_transcript(workspace: Path, transcript: Path,
+                    extra_env: dict = None) -> subprocess.CompletedProcess:
+    """Run the gate with a REAL Stop envelope shape — NO `response` field,
+    only transcript_path + cwd (B1 regression). The gate must read the
+    done-claim from the transcript tail."""
+    env = os.environ.copy()
+    env.pop("AGENT_TOOLKIT_DISABLE", None)
+    env.pop("stop_hook_active", None)
+    env.pop("AGENT_TOOLKIT_STRICT", None)
+    if extra_env:
+        env.update(extra_env)
+    envelope = {"transcript_path": str(transcript), "cwd": str(workspace)}
+    return subprocess.run(
+        [PY, str(HOOK)],
+        input=json.dumps(envelope),
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=10, env=env, cwd=str(workspace),
+    )
+
+
+def _write_assistant_transcript(workspace: Path, assistant_text: str) -> Path:
+    """Write a JSONL transcript whose trailing message is an assistant turn
+    carrying `assistant_text` (a done/full claim)."""
+    path = workspace / "assistant_transcript.jsonl"
+    lines = [
+        {"type": "user", "message": {"role": "user",
+                                     "content": "đã làm đầy đủ chưa?"}},
+        {"type": "assistant", "message": {
+            "role": "assistant",
+            "content": [{"type": "text", "text": assistant_text}],
+        }},
+    ]
+    path.write_text("\n".join(json.dumps(x) for x in lines) + "\n",
+                    encoding="utf-8")
+    return path
+
+
 def _seed_autonomy(workspace: Path, spec: str = "test-feature",
                    expires_in: int = 3600) -> Path:
     from datetime import datetime, timedelta, timezone
@@ -62,6 +99,17 @@ def _seed_manifest(workspace: Path, items: list, source: str = "tasks.md") -> Pa
         "version": 1, "spec": "test-feature", "source": source,
         "created_ts": int(time.time()), "items": items, "bypass_history": [],
     }, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def _seed_block_mode(workspace: Path) -> Path:
+    """v0.27: scope_completeness_gate default flipped to warn. Tests that
+    exercise the block path opt in explicitly via enforce_mode.json."""
+    path = workspace / ".agent-toolkit/enforce_mode.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "per_hook": {"scope_completeness_gate": "block"},
+    }), encoding="utf-8")
     return path
 
 
@@ -125,15 +173,29 @@ class TestManifestDerive:
 
 
 class TestBlockSemantics:
-    """us2: done/full claim + pending item → BLOCK (exit 2)."""
+    """us2: done/full claim + pending item → BLOCK (exit 2) when strict,
+    or WARN (rc=0 + stderr) by default (v0.27)."""
 
-    def test_block_when_pending_and_done_claim(self, workspace):
+    def test_block_when_pending_and_done_claim_strict(self, workspace):
+        """v0.27: opt-in to block via enforce_mode.json."""
+        _seed_manifest(workspace, [
+            {"id": "S1", "ref": "T1", "desc": "alpha", "status": "done"},
+            {"id": "S2", "ref": "T2", "desc": "beta", "status": "pending"},
+        ])
+        _seed_block_mode(workspace)
+        r = _run(workspace, "Implement done — everything complete.")
+        assert r.returncode == 2, f"expected block, got {r.returncode}: {r.stderr}"
+        assert "S2" in r.stderr
+
+    def test_warns_by_default_when_pending_and_done_claim(self, workspace):
+        """v0.27: no enforce_mode.json → warn-by-default (rc=0 + stderr)."""
         _seed_manifest(workspace, [
             {"id": "S1", "ref": "T1", "desc": "alpha", "status": "done"},
             {"id": "S2", "ref": "T2", "desc": "beta", "status": "pending"},
         ])
         r = _run(workspace, "Implement done — everything complete.")
-        assert r.returncode == 2, f"expected block, got {r.returncode}: {r.stderr}"
+        assert r.returncode == 0, f"expected warn-allow, got rc={r.returncode}"
+        assert "[scope-completeness-gate] warn:" in r.stderr
         assert "S2" in r.stderr
 
     def test_all_resolved_allows(self, workspace):
@@ -171,10 +233,12 @@ class TestResolutionMarkers:
         assert st == {"S1": "done", "S2": "deferred", "S3": "cant"}
 
     def test_partial_resolution_still_blocks(self, workspace):
+        """v0.27: still blocks when strict mode is on + S2 unresolved."""
         _seed_manifest(workspace, [
             {"id": "S1", "ref": "T1", "desc": "a", "status": "pending"},
             {"id": "S2", "ref": "T2", "desc": "b", "status": "pending"},
         ])
+        _seed_block_mode(workspace)
         r = _run(workspace, "All done. scope-done: S1")
         assert r.returncode == 2, f"S2 still pending → block; got {r.returncode}"
         assert "S2" in r.stderr
@@ -236,3 +300,42 @@ class TestKillSwitchHonored:
         r = _run(workspace, "Everything done.",
                  extra_env={"AGENT_TOOLKIT_DISABLE": "1"})
         assert r.returncode == 0, "kill-switch should bypass gate"
+
+
+class TestB1TranscriptFallback:
+    """B1 regression: a REAL Claude Code Stop envelope has NO `response`
+    field (only transcript_path/stop_hook_active/cwd). The gate must read
+    the done/full claim from the transcript tail — otherwise it is INERT in
+    production (always silent-allow no-done-claim)."""
+
+    def test_full_claim_from_transcript_warns_by_default(self, workspace):
+        """No `response`; full-claim lives in transcript tail → gate fires
+        (warn-by-default, rc=0 + stderr warn) instead of silent-allow."""
+        _seed_manifest(workspace, [
+            {"id": "S1", "ref": "T1", "desc": "alpha", "status": "done"},
+            {"id": "S2", "ref": "T2", "desc": "beta", "status": "pending"},
+        ])
+        tr = _write_assistant_transcript(
+            workspace, "Implement done — everything complete.")
+        r = _run_transcript(workspace, tr)
+        assert r.returncode == 0, f"expected warn-allow, got rc={r.returncode}"
+        assert "[scope-completeness-gate] warn:" in r.stderr, (
+            f"gate stayed inert (no warn) — stderr={r.stderr}"
+        )
+        assert "S2" in r.stderr
+
+    def test_full_claim_from_transcript_blocks_when_strict(self, workspace):
+        """Same envelope shape but strict enforce mode → rc=2 block."""
+        _seed_manifest(workspace, [
+            {"id": "S1", "ref": "T1", "desc": "alpha", "status": "done"},
+            {"id": "S2", "ref": "T2", "desc": "beta", "status": "pending"},
+        ])
+        _seed_block_mode(workspace)
+        tr = _write_assistant_transcript(
+            workspace, "Implement done — everything complete.")
+        r = _run_transcript(workspace, tr)
+        assert r.returncode == 2, (
+            f"transcript-fallback full-claim must block in strict mode; "
+            f"got rc={r.returncode}, stderr={r.stderr}"
+        )
+        assert "S2" in r.stderr

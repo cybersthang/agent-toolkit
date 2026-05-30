@@ -1,11 +1,11 @@
 {
-  "_comment": "Odoo 16 differentiation from odoo-17 base: Python 3.10 baseline, OWL 2.x rewrite mainstream, account.move refactor (account.invoice → account.move unification completed), @api.multi removed. Reuses odoo-17 rule pack as it's closer to modern era than legacy odoo-12. TODO: add templates/cursor/rules/odoo-16/ when v16-specific .mdc content is authored.",
-  "description": "Odoo 16 Community / Enterprise — Python 3.10+, OWL 2.x rewrite mainstream, @api.multi REMOVED, account.move refactor. Modern era; reuses odoo-17 rule pack.",
+  "_comment": "Odoo 16 differentiation from odoo-17 base: Python 3.7 minimum, OWL 2.x rewrite mainstream, account.move refactor (account.invoice → account.move unification completed), @api.multi removed. Reuses odoo-17 rule pack as it's closer to modern era than legacy odoo-12. TODO: add templates/cursor/rules/odoo-16/ when v16-specific .mdc content is authored.",
+  "description": "Odoo 16 Community / Enterprise — Python 3.7+, OWL 2.x rewrite mainstream, @api.multi REMOVED, account.move refactor. Modern era; reuses odoo-17 rule pack.",
   "stack_label": "Odoo 16",
   "response_language": "Vietnamese",
   "stack": {
     "language": "python",
-    "language_version": "3.10",
+    "language_version": "3.7",
     "framework": "odoo",
     "framework_version": "16",
     "frontend": "OWL 2.x",
@@ -27,10 +27,10 @@
     "default_port": 5432,
     "default_user": "odoo"
   },
-  "rules": ["_common", "odoo-17"],
+  "rules": ["_common", "odoo-16"],
   "_rules_comment": "TODO: differentiate from odoo-17 base when templates/cursor/rules/odoo-16/ is authored. v16 is the first major OWL2 release — patterns very close to v17.",
   "skills": ["_common", "odoo"],
-  "memory_packs": ["odoo-17"],
+  "memory_packs": ["odoo-16"],
   "_overlay_doc": "Version-specific invariants merged on top of project invariants.json by a FUTURE installer step (setup.py --merge-invariants, not yet wired — Wave C). Same schema as .agent-toolkit/invariants.json entries. severity=warn (informational). Cite a confirmed Odoo release fact per entry.",
   "invariants_overlay": [
     {

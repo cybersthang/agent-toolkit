@@ -1,10 +1,10 @@
 # agent-toolkit
 
-> **Production-tested Spec-Driven AI agent toolkit for Odoo (12-20). Falsifiability + mechanical enforcement + Spec Kit workflow.**
+> **Spec-Driven AI agent toolkit for Odoo (12-20), in active use on a real Odoo 12 Enterprise workspace. Falsifiability + mechanical enforcement + Spec Kit workflow.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python: 3.8+](https://img.shields.io/badge/python-3.8%2B-blue)](setup.py)
-[![tests](https://github.com/cybersthang/agent-toolkit/actions/workflows/test.yml/badge.svg)](https://github.com/cybersthang/agent-toolkit/actions/workflows/test.yml)
+[![pipeline](https://gitlab.com/nosafarm/agent-toolkit/badges/main/pipeline.svg)](https://gitlab.com/nosafarm/agent-toolkit/-/pipelines)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-compatible-7c3aed)](https://docs.claude.com/en/docs/claude-code)
 [![Cursor](https://img.shields.io/badge/Cursor-rules%20%2B%20skills-1e40af)](https://cursor.com)
 [![Spec Kit](https://img.shields.io/badge/Spec_Kit-aligned-22c55e)](https://github.com/github/spec-kit)
@@ -38,7 +38,7 @@ Full release / mirror / tag procedure documented in [REBUILD.md](REBUILD.md).
 
 ## Why agent-toolkit?
 
-- 🛡️ **Mechanical enforcement, not honor system.** 31 hooks DENY at the
+- 🛡️ **Mechanical enforcement, not honor system.** 30+ hooks DENY at the
   Claude Code harness level — invariant strips, claim-without-proof,
   destructive git (`git_guardrails` blocks commit/push/add until DEV
   explicitly authorizes), hallucinated progress, **unresolved gaps on
@@ -53,7 +53,7 @@ Full release / mirror / tag procedure documented in [REBUILD.md](REBUILD.md).
 - 🔬 **Real-data verify or it didn't ship.** `/verify` runs MCP probes on
   the live DB; `evidence_audit` Stop hook BLOCKS "tests pass" claims that
   lack an `mcp__realdata_test__*` or `mcp__postgres__*` call in the turn.
-- 📐 **5-phase Spec Kit workflow with gate hooks.** `/plan → /clarify →
+- 📐 **6-8 phase Spec Kit workflow with gate hooks.** `/plan → /clarify →
   /tasks → /analyze → /implement → /verify` — each transition has a
   PreToolUse / Stop hook that refuses to advance if the prior phase
   has gaps.
@@ -195,7 +195,7 @@ DEV: (reads tasks.md, OK) /implement log-request-slowness
 
 |                                  | agent-toolkit | spec-kit | mattpocock/skills | ECC | Aider |
 |---|:---:|:---:|:---:|:---:|:---:|
-| Spec-driven 5-phase workflow     | ✅ | ✅ | partial | partial | ❌ |
+| Spec-driven 6-8 phase workflow   | ✅ | ✅ | partial | partial | ❌ |
 | Hook-level mechanical enforcement | **✅** | ❌ | partial | partial | ❌ |
 | Real-data MCP verify gate        | **✅** | ❌ | ❌ | partial | ❌ |
 | Stack-preset overlay system      | **✅** | partial | ❌ | ❌ | ❌ |
@@ -207,11 +207,13 @@ DEV: (reads tasks.md, OK) /implement log-request-slowness
 
 ## Production status
 
-Toolkit is in **active daily use** on a production Odoo 12 Enterprise
-workspace since 2026-Q1. Hook telemetry shows ~57
-fire-events per session avg, ~26% block rate, ~3.5% bypass rate.
-**31 hooks** active, **700 unit tests** in CI (matrix: Ubuntu / macOS /
+Toolkit is in **active use** on a real Odoo 12 Enterprise
+workspace since May 2026. As illustrative figures from local dogfooding
+(not a benchmark), a typical session shows ~57 hook fire-events, ~26%
+block rate, and ~3.5% bypass rate.
+**30+ hooks** active, **995 unit tests** (as of v0.30.0) in CI (matrix: Ubuntu / macOS /
 Windows × Python 3.8 / 3.10 / 3.12 — all green).
+The reported coverage % measures `setup.py` + `lib/` only; the enforcement hooks (`templates/claude/hooks/`, ~11k LOC) are ruff-lint-checked and behavior-tested via subprocess (`tests/test_hooks.py` + per-hook suites) but are not line-coverage-measured because they run as subprocesses.
 
 > 🤖 **AI agents installing into a project**: Read
 > [`AI_REBUILD_CHECKLIST.md`](AI_REBUILD_CHECKLIST.md) BEFORE invoking
@@ -273,7 +275,7 @@ Windows × Python 3.8 / 3.10 / 3.12 — all green).
               │  codebase ◄─► postgres ◄─► realdata_test     │
               │   (search)    (DB read)    (run module test) │
               │                                              │
-              │  + jira (ticket), playwright (E2E)           │
+              │  + jira (ticket), gitlab (CI), playwright    │
               └──────────────────────────────────────────────┘
 
    ─────── 3-tier rule (cross-linked, auditable) ───────
@@ -325,11 +327,11 @@ That's it. DEV does NOT manually run `/analyze`, `/tasks`, or `/verify`
 — those fire automatically. *DEV không cần gõ tay `/analyze`, `/tasks`,
 `/verify` — agent tự chạy.*
 
-### What AGENT does automatically — **5 auto-chained phases** / AGENT tự làm **5 phase auto-chain**
+### What AGENT does automatically — **6-8 auto-chained phases** / AGENT tự làm **6-8 phase auto-chain**
 
 After DEV types `/implement <slug>`, the agent chains these steps under
-autonomy (default 4h, configurable via `--until`). *Sau khi DEV gõ
-`/implement`, agent tự chạy chuỗi sau dưới autonomy (mặc định 4h).*
+autonomy (default +1h, configurable via `--until`). *Sau khi DEV gõ
+`/implement`, agent tự chạy chuỗi sau dưới autonomy (mặc định +1h).*
 
 ```
 DEV: /implement <slug>
@@ -370,7 +372,8 @@ DEV: /implement <slug>
 For any project where you run `setup.py init`:
 
 - **`.codex/`** — Odoo MCP server implementations (codebase, postgres,
-  realdata_test, jira) + canonical decisions registry + 120+ hook tests
+  realdata_test, jira; optional read-only `gitlab` CI server) + canonical
+  decisions registry + 120+ hook tests
 - **`.cursor/rules/`** — Cursor IDE rules (always-apply) for the chosen
   Odoo version
 - **`.cursor/skills/`** — Spec Kit workflow skills (plan-feature,
@@ -455,9 +458,13 @@ python setup.py list-presets
 
 Default `addon_roots` for Odoo presets: `addons` / `custom_addons` /
 `enterprise`. MCP servers: `codebase` + `postgres` + `realdata_test`.
-The Odoo 13-20 presets (besides 12 and 17) are **stub-extends** that
-share rules/memory packs with their nearest neighbor — fork the preset
-file to capture version-specific deltas.
+Every Odoo version 12-19 ships its **own dedicated** rule pack
+(`templates/cursor/rules/odoo-<v>/`), memory pack
+(`templates/memory/odoo-<v>/`), and canonical-decisions file
+(`templates/codex/canonical_decisions.odoo-<v>.json`) — no sharing.
+Only **odoo-20** is an honest pre-GA **stub-extends-v19** (v20 is not
+yet released; its rules are extrapolated from v19 and every v20-specific
+claim is unconfirmed until verified against installed source).
 
 > **Project-specific overlays**: real projects almost always have extra
 > addon roots, a custom `odoo-bin` path, internal JIRA endpoints,
@@ -957,13 +964,13 @@ Preset khác: `odoo-17`, `generic`. Thêm preset mới (Django/Rails/Go) chỉ l
 
 ### Tại sao dùng agent-toolkit?
 
-- 🛡️ **Enforce cơ học, không phải honor-system.** 27 hook DENY ở
+- 🛡️ **Enforce cơ học, không phải honor-system.** 30+ hook DENY ở
   Claude Code harness — strip invariant, claim không proof, git
   destructive, fake progress đều bị chặn.
 - 🔬 **Verify trên data thật hoặc không ship.** `/verify` chạy MCP probe
   lên DB live; `evidence_audit` Stop hook BLOCK "test pass" claim nếu
   turn không có `mcp__realdata_test__*` / `mcp__postgres__*` call.
-- 📐 **5-phase Spec Kit workflow với hook gate.** `/plan → /clarify →
+- 📐 **6-8 phase Spec Kit workflow với hook gate.** `/plan → /clarify →
   /tasks → /analyze → /implement → /verify` — mỗi transition có hook
   từ chối tiến nếu phase trước có GAP.
 - 🧭 **Hệ thống rule 3 tầng.** Constitution (nguyên tắc) → ADR (lý do
@@ -978,12 +985,12 @@ Preset khác: `odoo-17`, `generic`. Thêm preset mới (Django/Rails/Go) chỉ l
 
 ### Workflow cho DEV
 
-DEV chỉ làm **3 bước manual** — agent tự lo 5 phase còn lại dưới autonomy:
+DEV chỉ làm **3 bước manual** — agent tự lo 6-8 phase còn lại dưới autonomy:
 
 ```
 DEV gõ:  /plan <ý tưởng>      →  spec.md có cấu trúc
          /clarify <slug>       →  đóng GAP, agent tự /tasks rồi STOP
-         /implement <slug>     →  bật autonomy 4h
+         /implement <slug>     →  bật autonomy +1h (default)
          
 AGENT tự: /analyze → execute tasks → /verify → report PASS/GAP
 ```
@@ -1001,10 +1008,12 @@ deviation + trade-off + follow-up + confidence để DEV review trước merge.
 
 ### Trạng thái sản xuất
 
-Toolkit đang **dùng thực tế hằng ngày** trên một production Odoo 12
-Enterprise workspace từ 2026-Q1. Hook telemetry trung bình ~57 fire-event/session,
-~26% block, ~3.5% bypass. **27 hook** active, **607 unit test** trên CI
+Toolkit đang **dùng thực tế** trên một Odoo 12
+Enterprise workspace thật từ tháng 5/2026. Các con số minh hoạ từ dogfooding cục bộ
+(không phải benchmark): mỗi session điển hình ~57 hook fire-event, ~26% block,
+~3.5% bypass. **30+ hook** active, **995 unit test** (tính đến v0.30.0) trên CI
 (matrix: Ubuntu / macOS / Windows × Python 3.8 / 3.10 / 3.12 — all green).
+Con số coverage % chỉ đo `setup.py` + `lib/`; các enforcement hook (`templates/claude/hooks/`, ~11k LOC) được ruff-lint check và behavior-test qua subprocess (`tests/test_hooks.py` + các suite per-hook) nhưng không được đo line-coverage vì chúng chạy dưới dạng subprocess.
 
 ### Liên hệ tác giả
 

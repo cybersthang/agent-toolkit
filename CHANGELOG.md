@@ -3,6 +3,286 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
+## [0.30.0] — 2026-05-30 — Odoo version-fact accuracy + enforcement resilience + release hygiene
+
+### Stop-hook & watcher resilience
+- `evidence_audit` / `gap_completeness_gate` / `scope_completeness_gate` guard against
+  non-dict Stop envelopes (`null` / list / bare string) — previously an `AttributeError`
+  under run_main_safe's fail-CLOSED default (v0.20.0) exited 1 and BLOCKED the Stop.
+- `gap_completeness_gate` + `scope_completeness_gate` now read the assistant done-claim
+  from the **transcript** (a real Stop envelope has no `response` field) — they were
+  previously **inert in production**, always allowing.
+- `clarification_gate_enforcer` falls back to the last assistant message and fails OPEN
+  on an unreadable (tool-call) turn — was false-blocking every tool-call turn.
+- `agent_supervisor` stall watcher: `_active_child_work` (async bg work) +
+  `_agent_owes_next_action` (a clean end-of-turn waiting for the user is NOT a hang) +
+  session-scoped sub-agent globs (no cross-session over-match) + default-TTL for a
+  manifest missing `ttl_seconds`. `notify.py` desktop toast is now transient +
+  auto-expiring (no sticky stall-toast lingering in the GNOME tray).
+- `evidence_audit` phantom-citation no longer false-flags paths the turn wrote
+  (Write/MultiEdit/NotebookEdit), paths echoed in tool_result output, or absence-reporting
+  ("no such file / not found / removed / 404 / …").
+
+### Odoo version-fact corrections (source-verified vs odoo/odoo + OCA/OpenUpgrade)
+- `account.invoice`→`account.move` = **v13** (`move_type` rename is v14); `@api.multi` /
+  `@api.one` removed **v13** (`@api.returns` retained); `@api.model_create_multi` exists
+  since **v12** (not v14); `payment.acquirer`→`payment.provider` = **v16**; manifest
+  `assets` dict = **v15**; inline `invisible/readonly/required="<expr>"` (replacing
+  `attrs`/`states`) = **v17**; `name_get` deprecated 17 / removed 18; `<chatter/>` = **v18**;
+  EE license = **OEEL-1**; per-preset `language_version` = real Python minimums.
+- Applied across the specialty SKILL.md set, `rules/odoo-13..20`, memory, and the
+  code-review / code-patterns / data-verification references + version-detection
+  heuristics; removed an unverified "v19 mail-v2 storage refactor" narrative.
+- 21 web-verified Odoo reference docs across 9 specialty skills; OCA/OpenUpgrade
+  `apriori.py` (`renamed_models` / `merged_models` / `renamed_modules`) wired as the
+  authoritative rename source.
+
+### Workflow, docs & DX
+- Removed stale `/go`→`/implement` and `/grill`→`/clarify` references across the commands.
+- README corrected: **6–8 phase** workflow (not "5-phase"), default autonomy **+1h**
+  (not 4h), every Odoo 12-19 version ships its own rule/memory/canonical packs (only v20
+  is a pre-GA stub); coverage caveat documented (the hooks tree is lint + subprocess-tested,
+  not line-coverage-measured).
+- `make lint` now covers `templates/claude/hooks/` (was excluded); +`pyproject.toml`
+  ruff config (per-file E402 ignore for the sys.path-insert pattern); 28 hook lint findings fixed.
+- `/review` (manual) + `/implement-notes` (WARN) documented as opt-in + how to harden
+  (`enforce_mode` strict). `generic` preset defaults to English (`odoo-*` stay Vietnamese).
+  Fleshed out `odoo-codebase-discovery` + `odoo-jira-workflow` skills (MCP tool names
+  verified). Shipped `smoke_test.py.tmpl`.
+
+### Bug fixes
+- `agent_toolkit_init._starter_settings`: escape `${CLAUDE_PROJECT_DIR}` in f-strings
+  (was a reachable `NameError` crashing codex `init`).
+- Installer `build_plan` (`_is_copy_noise`): exclude gitignored runtime junk
+  (`.agent-toolkit/.hook_*log`, `__pycache__`, `*.pyc`, `*.bak.*`) from copied templates.
+
+### Tests / CI
+- New regression suites: malformed-envelope, skill dangling-references, codex
+  compile+import gate, agent_toolkit_init, installer noise, MCP guards (read-only SQL /
+  prod-detect / identifier), notify-toast, clarification-enforcer fail-open,
+  stall owes-next-action, phantom-citation credit. **Full suite: 995 passing**; lint
+  covers `setup.py lib/ tests/ templates/claude/hooks/`.
+
+## [0.29.0] — 2026-05-29 — Odoo 12-20 parity + auto-parallel waves + GitLab CI MCP
+
+### evidence_audit: phantom_citation false-positive fix
+
+`check_phantom_citation` (Stop-hook progress check) flagged two legitimate
+cases as "cited a non-existent file": (1) a file that exists at an **ancestor**
+of the hook's `cwd` (cwd-drift — the working dir is a subdir of the real
+project root); (2) a path the response **explicitly documents as missing**
+(dead-link / gap finding). Fix: the existence check now walks up to 4 ancestor
+dirs, and a citation is skipped when a "missing / absent / dead link / không
+tồn tại / (planned) / TBD" marker sits next to it (`CITATION_MISSING_NEAR_RE`).
++2 regression tests (`test_progress.py` C5/C6). Surfaced by dogfooding the
+toolkit on itself.
+
+### Odoo skill references: full 12-20 parity (7 types × 9 versions)
+
+Now COMPLETE: every Odoo major 12→20 ships all 7 reference types
+(`patterns`, `rules`, `pitfalls`, `scaffold`, `multicompany`, `perf`,
+`tdd-pitfalls`). v13-16 added (28 files); v18-20 finished by adding the 5
+missing `odoo-18/19/20-multicompany.md` + `odoo-19/20-perf.md` (routing
+in the multi-company + performance skills now loads them per-version, not
+a v17 fallback). All 7 skills' Step-0 routing tables load the dedicated
+`odoo-<N>-*.md` for 13-20 (no more orphaned files). The 14 v13-16 `VERIFY`
+flags were source-verified against the odoo/odoo branch and resolved inline
+(e.g. v13 `norecompute()` is a no-op `api.py:704`; v14 OWL is 1.4.11 on the
+global `owl` namespace, `/** @odoo-module **/` is 15+; v15 `flush()` is the
+only flush method — fixing a wrong `flush_all` instruction; v16 `fields.Json`
+exists as beta). Only genuinely-unverifiable items remain flagged: the v19
+`res.currency._convert` signature and v20 (pre-GA, master) deltas.
+
+Closes the Q4-audit gap: v13/14/15/16 had ZERO version-specific skill
+references (they cascaded to v12/v17). Adds **28 files** — 7 reference types
+(`patterns`, `rules`, `pitfalls`, `scaffold`, `multicompany`, `perf`,
+`tdd-pitfalls`) × 4 versions — under
+`templates/cursor/skills/odoo/*/references/odoo-1{3,4,5,6}-*.md`. Each was
+**source-verified against the odoo/odoo branch** (api.py, models.py, fields.py,
+account_move.py, tests/common.py) + official docs, cascades unchanged sections
+explicitly to the nearest neighbour (v13/14/15→12, v16→17) instead of padding,
+and marks genuinely-unverifiable claims with `<!-- VERIFY(odoo-N) -->` for DEV
+confirmation (~13 flags total — see the per-version notes). Notable corrections
+surfaced: `@api.multi`/`@api.one` are removed in **v13** (not later);
+`account.invoice`→`account.move` merge is **v13**; `with_company()` arrives
+**v14**; the `assets` manifest dict is **v15**; OWL 2.x mainstreams in **v16**.
+Snapshot ceilings bumped (odoo-12/17 now 302/303 plan items).
+
+### auto-parallel task waves for /implement
+
+`/implement` was sequential-only. Adds `tools/wave_planner.py`: a deterministic
+planner that turns a tasks.md into ordered **waves** of provably file-disjoint,
+dependency-ready tasks (from each task's `Touches` + `Depends on`), and emits a
+`.parallel_wave.json` per wave so `parallel_conflict_guard` enforces the
+disjoint zones. `/implement` now dispatches each ≥2-task wave as concurrent
+sub-agents (one per task, single message), falling back to sequential when
+nothing is provably disjoint. Conservative by construction: empty/glob/
+overlapping `Touches` or a dependency cycle ⇒ never parallelized. `/tasks`
+surfaces the wave preview at the review gate. Reuses `parallel_wave.py` +
+`parallel_conflict_guard.py` (no changes). +12 tests
+(`tests/test_wave_planner.py`). Spec: `specs/v0.29.0-auto-parallel-waves.md`.
+
+### read-only GitLab CI MCP server
+
+Adds an **optional, read-only** `gitlab` MCP server so an agent can check CI
+build status and pull failing job logs right after a push — the
+"every time I code, the build is red" loop. Opt-in (not in any default
+preset): add `"gitlab"` to a project's `mcp_servers`, fill
+`<PREFIX>_GITLAB_*` in `.codex/mcp.local.env`, re-run `setup.py update`.
+
+- **`templates/codex/mcp_servers/gitlab_server.py`** — stdlib-only
+  (dependency-free), `SimpleMcpServer`. 5 tools: `env_status`,
+  `latest_pipeline`, `pipeline_jobs`, `job_trace`, and the headline
+  **`build_errors`** (latest/given pipeline → failed jobs excluding
+  `allow_failure` → trace tail per job, in one call).
+- **`templates/codex/start_gitlab_mcp.py`** — start wrapper (mirrors the
+  jira wrapper; loads `.codex/mcp.local.env`).
+- **Read-only by design**: a PAT with `read_api` is enough; no
+  trigger/retry/cancel tools — taking authoring CI actions would conflict
+  with the `git_guardrails` philosophy.
+- Host-agnostic: `<PREFIX>_GITLAB_URL` defaults to gitlab.com, works with
+  self-hosted (trailing `/api/v4` tolerated). Project as numeric id or
+  `group/sub/project` path; per-call `project` override.
+- **Wiring**: installer copies the server + wrapper and emits the `.mcp.json`
+  entry automatically when `"gitlab"` is in `mcp_servers` (no setup.py
+  change needed — uses the generic `start_<name>_mcp.py` path). Credentials
+  block added to `mcp.local.env.example`; opt-in example in
+  `presets/_example_private_overlay.json.template`.
+- **Pagination**: `_fetch_pipeline_jobs` loops pages (per_page=100, cap 50
+  pages) so a pipeline with >100 jobs never silently drops a failing job
+  (would otherwise report false-green). `pipeline_id`/`job_id` are int-coerced.
+- **Tests**: +10 in `templates/codex/tests/test_mcp_wrappers.py` (wrapper
+  env-precedence, read-only tool contract, token-never-leaks, `build_errors`
+  trace composition, project-id encoding, >100-job pagination, per-tool
+  happy-paths for latest_pipeline/pipeline_jobs/job_trace, trace-fetch-error
+  resilience). Spec: `specs/v0.28.0-gitlab-ci-mcp.md`.
+
+## [0.27.0] — 2026-05-28 — cognitive-load cut + Odoo 12-20 parity
+
+Cuts the cognitive overload introduced by stacked Stop gates (paper:
+"More rules → worse reasoning"). The 3 completeness gates that fired
+hard-block by default now WARN by default; only `evidence_audit` +
+`verify_lint` + `debug_sentry` remain hard blockers. DEV re-enables strict
+mode with one config swap. Adds full rule/memory/skill parity for Odoo
+versions 13–20 (previously only 12 + 17 had dedicated assets; the others
+fell back to nearest neighbour).
+
+**Test suite**: 751/751 pass (was 700 in v0.26). New tests:
+- `TestV027CrossGateDedup` (gap_completeness_gate, 3 tests)
+- `test_warns_by_default_when_pending_and_done_claim` (scope_completeness_gate)
+- `test_done_with_open_gaps_warns_by_default` (gap_completeness_gate)
+- `test_nested_subagents_layout_v0_27` + `test_combined_flat_and_nested_layouts` (sub-agent watcher B2 fix)
+- 4 cred-leak-safety tests for `seed_mcp_local_env` (B3 fix)
+
+**Odoo coverage parity (was 65% in v0.26 audit, now ~95%)**:
+
+- **Rule dirs** (`templates/cursor/rules/odoo-<N>/`): added v13, v14, v15,
+  v16, v18, v19, v20 (was only v12 + v17). Each ships 3 .mdc files
+  (`backend.mdc`, `generic.mdc`, `project-context.mdc`). 21 new files.
+- **Memory dirs** (`templates/memory/odoo-<N>/`): added v13, v14, v15,
+  v16, v18, v19, v20 (was only v12 + v17). Each ships 2 .md files
+  (`project_workspace.md`, `project_mcp_routing.md`). 14 new files.
+- **7 presets re-wired**: `odoo-13.json`/`14.json`/`15.json`/`16.json`/
+  `18.json`/`19.json`/`20.json` now reference their own dedicated rule
+  + memory pack (was: cascade-fallback to v12 or v17).
+- **8 new Odoo skills**:
+  - `odoo-studio-apps` — Studio (no-code) app evolution, exports, drift detection
+  - `odoo-payment-flows` — payment provider/transaction/token + v15 acquirer→provider rename + v17 refinement
+  - `odoo-account-move-overhaul` — `account.invoice`→`account.move` v14 break + v17 refinement
+  - `odoo-mail-v2-migration` — mail v1 (v12-18) → v2 (v19+) refactor + verify-installed-source caveat
+  - `odoo-module-install-scripts` — pre/post init hooks + migrations folder + Community vs Enterprise install
+  - `odoo-localization-patterns` — `l10n_<country>` chart-of-accounts + e-invoicing (Vietnam/EU/Latam)
+  - `odoo-upgrade-scripts` — cross-version upgrade paths + OpenUpgrade + v12→v20 breaking-change inventory
+  - `odoo-owl-17-refactor` — v17 OWL refactor delta (removed `LegacyComponent`, `do_action`→`actionService`, controller/renderer/view split)
+- **5 skill technical fixes**:
+  - `odoo-owl-components`: OWL timeline corrected — v14 introduced OWL v1 (was wrongly "OWL 16+"); v15 broader adoption; v16 OWL v2 mature
+  - `odoo-multi-company`: `_check_company_auto` mainstream from v16+ (was wrongly ≥13)
+  - `odoo-code-patterns`: v13-16 cascade flag upgraded LOW→MEDIUM with concrete transition notes
+  - `odoo-tdd`: v13-16 cascade flag upgraded LOW→MEDIUM with mail.thread + HttpCase route notes
+  - `odoo-performance`: v13-16 cascade flag upgraded LOW→MEDIUM with flush API + kanban JS notes
+- **3 skills gained explicit version-detection step**: `odoo-community-patterns`,
+  `odoo-data-verification`, `odoo-deterministic-answers`. (`odoo-jira-workflow`
+  remains version-agnostic by design — JIRA workflow doesn't depend on
+  Odoo major.)
+- **Canonical decisions backfill**: `canonical_decisions.odoo-17.json`
+  was the sparse one (11 entries; v13-16 and v18-20 already had 17).
+  Backfilled 6 entries from v18 (`reuse-first`, `complexity-budget`,
+  `jira-routing`, `audit-methodology`, `credentials-policy`,
+  `invariant-guard`) → v17 now at 17 entries, matching every other major.
+
+**Cognitive-load cut (DEFAULT BEHAVIOR CHANGE)**:
+
+- `gap_completeness_gate` hook default: `block` → `warn`.
+- `scope_completeness_gate` hook default: `block` → `warn`.
+- `post_edit_verify_gate` hook default: `block` → `warn` (gains
+  enforce-mode awareness; previously always-block).
+- New cross-gate dedup: when response carries any `scope-*` marker
+  (scope-done/defer/cant), `gap_completeness_gate` auto-downgrades to
+  warn so the two sibling Stop hooks don't double-fire on the same
+  claim. The scope gate is treated as the authoritative completion gate
+  when DEV declared an upfront scope.
+- `templates/agent_toolkit/enforce_mode.example.json` updated to mirror
+  the new warn defaults across all 3 gates (was: `scope_completeness_gate
+  = block`, others unset).
+- `templates/agent_toolkit/enforce_mode.strict.example.json` (new) —
+  one-file strict profile that restores pre-v0.27 block-everywhere
+  behavior. Copy this over `enforce_mode.json` to re-enable strict
+  ADR-006/007 enforcement.
+- `AGENT_TOOLKIT_STRICT=1` env var unchanged: still overrides all gates
+  to block regardless of config (CI safety).
+
+**Cognitive-load cut (duplication trim)**:
+
+- `templates/agent_toolkit/constitution.md` Section I no longer repeats
+  the 8 Karpathy operating principles. The principles live in ONE place
+  (`templates/cursor/rules/_common/karpathy-guidelines.mdc` + the
+  matching skill). Constitution now points to the canonical source +
+  keeps only the toolkit-specific principles (MCP-first, canonical
+  answers, doubt-before-shipping, confirm-before-acting). Cuts
+  per-session context bloat where the same 8 points were injected up
+  to 3× via constitution + rule + skill loaders.
+- `templates/agent_toolkit/HOOK_CHAIN.md` Stop table updated to show
+  the new defaults explicitly + lists all 3 newly-relaxed gates with
+  their config promote path.
+- `templates/CLAUDE.md` enforcement table updated for the 3 changed
+  hooks: BLOCK → WARN, with promote-to-block instructions inline.
+
+**Field-verified blocker fixes**:
+
+- **B1/B2 audit — sub-agent transcript layout (FIX)**: v0.26 spec
+  `v0.26.0-sub-agent-stall-watcher.md` assumed Claude Code writes
+  sub-agent transcripts flat under `~/.claude/projects/<encoded>/*.jsonl`.
+  Field-verification on 2026-05-28 (3-way parallel Agent fan-out on
+  `/home/voducthang/Toolkit`) shows the real layout is **nested**:
+  `~/.claude/projects/<encoded>/<sessionUUID>/subagents/agent-<hash>.jsonl`
+  + per-agent `.meta.json`. `tools/agent_supervisor.discover_sub_agent_transcripts`
+  globbed only the top level, so it silently saw zero sub-agents in
+  production. Fixed: glob both `*/subagents/*.jsonl` (real) and
+  `*.jsonl` (back-compat) with de-dup. New tests
+  `test_nested_subagents_layout_v0_27` + `test_combined_flat_and_nested_layouts`.
+- **B2 audit — `agent_id` not in PreToolUse envelope (LIMITATION
+  DOCUMENTED)**: `parallel_conflict_guard` reads `envelope.agent_id` to
+  identify which sub-agent is editing. Per Claude Code docs +
+  [anthropics/claude-code#40140](https://github.com/anthropics/claude-code/issues/40140),
+  `agent_id` currently only appears in `SubagentStart`/`SubagentStop`
+  events, NOT in `PreToolUse` — so the guard is silent-no-op at
+  runtime today (the synthetic-envelope unit tests still pass, hence
+  the v0.25 verify report missed it). Marked DEGRADED in the hook
+  docstring with mitigations; the guard remains correct for the
+  future envelope shape.
+
+**Migration notes (existing installs)**:
+
+- No code action required for the common case. Existing installs
+  continue to use `.agent-toolkit/enforce_mode.json` if present — copy
+  the new `enforce_mode.example.json` over it to inherit the relaxed
+  defaults, or do nothing to keep current behavior.
+- Tests: subprocess-style test fixtures that asserted `rc==2` from
+  these 3 gates with no `enforce_mode.json` now must seed
+  `enforce_mode.json` with `per_hook.<hook_name>: "block"` to exercise
+  the block path. The default-no-config path now returns warn (rc==0
+  + stderr `[<hook>] warn:`).
+
 ## [0.26.0] — 2026-05-28 — version-bump consolidation + Odoo coverage parity
 
 Aggregate release covering v0.23 → v0.26 features that shipped on `1.0`

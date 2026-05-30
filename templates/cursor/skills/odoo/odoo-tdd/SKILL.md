@@ -27,7 +27,10 @@ Load `references/odoo-<detected>-tdd-pitfalls.md`:
 | Detected major | Reference |
 |---|---|
 | 12 | `references/odoo-12-tdd-pitfalls.md` (standalone) |
-| 13/14/15/16 | apply `odoo-17-tdd-pitfalls.md` + flag LOW |
+| 13 | load `references/odoo-13-tdd-pitfalls.md` |
+| 14 | load `references/odoo-14-tdd-pitfalls.md` |
+| 15 | load `references/odoo-15-tdd-pitfalls.md` |
+| 16 | load `references/odoo-16-tdd-pitfalls.md` (+ note: backports some v17 conventions) |
 | 17 | `references/odoo-17-tdd-pitfalls.md` |
 | 18 | `references/odoo-18-tdd-pitfalls.md` ← 17 |
 | 19 | `references/odoo-19-tdd-pitfalls.md` ← 18 ← 17 |

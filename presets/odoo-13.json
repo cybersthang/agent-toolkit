@@ -27,10 +27,10 @@
     "default_port": 5432,
     "default_user": "odoo"
   },
-  "rules": ["_common", "odoo-12"],
+  "rules": ["_common", "odoo-13"],
   "_rules_comment": "TODO: differentiate from odoo-12 base when templates/cursor/rules/odoo-13/ is authored. v13 still uses @api.multi-era patterns so odoo-12 rules apply.",
   "skills": ["_common", "odoo"],
-  "memory_packs": ["odoo-12"],
+  "memory_packs": ["odoo-13"],
   "_overlay_doc": "Version-specific invariants merged on top of project invariants.json by a FUTURE installer step (setup.py --merge-invariants, not yet wired — Wave C). Same schema as .agent-toolkit/invariants.json entries. severity=warn (informational). Cite a confirmed Odoo release fact per entry.",
   "invariants_overlay": [
     {

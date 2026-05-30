@@ -1,0 +1,7 @@
+[tool.ruff.lint.per-file-ignores]
+# Hooks intentionally do `sys.path.insert(...)` before `from _common import ...`
+# so the enforcement modules resolve at runtime. That trips E402
+# (module-import-not-at-top); the imports already carry `# noqa: E402` where
+# practical, but the pattern is by-design across every hook file. Scope the
+# ignore narrowly to the hooks tree — no other rule is relaxed.
+"templates/claude/hooks/**" = ["E402"]

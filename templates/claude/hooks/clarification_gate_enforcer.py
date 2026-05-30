@@ -172,8 +172,11 @@ def _extract_response_text(envelope: Dict[str, Any]) -> str:
     or `response_text`. Read the transcript, slice the current turn,
     and return the assistant text.
 
-    Falls back to empty string on any error (fail-open: 0 markers →
-    enforce, which is the safer default).
+    Returns empty string when it cannot read the response (the caller then
+    fails OPEN — never blocks on an unreadable response). On a tool-call turn
+    the current-turn slice may carry no text yet, so we fall back to the last
+    assistant message in the transcript tail instead of returning "" (which
+    used to false-block every tool-call turn — R8).
     """
     transcript_path = envelope.get("transcript_path")
     if not transcript_path:
@@ -186,7 +189,26 @@ def _extract_response_text(envelope: Dict[str, Any]) -> str:
         return ""
     turn = split_current_turn(messages)
     text, _ = extract_text_and_tools(turn)
-    return text or ""
+    if text and text.strip():
+        return text
+    # Fallback: tool-call turn → the current-turn slice had no flushed text.
+    # Walk the transcript tail for the last assistant message's text so the
+    # marker check still runs instead of false-blocking the whole turn.
+    for msg in reversed(messages):
+        m = msg.get("message") if isinstance(msg.get("message"), dict) else msg
+        if isinstance(m, dict) and m.get("role") == "assistant":
+            content = m.get("content")
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                joined = "\n".join(
+                    b.get("text", "") for b in content
+                    if isinstance(b, dict) and b.get("type") == "text"
+                )
+                if joined.strip():
+                    return joined
+            break
+    return ""
 
 
 def _missing_markers(response: str) -> List[str]:
@@ -251,6 +273,11 @@ def main() -> int:
 
     # Shape check.
     response = _extract_response_text(envelope)
+    if not response.strip():
+        # Couldn't read the response (e.g. final text not yet flushed on a
+        # tool-call turn) — cannot judge markers → fail OPEN, never block on
+        # an unreadable response (R8).
+        return _exit_allow(workspace, detail="unreadable-response-fail-open")
     missing = _missing_markers(response)
     if not missing:
         # All 4 markers present — run 5-layer Searched: coverage audit (warn only).

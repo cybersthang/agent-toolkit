@@ -26,9 +26,15 @@ Skip cases (silent allow, exit 0):
   - Bypass token consumed from prior UserPromptSubmit
 
 Enforce mode via `get_enforce_mode(workspace, "gap_completeness_gate")`:
-  - `block` (default — `feedback_exhaustive_analysis` is strict)
-  - `warn` (allow + stderr nudge)
-  - `off` (silent allow)
+  - `warn` (default v0.27 — surface gaps but don't block; reduce paralysis)
+  - `block` (opt-in via enforce_mode.json — `feedback_exhaustive_analysis` strict mode)
+  - `off`   (silent allow)
+
+Cross-gate dedup (v0.27): if the response contains any `scope-done:` /
+`scope-defer:` / `scope-cant:` marker, scope_completeness_gate is the
+authoritative completion gate for this turn → gap-gate downgrades to
+warn (or off if already warn). Avoids two stacked Stop hooks firing on
+the same claim.
 
 Fails open on any unexpected error.
 """
@@ -43,9 +49,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import run_main_safe, emit_fire_event, get_enforce_mode, parse_expires_at, atomic_write_json  # noqa: E402
+from _common import run_main_safe, emit_fire_event, get_enforce_mode, parse_expires_at, atomic_write_json, read_jsonl_transcript  # noqa: E402
 from _patterns import (  # noqa: E402
     DONE_CLAIM_GAP_RE, GAP_DEFER_RE, GAP_CANT_FIX_RE, GAP_LIST_EMIT_RE,
+    SCOPE_DONE_RE, SCOPE_DEFER_RE, SCOPE_CANT_RE,
 )
 
 # UTF-8 stdin/stdout/stderr — Vietnamese-friendly + Windows-safe.
@@ -228,16 +235,38 @@ def _consume_bypass(workspace: Path, state: Dict[str, Any]) -> Optional[str]:
 
 def _extract_assistant_text(envelope: Dict[str, Any]) -> str:
     """Pull current assistant response text from the Stop envelope.
-    Mirrors clarification_gate_enforcer pattern."""
+    Mirrors clarification_gate_enforcer pattern.
+
+    A REAL Claude Code Stop envelope has NO `response` field (only
+    transcript_path/stop_hook_active/cwd) — so fall back to the transcript
+    tail's last assistant message. Without this, the gate is INERT in
+    production (always no-done-claim)."""
     response = envelope.get("response")
-    if isinstance(response, str):
+    if isinstance(response, str) and response:
         return response
     if isinstance(response, list):
         out: List[str] = []
         for block in response:
             if isinstance(block, dict) and block.get("type") == "text":
                 out.append(block.get("text") or "")
-        return "\n".join(out)
+        joined = "\n".join(out)
+        if joined:
+            return joined
+    tp = envelope.get("transcript_path")
+    if tp:
+        msgs = read_jsonl_transcript(Path(tp))
+        for msg in reversed(msgs):
+            m = msg.get("message") if isinstance(msg.get("message"), dict) else msg
+            if m.get("role") == "assistant":
+                content = m.get("content")
+                if isinstance(content, str):
+                    return content
+                if isinstance(content, list):
+                    return "\n".join(
+                        b.get("text", "") for b in content
+                        if isinstance(b, dict) and b.get("type") == "text"
+                    )
+                break
     return ""
 
 
@@ -256,6 +285,8 @@ def _main() -> int:
         envelope = json.loads(raw) if raw.strip() else {}
     except json.JSONDecodeError:
         return _exit_allow(detail="bad-json")
+    if not isinstance(envelope, dict):
+        return _exit_allow(detail="non-dict-envelope")
 
     workspace = _find_workspace(envelope.get("cwd"))
     gaps_path = workspace / OPEN_GAPS_REL
@@ -336,12 +367,26 @@ def _main() -> int:
     # Persist mutations (defer / cant_fix applied but residual open).
     _persist(state, gaps_path)
 
-    mode = get_enforce_mode(workspace, HOOK_NAME, default="block")
+    # v0.27 default flipped block → warn (reduce paralysis from stacked
+    # Stop gates). DEV can still opt in to block via enforce_mode.json or
+    # AGENT_TOOLKIT_STRICT=1.
+    mode = get_enforce_mode(workspace, HOOK_NAME, default="warn")
+
+    # v0.27 cross-gate dedup: scope_completeness_gate is the authoritative
+    # completion gate when DEV declared an upfront scope. If the response
+    # uses any scope-* marker, this gate downgrades to warn so both gates
+    # don't double-fire on the same claim.
+    if mode == "block" and (
+        SCOPE_DONE_RE.search(response_text)
+        or SCOPE_DEFER_RE.search(response_text)
+        or SCOPE_CANT_RE.search(response_text)
+    ):
+        mode = "warn"
+
     if mode == "off":
         return _exit_allow(detail=f"off;open={len(open_gaps)}")
     if mode == "warn":
         return _exit_warn(reason)
-    # Default: block.
     return _exit_block(reason)
 
 

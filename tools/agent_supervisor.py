@@ -21,13 +21,13 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # Import shared resume-state core (hooks dir) + notify (tools dir).
 _HERE = Path(__file__).resolve().parent
-import sys
 sys.path.insert(0, str(_HERE))  # tools/
 sys.path.insert(0, str(_HERE.parent / "templates" / "claude" / "hooks"))
 import notify  # noqa: E402
@@ -37,6 +37,119 @@ except ImportError:  # pragma: no cover — degrade if hooks not on path
     _resume_state = None  # type: ignore
 
 CONFIG_REL = ".agent-toolkit/resilience.json"
+
+
+def _last_tool_use_is_pending(transcript_path: Path,
+                              tail_bytes: int = 262144) -> bool:
+    """Tail-peek the JSONL transcript and return True iff the latest
+    `assistant.tool_use` record has NO matching `user.tool_result`.
+
+    Used as a content-aware suppressor for the mtime-only stall detector:
+    Claude Code does NOT write to the transcript between a `tool_use`
+    emission and its matching `tool_result` arrival, so a long-running
+    Bash / MCP / WebFetch / sub-agent Task freezes mtime even though the
+    agent is mid-tool-call (waiting on a tool reply), NOT idle.
+
+    Reads at most ~256 KiB from the tail; fails OPEN (returns False) on
+    any IO / JSON / decode error so current behavior is preserved on
+    truncated or weird transcripts."""
+    try:
+        with open(transcript_path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            start = max(0, size - tail_bytes)
+            f.seek(start)
+            blob = f.read()
+        text = blob.decode("utf-8", errors="ignore")
+        # If we started mid-line (start > 0), drop the first partial line.
+        lines = text.split("\n")
+        if start > 0 and lines:
+            lines = lines[1:]
+        tool_use_ids: list = []
+        tool_result_ids: set = set()
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if not isinstance(rec, dict):
+                continue
+            msg = rec.get("message")
+            if not isinstance(msg, dict):
+                continue
+            content = msg.get("content")
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                btype = block.get("type")
+                if btype == "tool_use":
+                    tu_id = block.get("id")
+                    if tu_id:
+                        tool_use_ids.append(tu_id)
+                elif btype == "tool_result":
+                    tr_id = block.get("tool_use_id")
+                    if tr_id:
+                        tool_result_ids.add(tr_id)
+        return any(tu not in tool_result_ids for tu in tool_use_ids)
+    except (OSError, ValueError):
+        return False
+
+
+def _agent_owes_next_action(transcript_path: Path,
+                            tail_bytes: int = 262144) -> bool:
+    """True iff the AGENT owes the next step — the last conversational record
+    (message.role / top-level `type` in {user, assistant}) is a `user` turn:
+    a human message OR a tool_result handed back to the agent, with no
+    assistant turn after it.
+
+    Returns False when the last conversational record is an `assistant` turn
+    (the agent finished → it is the HUMAN's turn) or when nothing has been
+    asked yet. In those cases an idle transcript is NORMAL waiting, not a
+    hang. This is the line that separates "agent hung mid-work" (notify) from
+    "session idle / waiting for the user" (do NOT notify).
+
+    Non-conversational records (system / queue-operation / attachment /
+    file-history-snapshot) bump mtime without being a turn — they are ignored.
+
+    Fails OPEN (returns False → treated as NOT stalled) on any error so the
+    detector never false-alarms on a weird/truncated transcript."""
+    try:
+        with open(transcript_path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            start = max(0, size - tail_bytes)
+            f.seek(start)
+            blob = f.read()
+        text = blob.decode("utf-8", errors="ignore")
+        lines = text.split("\n")
+        if start > 0 and lines:
+            lines = lines[1:]
+        last_role = None
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if not isinstance(rec, dict):
+                continue
+            msg = rec.get("message")
+            role = msg.get("role") if isinstance(msg, dict) else None
+            if role not in ("user", "assistant"):
+                role = rec.get("type")
+            if role in ("user", "assistant"):
+                last_role = role
+        return last_role == "user"
+    except (OSError, ValueError):
+        return False
+
 
 DEFAULTS: Dict[str, Any] = {
     "stall_seconds": 180,
@@ -106,11 +219,60 @@ def autonomy_active(workspace: Path, now: Optional[float] = None) -> bool:
     return now_dt < exp
 
 
+def _active_child_work(workspace: Path, now: float, stall_seconds: int,
+                       projects_root: Optional[Path] = None) -> bool:
+    """True iff a sub-agent / background-workflow transcript under this
+    session is FRESH (mtime within stall_seconds).
+
+    Closes the ASYNC blind spot that `_last_tool_use_is_pending` cannot see:
+    when the agent launches a background Workflow (or background Bash), the
+    `tool_use` returns its `tool_result` IMMEDIATELY and the main loop then
+    AWAITS the async completion. So the main transcript goes silent with NO
+    pending tool_use — yet the session is actively working. The child
+    transcript (under `<proj>/<session>/subagents/**/*.jsonl`, where
+    Workflows also write) is being updated, which proves not-idle.
+
+    Fails OPEN (False) on any error so detection degrades to mtime-only."""
+    try:
+        if projects_root is None:
+            projects_root = Path.home() / ".claude" / "projects"
+        proj = projects_root / encode_project_path(workspace)
+        if not proj.is_dir():
+            return False
+        # Scope to the CURRENT session UUID only — a fresh sub-agent
+        # transcript from ANOTHER same-project session must NOT suppress
+        # this session's stall (cross-session bleed). Fail open if the
+        # active transcript / session dir can't be resolved.
+        main = find_active_transcript(workspace, projects_root)
+        if main is None:
+            return False
+        sess = main.stem
+        for p in (proj / sess).glob("subagents/**/*.jsonl"):
+            try:
+                if now - p.stat().st_mtime <= stall_seconds:
+                    return True
+            except OSError:
+                continue
+    except Exception:  # noqa: BLE001 — best-effort suppressor, never raises
+        return False
+    return False
+
+
 def is_stalled(transcript_path: Optional[Path], autonomy_on: bool,
-               stall_seconds: int, now: float, proc_alive: bool = True) -> bool:
-    """READ-ONLY stall decision. Stalled when autonomy is on AND (the claude
-    process is gone OR the transcript has not advanced for > stall_seconds).
-    Busy-but-silent long tasks keep writing the transcript → not stalled."""
+               stall_seconds: int, now: float, proc_alive: bool = True,
+               check_pending_tool_use: bool = True,
+               workspace: Optional[Path] = None,
+               projects_root: Optional[Path] = None) -> bool:
+    """READ-ONLY stall decision. Stalled when autonomy is on, the agent OWES
+    the next action, AND (the claude process is gone OR the transcript has not
+    advanced for > stall_seconds). Three NOT-a-stall cases are excluded:
+      - a long SYNCHRONOUS tool call (unmatched `tool_use` at the tail) —
+        `_last_tool_use_is_pending`;
+      - an active ASYNC background Workflow / Bash / sub-agent (a fresh child
+        transcript) — `_active_child_work` (needs `workspace`);
+      - the last conversational turn is the agent's own completed reply (or
+        nothing was asked yet) → it is the HUMAN's turn, so an idle transcript
+        is normal waiting, not a hang — `_agent_owes_next_action`."""
     if not autonomy_on:
         return False
     if not proc_alive:
@@ -121,7 +283,19 @@ def is_stalled(transcript_path: Optional[Path], autonomy_on: bool,
         age = now - transcript_path.stat().st_mtime
     except OSError:
         return False
-    return age > stall_seconds
+    if age <= stall_seconds:
+        return False
+    if check_pending_tool_use and _last_tool_use_is_pending(transcript_path):
+        return False  # mid SYNCHRONOUS tool-call (long Bash/MCP/Task) → not idle
+    if workspace is not None and _active_child_work(workspace, now, stall_seconds, projects_root):
+        return False  # active ASYNC background work (Workflow/bg-Bash/sub-agent) → not idle
+    if not _agent_owes_next_action(transcript_path):
+        # Last conversational turn is the agent's own completed reply (or
+        # nothing asked yet) → it is the HUMAN's turn. Idle here is normal
+        # waiting, NOT a hang — only a turn the agent OWES (user msg /
+        # tool_result with no follow-up) counts as stalled.
+        return False
+    return True
 
 
 def check_once(workspace: Path, transcript_path: Optional[Path],
@@ -134,7 +308,7 @@ def check_once(workspace: Path, transcript_path: Optional[Path],
         now = time.time()
     on = autonomy_active(workspace, now)
     if not is_stalled(transcript_path, on, int(config.get("stall_seconds", 180)),
-                      now, proc_alive):
+                      now, proc_alive, workspace=workspace):
         return ("ok", last_notify_ts)
     cooldown = float(config.get("notify_cooldown", 300))
     if now - last_notify_ts < cooldown:
@@ -247,9 +421,14 @@ def read_parallel_wave_manifest(workspace: Path) -> Optional[Dict[str, Any]]:
         return None
     if data.get("wave_done"):
         return None
+    # A manifest missing `ttl_seconds` must still expire — otherwise orphaned
+    # or hand-edited manifests would keep the sub-agent watcher armed forever.
+    # Apply DEFAULT_TTL_SECONDS when ttl_seconds is absent/falsy.
+    DEFAULT_TTL_SECONDS = 3600
+    _ttl = data.get("ttl_seconds")
+    ttl = int(_ttl) if _ttl else DEFAULT_TTL_SECONDS
     created = int(data.get("created_ts") or 0)
-    ttl = int(data.get("ttl_seconds") or 0)
-    if created and ttl and time.time() > created + ttl:
+    if created and time.time() > created + ttl:
         return None
     return data
 
@@ -261,7 +440,20 @@ def discover_sub_agent_transcripts(workspace: Path,
     """List sub-agent `.jsonl` transcripts in the project's transcript dir
     that (a) appeared/were modified AFTER the wave was emitted and (b) are
     NOT the main-session transcript. Per D1 we do not bridge agent_id →
-    session_id in Phase 1 — DEV correlates via the filename in notify."""
+    session_id in Phase 1 — DEV correlates via the filename in notify.
+
+    v0.27 (B2 fix, field-verified 2026-05-28): Claude Code writes sub-agent
+    transcripts under `<projectsRoot>/<encoded>/<sessionUUID>/subagents/
+    agent-<hash>.jsonl`, NOT flat in `<projectsRoot>/<encoded>/`. The
+    previous implementation globbed only the top level, so it never saw
+    any sub-agent — silent no-op against the real layout. We glob the
+    nested real layout only:
+      - `<sessionUUID>/subagents/**/*.jsonl`  (real layout, session-scoped)
+
+    The earlier flat-layout back-compat loop was REMOVED: in a flat layout
+    sub-agent transcripts cannot be session-scoped reliably, so it
+    mis-counted OTHER same-project sessions' transcripts as hung
+    sub-agents. Current Claude Code uses the nested layout exclusively."""
     if projects_root is None:
         projects_root = Path.home() / ".claude" / "projects"
     enc = encode_project_path(workspace)
@@ -270,16 +462,26 @@ def discover_sub_agent_transcripts(workspace: Path,
         return []
     main = find_active_transcript(workspace, projects_root=projects_root)
     created = int((manifest or {}).get("created_ts") or 0)
+    seen: set = set()
     out: List[Path] = []
-    for p in proj.glob("*.jsonl"):
+
+    # Primary: nested layout `<sessionUUID>/subagents/agent-*.jsonl`,
+    # scoped to the CURRENT session UUID only so sub-agents from ANOTHER
+    # same-project session don't leak in. Fail open (skip nested scan) if
+    # the active main transcript can't be resolved.
+    sess = main.stem if main is not None else None
+    nested_iter = (proj / sess).glob("subagents/**/*.jsonl") if sess else []
+    for p in nested_iter:
         try:
             mtime = p.stat().st_mtime
         except OSError:
             continue
         if created and mtime < created:
             continue
-        if main is not None and p.resolve() == main.resolve():
+        key = str(p.resolve())
+        if key in seen:
             continue
+        seen.add(key)
         out.append(p)
     return out
 
@@ -332,6 +534,8 @@ def check_subagent_transcripts(workspace: Path,
             continue
         if idle <= threshold:
             continue
+        if _last_tool_use_is_pending(tp):
+            continue  # sub-agent mid-tool-call (long Bash/MCP/Task) → not idle
         key = str(tp)
         if now - last_notify_per_transcript.get(key, 0.0) < cooldown:
             continue

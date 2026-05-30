@@ -78,7 +78,7 @@
         "decorator"
       ],
       "question": "Which Odoo 14 API decorators do we use?",
-      "answer": "Use `@api.multi` for recordset methods and `@api.model` for model-level methods. Avoid `@api.one` (deprecated). Call `ensure_one()` when a single record is required.",
+      "answer": "`@api.multi` and `@api.one` are REMOVED in Odoo 14 (removed since v13, not merely deprecated) — referencing them raises ImportError/AttributeError, so never use them. Methods iterate `self` by default: `self` is always a recordset and `def my_method(self): for rec in self:` is the standard pattern. Call `ensure_one()` when a single record is required. Use `@api.model` for model-level methods, `@api.model_create_multi` for batch-aware `create`, and `@api.depends` / `@api.constrains` / `@api.onchange` for computed fields, constraints, and onchanges.",
       "source": ".cursor/rules/odoo-14-backend.mdc"
     },
     {

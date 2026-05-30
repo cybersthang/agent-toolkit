@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+# ruff: noqa
+"""Sample real-data smoke test — TEMPLATE shipped by agent-toolkit.
+
+WHAT THIS IS
+------------
+A minimal, well-commented smoke check that the `realdata_test` MCP server
+(`run_smoke_test` / `build_smoke_test_command`) is wired to invoke. The server
+shells out to this script at the path given by `{{ENV_PREFIX}}_SMOKE_TEST`
+(default: `scripts/smoke_test.py` under the workspace, configurable via the
+preset's `smoke_test_rel`).
+
+WHERE TO PUT IT
+---------------
+The installer ships this as `.agent-toolkit/smoke_test.py.tmpl` (rendered, with
+your project's `{{PYTHON_BIN}}` / `{{DEFAULT_DB}}` baked in). It is intentionally
+shipped with a `.tmpl` suffix so it is NOT mistaken for a live runnable in
+`.agent-toolkit/`. To activate it:
+
+    1. Copy it to where `realdata_test_server.py` expects it, e.g.
+         cp .agent-toolkit/smoke_test.py.tmpl scripts/smoke_test.py
+       (or point `{{ENV_PREFIX}}_SMOKE_TEST` / preset `smoke_test_rel` at
+        whatever path you choose).
+    2. Make it executable:  chmod +x scripts/smoke_test.py
+    3. Adapt the probe SELECTs / expected row counts to your schema.
+
+It is a TEMPLATE: it uses {{PLACEHOLDERS}} and ships NO real credentials.
+
+CLI CONTRACT
+------------
+The MCP server calls this script with exactly these flags (see
+`smoke_test_command()` in templates/codex/mcp_servers/realdata_test_server.py):
+
+    {{PYTHON_BIN}} scripts/smoke_test.py \
+        --db-name {{DEFAULT_DB}} \
+        --db-host <host> --db-port <port> --db-user <user> \
+        --odoo-bin {{ODOO_BIN_REL}} --odoo-conf {{ODOO_CONF_REL}} \
+        [--skip-registry] [--skip-row-count]
+
+Equivalent narrow Odoo module check (no custom script needed) — the pattern the
+canonical decisions recommend for a single module:
+
+    {{PYTHON_BIN}} {{ODOO_BIN_REL}} -d {{DEFAULT_DB}} -u {{MODULE}} \
+        --test-enable --stop-after-init
+
+The smoke test below performs READ-ONLY probes (SELECT row counts) plus an
+optional Odoo registry-boot check (`--stop-after-init`). It never writes.
+
+NOTE: A full demo Odoo project (sample addon + seeded staging DB to run this
+against end-to-end) is a SEPARATE follow-up and is intentionally out of scope
+for this template.
+"""
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+
+# Defaults are templated at install time from your preset / config. They are
+# only fallbacks — the MCP server passes explicit flags, so leaving a
+# placeholder empty just means "require the flag".
+DEFAULT_DB = "{{DEFAULT_DB}}"          # e.g. staging_clone (NEVER a *prod* DB)
+DEFAULT_PYTHON_BIN = "{{PYTHON_BIN}}"  # the project venv python — never bare python
+DEFAULT_ODOO_BIN = "{{ODOO_BIN_REL}}"
+DEFAULT_ODOO_CONF = "{{ODOO_CONF_REL}}"
+
+# Read-only probes. Each entry: (label, SQL, minimum-expected-rows).
+# SELECT-only by construction — adapt the table/threshold to your schema.
+ROW_COUNT_PROBES = [
+    ("res_users non-zero", "SELECT count(*) FROM res_users", 1),
+    ("ir_module installed", "SELECT count(*) FROM ir_module_module WHERE state = 'installed'", 1),
+]
+
+
+def _looks_production(db_name: str) -> bool:
+    """Guardrail mirror of the MCP server's prod-detection. A smoke test must
+    never be aimed at a production database; bail loudly if the name looks live."""
+    lowered = (db_name or "").lower()
+    return any(marker in lowered for marker in ("prod", "production", "live"))
+
+
+def run_row_count_probes(args: argparse.Namespace) -> int:
+    failures = 0
+    for label, sql, min_rows in ROW_COUNT_PROBES:
+        cmd = [
+            "psql",
+            "-h", args.db_host,
+            "-p", str(args.db_port),
+            "-U", args.db_user,
+            "-d", args.db_name,
+            "-tA",                       # tuples-only, unaligned
+            "-v", "ON_ERROR_STOP=1",
+            "-c", sql,                   # SELECT-only — see ROW_COUNT_PROBES
+        ]
+        print(f"[probe] {label}: {sql}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"  FAIL ({label}): {result.stderr.strip()}", file=sys.stderr)
+            failures += 1
+            continue
+        try:
+            count = int((result.stdout or "0").strip().splitlines()[0])
+        except (ValueError, IndexError):
+            print(f"  FAIL ({label}): could not parse count from {result.stdout!r}", file=sys.stderr)
+            failures += 1
+            continue
+        status = "OK" if count >= min_rows else "FAIL"
+        print(f"  {status} ({label}): {count} rows (>= {min_rows} expected)")
+        if count < min_rows:
+            failures += 1
+    return failures
+
+
+def run_registry_boot(args: argparse.Namespace) -> int:
+    """Boot the Odoo registry and stop immediately — proves the codebase loads
+    cleanly against the target DB without serving traffic or writing data."""
+    cmd = [
+        args.python_bin,
+        args.odoo_bin,
+        "-c", args.odoo_conf,
+        "-d", args.db_name,
+        "--stop-after-init",
+    ]
+    print(f"[registry-boot] {' '.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"  FAIL (registry boot): {result.stderr.strip()[-2000:]}", file=sys.stderr)
+        return 1
+    print("  OK (registry boot)")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Real-data smoke test (read-only probes + registry boot).")
+    parser.add_argument("--db-name", default=DEFAULT_DB, required=not DEFAULT_DB)
+    parser.add_argument("--db-host", default="localhost")
+    parser.add_argument("--db-port", default="5432")
+    parser.add_argument("--db-user", default="odoo")
+    parser.add_argument("--odoo-bin", dest="odoo_bin", default=DEFAULT_ODOO_BIN)
+    parser.add_argument("--odoo-conf", dest="odoo_conf", default=DEFAULT_ODOO_CONF)
+    parser.add_argument("--python-bin", dest="python_bin", default=DEFAULT_PYTHON_BIN or sys.executable)
+    parser.add_argument("--skip-registry", action="store_true", help="Skip the Odoo registry-boot check.")
+    parser.add_argument("--skip-row-count", action="store_true", help="Skip the SELECT row-count probes.")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+
+    if _looks_production(args.db_name):
+        print(
+            f"REFUSING: database {args.db_name!r} looks production-like. "
+            "Point the smoke test at a staging clone instead.",
+            file=sys.stderr,
+        )
+        return 2
+
+    failures = 0
+    if not args.skip_row_count:
+        failures += run_row_count_probes(args)
+    if not args.skip_registry:
+        failures += run_registry_boot(args)
+
+    if failures:
+        print(f"\nSMOKE TEST FAILED: {failures} check(s) failed.", file=sys.stderr)
+        return 1
+    print("\nSMOKE TEST PASSED.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

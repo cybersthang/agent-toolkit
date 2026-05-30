@@ -10,7 +10,7 @@ and the cross-version checklists under `_common/code-review/references/`.
 - `@api.one` is **forbidden** (deprecated; introduces silent per-record iteration with surprising return shape).
 - `@api.model` on class-level methods that don't need a recordset.
 - `@api.depends(...)` complete on every computed field; missing fields cause stale values.
-- Override `create(self, vals)` is the **single-record** form. Odoo 12 does not require `@api.model_create_multi` (that arrived in 14). If the project mixes 12-style and 17-style overrides on the same class, flag inconsistency (LOW unless a bug actually fires).
+- Override `create(self, vals)` is the **single-record** form. Odoo 12 does not require `@api.model_create_multi` (the decorator exists since v12, but single-record overrides are common in 12-era code). If the project mixes 12-style and 17-style overrides on the same class, flag inconsistency (LOW unless a bug actually fires).
 - `ensure_one()` whenever a method assumes a single record.
 
 ### Severity calibration
@@ -116,5 +116,5 @@ ORM expressions, no statements.
 
 - Flagging `@api.multi` or `attrs="..."` as bugs — they are correct in 12.
 - Treating jQuery as deprecated — it is fine in 12; OWL is 17+.
-- Suggesting `@api.model_create_multi` — that's 14+. Odoo 12 uses single-record `create(vals)` override.
+- Forcing `@api.model_create_multi` — it exists since v12 but is not required there; Odoo 12 code commonly uses the single-record `create(vals)` override.
 - Re-deriving "what to fix" without consulting `.codex/audit_findings_*_locked.md` and `canonical_decisions.json` first — that is how counts drift across sessions.

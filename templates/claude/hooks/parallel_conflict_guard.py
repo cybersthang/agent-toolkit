@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-"""PreToolUse hook — parallel-subagent conflict guard (v0.25.0).
+"""PreToolUse hook — parallel-subagent conflict guard (v0.25.0, status
+DEGRADED v0.27 — see KNOWN LIMITATION below).
 
 When the main agent has declared a wave of concurrent sub-agents via
 `tools/parallel_wave.py emit` (writing `.agent-toolkit/.parallel_wave.json`),
@@ -13,6 +14,22 @@ Rule (D8): for the incoming PreToolUse envelope:
 A file F is "in zone Z" when it matches any pattern in `Z.owned` (D4 smart
 match: glob with `*`, dir-prefix with trailing `/`, else exact path). If
 F ∈ Z and `envelope.agent_id != Z.agent_id` → BLOCK.
+
+KNOWN LIMITATION (B2, field-verified 2026-05-28, v0.27 audit):
+  Claude Code currently does NOT include `agent_id` in PreToolUse /
+  PostToolUse envelopes — it only appears in SubagentStart / SubagentStop
+  events. See anthropics/claude-code#40140 (feature request open). Effect:
+  `envelope.agent_id` is None for every Edit/Write call, so the guard
+  treats every edit as the "main agent" and cross-zone edits from
+  sub-agents are NOT blocked in real-world Claude Code today. The guard
+  remains correct + tested for the *future* envelope shape via synthetic
+  fixtures; it is currently advisory at runtime.
+  Mitigations until upstream adds the field:
+    1. Treat parallel-batching as conventional/honor-system, not enforced.
+    2. Use `tools/parallel_wave.py emit` to declare zones so DEV review
+       can spot violations in the transcript even if the guard didn't fire.
+    3. Watch the linked issue and remove this limitation block once the
+       field lands.
 
 Silent allow (exit 0, zero output) when:
   - Kill-switch `AGENT_TOOLKIT_DISABLE=1`.
@@ -41,7 +58,7 @@ from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
-    run_main_safe, emit_fire_event, get_enforce_mode, parse_expires_at,
+    run_main_safe, emit_fire_event, get_enforce_mode,
 )
 
 # UTF-8 stdin/stdout/stderr — Vietnamese-friendly + Windows-safe.
@@ -120,12 +137,18 @@ def _read_json(path: Path) -> Optional[Dict[str, Any]]:
 
 
 def _manifest_active(manifest: Dict[str, Any], now: float) -> bool:
-    """Manifest is active when wave_done is false and TTL has not expired."""
+    """Manifest is active when wave_done is false and TTL has not expired.
+
+    A manifest with a missing / zero `ttl_seconds` previously short-circuited
+    the expiry check (`created and ttl and ...`) and was treated as active
+    FOREVER. Apply a 1h default TTL so a stale, un-TTL'd manifest expires."""
     if manifest.get("wave_done"):
         return False
+    DEFAULT_TTL_SECONDS = 3600
+    ttl = manifest.get("ttl_seconds")
+    ttl = int(ttl) if ttl else DEFAULT_TTL_SECONDS
     created = int(manifest.get("created_ts") or 0)
-    ttl = int(manifest.get("ttl_seconds") or 0)
-    if created and ttl and now > created + ttl:
+    if created and now > created + ttl:
         return False
     return True
 
@@ -251,8 +274,8 @@ def _main() -> int:
         f"cross-zone conflict (xem v0.25 parallel-subagent-guard).",
         "Cách xử lý:",
         f"  1. Đổi sub-agent: chỉ `{owner_id}` được sửa file này trong wave.",
-        f"  2. Bypass 1 lần: DEV gõ `bypass-parallel-guard: <reason ≥ 8 chars>`.",
-        f"  3. Wave xong: `python tools/parallel_wave.py declare-done` (hoặc `clear`).",
+        "  2. Bypass 1 lần: DEV gõ `bypass-parallel-guard: <reason ≥ 8 chars>`.",
+        "  3. Wave xong: `python tools/parallel_wave.py declare-done` (hoặc `clear`).",
     ]
     reason = "\n".join(reason_lines)
 

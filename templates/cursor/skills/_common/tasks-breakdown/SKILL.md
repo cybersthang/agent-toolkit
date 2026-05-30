@@ -132,9 +132,21 @@ Coverage:
   ✓ acceptance_evals: <evals-cited>/<evals-total>
   <warning if any story or eval uncovered>
 
+Parallelism (python3 tools/wave_planner.py plan <tasks.md>):
+  <K> parallel wave(s), max width <W> — e.g. wave 3 = [T3, T4] run concurrently
+  (or "all sequential — no provably file-disjoint tasks")
+
 → DEV review tasks.md, gõ `/implement <slug>` để bắt đầu auto-chain
   (analyze → implement → verify). Hoặc edit tasks.md, gõ `/tasks <slug> --regenerate`.
 ```
+
+> **Parallelism is automatic at /implement, conservative by construction.**
+> Run `python3 tools/wave_planner.py plan <tasks.md>` to preview the waves.
+> `/implement` dispatches each ≥2-task wave as concurrent sub-agents (file
+> -disjoint zones enforced by `parallel_conflict_guard`); anything not
+> provably disjoint stays sequential. To MAKE tasks parallelizable, give each
+> a precise, NON-overlapping `Touches` list (no globs) — that is the only
+> signal the planner trusts.
 
 **STOP — DO NOT auto-trigger /analyze or /implement in the same turn.**
 This is the DEV review gate: the user reads tasks.md, edits if needed,

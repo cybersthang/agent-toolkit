@@ -76,7 +76,7 @@ Spec: .agent-toolkit/specs/<slug>.md · status before: implementing
 → Spec status: gaps-found
 → Tiếp:
    - Fix BLOCKER #1 + GAP #3, sau đó /verify lại.
-   - Hoặc /grill nếu thấy GAP là decision cần DEV chốt thay vì fix code.
+   - Hoặc /clarify nếu thấy GAP là decision cần DEV chốt thay vì fix code.
 ```
 
 8. **Update spec frontmatter**:
@@ -91,7 +91,7 @@ Spec: .agent-toolkit/specs/<slug>.md · status before: implementing
 ## Refuse / clarify khi
 
 - Spec không tồn tại.
-- Spec ở `status: draft` (chưa code) → từ chối, gợi /grill + /go trước.
+- Spec ở `status: draft` (chưa code) → từ chối, gợi /clarify + /implement trước.
 - Không có codebase / postgres / realdata_test MCP active → in lỗi rõ
   (verify cần real-data layer; discover MCP qua `.mcp.json` hoặc
   `mcp__*` prefix lookup, không hardcode tên).

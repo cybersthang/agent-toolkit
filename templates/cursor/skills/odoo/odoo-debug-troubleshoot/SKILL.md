@@ -19,7 +19,10 @@ debugging quirks:
 | Detected major | Reference |
 |---|---|
 | 12 | `references/odoo-12-pitfalls.md` (standalone) |
-| 13/14/15/16 | apply `odoo-17-pitfalls.md` + flag LOW transitional |
+| 13 | load `references/odoo-13-pitfalls.md` |
+| 14 | load `references/odoo-14-pitfalls.md` |
+| 15 | load `references/odoo-15-pitfalls.md` |
+| 16 | load `references/odoo-16-pitfalls.md` (+ note: backports some v17 conventions) |
 | 17 | `references/odoo-17-pitfalls.md` |
 | 18 | `references/odoo-18-pitfalls.md` ← 17 |
 | 19 | `references/odoo-19-pitfalls.md` ← 18 ← 17 |

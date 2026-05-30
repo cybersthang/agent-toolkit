@@ -1,7 +1,6 @@
 """Hallucinated-progress checks (categories A-E)."""
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -58,6 +57,23 @@ CITATION_RE = re.compile(
     re.IGNORECASE,
 )
 CITATION_READING_TOOLS = {"Read", "Grep", "Glob", "NotebookRead"}
+# A file the agent demonstrably WROTE this turn exists — credit its
+# file_path/notebook_path into seen_paths so a same-turn citation of a
+# just-created file is not flagged phantom. (FP vector (a), 2026-05-30.)
+CITATION_WRITING_TOOLS = {"Write", "MultiEdit", "NotebookEdit"}
+
+# A cited path is NOT a phantom when the response explicitly frames it as
+# ABSENT — i.e. you are reporting a gap / dead link, not claiming the file
+# exists. Skip flagging when one of these appears next to the citation.
+CITATION_MISSING_NEAR_RE = re.compile(
+    r"missing|absent|does\s*not\s*exist|does\s*n[o']t\s*exist|not\s*exist|"
+    r"dead[\s-]*link|broken\s*link|\(planned\)|placeholder|ch(ư|u)a\s*(t(ồ|o)n\s*t(ạ|a)i|"
+    r"c(ó|o)|vi(ế|e)t|t(ạ|a)o)|kh(ô|o)ng\s*(t(ồ|o)n\s*t(ạ|a)i|c(ó|o))|thi(ế|e)u|TBD|"
+    r"no\s*such\s*file|file\s*not\s*found|not\s*found|n['o]t\s*found|removed|deleted|"
+    r"\bgone\b|404|not\s*there|ENOENT|"
+    r"đã\s*xoá|đã\s*xóa|đã\s*gỡ|bị\s*xoá",
+    re.IGNORECASE | re.UNICODE,
+)
 
 # D. TodoWrite inconsistency.
 COMPLETION_CLAIM_RE = re.compile(
@@ -146,6 +162,7 @@ def check_phantom_citation(
     text: str,
     tool_calls: List[Dict[str, Any]],
     workspace: Path,
+    results_by_id: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Optional[str]:
     link_urls: List[str] = []
     for m in re.finditer(r"\[([^\]]+)\]\(([^)]+)\)", text):
@@ -158,13 +175,34 @@ def check_phantom_citation(
     seen_paths: set = set()
     for call in tool_calls:
         name = call.get("name") or ""
-        if name not in CITATION_READING_TOOLS:
-            continue
         inp = call.get("input") or {}
-        for k in ("file_path", "path", "notebook_path", "pattern", "glob"):
-            v = inp.get(k)
-            if isinstance(v, str):
-                seen_paths.add(v.replace("\\", "/"))
+        if name in CITATION_READING_TOOLS:
+            for k in ("file_path", "path", "notebook_path", "pattern", "glob"):
+                v = inp.get(k)
+                if isinstance(v, str):
+                    seen_paths.add(v.replace("\\", "/"))
+        elif name in CITATION_WRITING_TOOLS:
+            # A file the agent wrote this turn demonstrably exists — credit
+            # its file_path/notebook_path so a same-turn citation of a just-
+            # created file is not a phantom. (FP vector (a), 2026-05-30.)
+            for k in ("file_path", "notebook_path"):
+                v = inp.get(k)
+                if isinstance(v, str):
+                    seen_paths.add(v.replace("\\", "/"))
+    # A cited path string that literally appears in a prior tool_result's
+    # CONTENT (e.g. a filename in grep / cat / ls output) is proven to exist
+    # by that output — collect all result text so such citations are credited.
+    # (FP vector (b), 2026-05-30.)
+    result_text = ""
+    for result in (results_by_id or {}).values():
+        rcontent = result.get("content") if isinstance(result, dict) else None
+        if isinstance(rcontent, str):
+            result_text += "\n" + rcontent
+        elif isinstance(rcontent, list):
+            for b in rcontent:
+                if isinstance(b, dict) and b.get("type") == "text":
+                    result_text += "\n" + (b.get("text") or "")
+    result_text_norm = result_text.replace("\\", "/")
     for u in link_urls:
         try:
             norm = u.replace("\\", "/").lstrip("./")
@@ -183,14 +221,27 @@ def check_phantom_citation(
         np = _normalize(p)
         if any(np in s.replace("\\", "/") for s in seen_paths):
             return True
+        # Cited path literally present in a prior tool_result's content text
+        # (grep/cat/ls output) — the output proves it exists. (FP vector (b).)
+        if result_text_norm and np in result_text_norm:
+            return True
         cite_base = _basename(np)
         if cite_base and any(_basename(s) == cite_base for s in seen_paths):
             return True
-        try:
-            if (workspace / p).exists() or (workspace / np).exists():
-                return True
-        except OSError:
-            pass
+        # Check the workspace AND its ancestors: the hook's cwd can be a
+        # SUBDIR of the real project root (cwd drift), so a file living at an
+        # ancestor (e.g. the project root above the repo) must still count as
+        # existing — not phantom.
+        anc = workspace
+        for _ in range(4):
+            try:
+                if (anc / p).exists() or (anc / np).exists():
+                    return True
+            except OSError:
+                pass
+            if anc.parent == anc:
+                break
+            anc = anc.parent
         # Subdir search by basename — handles bare filename citations
         # (e.g. `<test_name>.py` lives at `<addon-root>/<module>/tests/`
         # but cited without dir prefix). Short-circuit on first hit; skip
@@ -208,14 +259,20 @@ def check_phantom_citation(
         return False
 
     bad: List[str] = []
-    for tup in cites:
-        path = tup[0]
-        if not path or "/" not in path and "\\" not in path and "." not in path:
+    for m in CITATION_RE.finditer(text):
+        path = m.group(1)
+        if not path or ("/" not in path and "\\" not in path and "." not in path):
             continue
         if len(path) < 4:
             continue
-        if not _seen(path):
-            bad.append(path)
+        if _seen(path):
+            continue
+        # "reporting-missing" exempt: the response explicitly frames this path
+        # as absent (a dead-link / gap finding) — that is NOT a phantom claim.
+        window = text[max(0, m.start() - 90): m.end() + 90]
+        if CITATION_MISSING_NEAR_RE.search(window):
+            continue
+        bad.append(path)
     if not bad:
         return None
     seen_ids: List[str] = []
@@ -303,17 +360,22 @@ def run_progress_checks(
     violations: List[str] = []
     if "action_ghost" not in disabled:
         v = check_action_ghost(text, tool_calls)
-        if v: violations.append(v)
+        if v:
+            violations.append(v)
     if "tool_result_fabrication" not in disabled:
         v = check_tool_result_fabrication(text, tool_calls, results_by_id)
-        if v: violations.append(v)
+        if v:
+            violations.append(v)
     if "phantom_citation" not in disabled:
-        v = check_phantom_citation(text, tool_calls, workspace)
-        if v: violations.append(v)
+        v = check_phantom_citation(text, tool_calls, workspace, results_by_id)
+        if v:
+            violations.append(v)
     if "todo_inconsistency" not in disabled:
         v = check_todo_inconsistency(text, all_messages)
-        if v: violations.append(v)
+        if v:
+            violations.append(v)
     if "overcount" not in disabled:
         v = check_overcount(text, tool_calls)
-        if v: violations.append(v)
+        if v:
+            violations.append(v)
     return violations

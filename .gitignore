@@ -47,6 +47,11 @@ presets/*-private.json
 .agent-toolkit/.skip_debug_sentry_next.json
 .agent-toolkit/.open_gaps.json
 .agent-toolkit/.stop_audit_count.json
+.agent-toolkit/.tdd_runner_last.json
+# Nested copies too (e.g. a hook writing into templates/.../.agent-toolkit/
+# when cwd drifts) — must never be committed or shipped by the installer.
+**/.hook_fire_log.json
+**/.hook_loc_log.json
 
 # Setup.py update auto-generated backup files. Consumer projects need to
 # inherit this pattern — see lib/installer.py post-install hook (v0.21).

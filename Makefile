@@ -25,7 +25,7 @@ help:
 	@echo "  make coverage     Run pytest with --cov-fail-under=70 gate (CI parity)"
 	@echo "  make smoke        Run setup.py --version + list-presets"
 	@echo "  make dry-run      Run setup.py init --dry-run into $(SMOKE_DIR)"
-	@echo "  make lint         Run ruff check on setup.py + lib/ + tests/"
+	@echo "  make lint         Run ruff check on setup.py + lib/ + tests/ + templates/claude/hooks/"
 	@echo "  make rebuild      Full CI-equivalent run: install + lint + test + coverage + smoke + dry-run"
 	@echo "  make clean        Remove caches (.pytest_cache, .ruff_cache, __pycache__, .coverage)"
 	@echo ""
@@ -69,7 +69,7 @@ dry-run: check-python
 	$(PYTHON) setup.py init $(SMOKE_DIR) --preset generic --yes --dry-run
 
 lint: check-python
-	$(RUFF) check setup.py lib/ tests/
+	$(RUFF) check setup.py lib/ tests/ templates/claude/hooks/
 
 # Full CI parity run — matches .github/workflows/test.yml + the new
 # coverage job. `rebuild` is the single command DEV / CI executes on a

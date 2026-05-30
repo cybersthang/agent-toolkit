@@ -1,11 +1,11 @@
 {
-  "_comment": "Odoo 15 differentiation from odoo-12 base: Python 3.8 baseline, OWL 1.x introduced ALONGSIDE legacy QWeb+jQuery (transitional release), QWeb component split started. Legacy ORM still dominant — reuses odoo-12 rule pack but flag OWL-specific code via skill references. TODO: add templates/cursor/rules/odoo-15/ for OWL 1.x specifics.",
-  "description": "Odoo 15 Community / Enterprise — Python 3.8+, TRANSITIONAL: QWeb+jQuery legacy + OWL 1.x intro. Legacy ORM dominant; reuses odoo-12 rule pack — flag OWL component code separately.",
+  "_comment": "Odoo 15 differentiation from odoo-12 base: Python 3.7 minimum, OWL 1.x introduced ALONGSIDE legacy QWeb+jQuery (transitional release), QWeb component split started. Legacy ORM still dominant — reuses odoo-12 rule pack but flag OWL-specific code via skill references. TODO: add templates/cursor/rules/odoo-15/ for OWL 1.x specifics.",
+  "description": "Odoo 15 Community / Enterprise — Python 3.7+, TRANSITIONAL: QWeb+jQuery legacy + OWL 1.x intro. Legacy ORM dominant; reuses odoo-12 rule pack — flag OWL component code separately.",
   "stack_label": "Odoo 15",
   "response_language": "Vietnamese",
   "stack": {
     "language": "python",
-    "language_version": "3.8",
+    "language_version": "3.7",
     "framework": "odoo",
     "framework_version": "15",
     "frontend": "QWeb + OWL 1.x (transitional)",
@@ -27,12 +27,21 @@
     "default_port": 5432,
     "default_user": "odoo"
   },
-  "rules": ["_common", "odoo-12"],
+  "rules": ["_common", "odoo-15"],
   "_rules_comment": "TODO: differentiate from odoo-12 base when templates/cursor/rules/odoo-15/ is authored. v15 is transitional — most backend ORM still v12-era, only OWL frontend new.",
   "skills": ["_common", "odoo"],
-  "memory_packs": ["odoo-12"],
+  "memory_packs": ["odoo-15"],
   "_overlay_doc": "Version-specific invariants merged on top of project invariants.json by a FUTURE installer step (setup.py --merge-invariants, not yet wired — Wave C). Same schema as .agent-toolkit/invariants.json entries. severity=warn (informational). Cite a confirmed Odoo release fact per entry.",
   "invariants_overlay": [
+    {
+      "id": "odoo15-manifest-assets-dict",
+      "description": "Odoo 15 introduced the manifest `assets` dict — register JS/CSS bundles there, not via the legacy <template> asset-inheritance XML.",
+      "applies_to": ["**/__manifest__.py"],
+      "rules": {"must_keep_regex": ["[\"']assets[\"']\\s*:"]},
+      "severity": "warn",
+      "rationale": "Odoo 15 added the `assets` key to `__manifest__.py` (introduced in v15, NOT v14); new bundles should be declared there instead of the v12-era `<template inherit_id=\"web.assets_backend\">` XML pattern. Fix when violated: restore the `assets` manifest entry the edit dropped (or confirm bundles are intentionally declared elsewhere).",
+      "_version": "15+"
+    },
     {
       "id": "odoo15-check-company-decorator",
       "description": "Odoo 15 provides the @api.constrains-friendly `_check_company` consistency helper + `check_company=True` field attr — use it on company-scoped relational fields instead of hand-rolled cross-company guards.",

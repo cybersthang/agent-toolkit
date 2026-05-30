@@ -31,7 +31,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import wrap_utf8_stdio, run_main_safe  # noqa: E402

@@ -1,0 +1,64 @@
+---
+description: Generic, module-agnostic Odoo 18 rules. Hard-coded module names are forbidden in invariant rules; everything is discovered at runtime.
+alwaysApply: true
+---
+
+# Odoo 18 — Generic Rules (Module-Agnostic)
+
+This file applies to **any** addon under any addon root. Never embed a specific module name into an invariant rule. When you need a concrete module, discover it at runtime via the `codebase` MCP.
+
+## Discovery (always before edits)
+
+1. `workspace_status` -> confirm addon roots.
+2. `discover_modules({ root_hint })` -> narrow to one module.
+3. `read_manifest({ module_path })` -> understand depends and data load order.
+4. `find_inheritance_chain({ model })` -> see every place a model is extended.
+5. `list_test_targets({ module_path })` -> learn the test entry points.
+
+## Invariants (Odoo 18)
+
+- **Models**: `_name` for new model, `_inherit` for extension, `_inherits` for delegation. Never declare both `_name` and `_inherit` to the same string in one class.
+- **API**: methods are **recordset by default** — `@api.multi` is removed and must not be added. Use `@api.model` only for class-level methods. `@api.model_create_multi` is required for `create()` overrides.
+- **Display name**: override `_compute_display_name` (with proper `@api.depends`). Do **not** define `name_get()` — it was deprecated in 17 and removed in 18.
+- **`ensure_one()`**: required when a method assumes a single record.
+- **Loops**: no `search()`, `browse(id)`, `write()`, or `unlink()` inside loops. Push filtering into domains, batch with `mapped` / `filtered` / `read_group`.
+- **Counts**: `search_count(domain)` over `len(search(domain))`.
+- **Computed fields**: declare a complete `@api.depends`. Store only when searched / grouped / sorted at scale.
+- **Multi-company**: prefer `_check_company_auto = True` on models holding `company_id` relations.
+- **SQL**: prefer ORM. If SQL is unavoidable, use parameters and invalidate or refresh affected caches when writing.
+- **`sudo()`**: avoided unless clearly required; document the reason in a one-line comment.
+- **Errors**: `UserError` for business rules, `ValidationError` for invalid data.
+- **Logging**: use `_logger`, never `print`.
+- **Imports**: stdlib, third-party, `odoo`, local — in that order.
+
+## Manifest hygiene (any module)
+
+- `data` order: `security/` first, then `data/`, then `views/`, then menus.
+- `depends` lists exactly what the module imports / inherits.
+- `version` follows the existing project pattern (e.g. `18.0.x.y.z`).
+- `installable: True`, `application` only when the module is a top-level app.
+
+## XML / view hygiene
+
+- Inheritance edits use `xpath` with `position="after|before|inside|replace|attributes"`.
+- View conditions: use `invisible="<expr>"`, `readonly="<expr>"`, `required="<expr>"` as Python expressions. **Do not** introduce `attrs="{...}"` or `states="…"` — both were removed in 17 and stay removed in 18.
+- XML IDs are stable across releases.
+
+## Security / ACL
+
+- Every new model has at least one `ir.model.access.csv` row — v18 audit checks reject models without ACL.
+- Record rules align with the model's `_inherit` chain — check the parent's rules before adding new ones.
+
+## Verification recipes (narrowest first)
+
+1. `-u <module> --stop-after-init -d <db>` against the dev DB.
+2. `--test-enable --test-tags /<module> --stop-after-init`.
+3. For algorithm correctness: `eval_orm_expression` + `consistency_check_eval`.
+
+## What this rule **does not** mention by design
+
+- Specific module names.
+- Specific menu / model paths.
+- Specific JIRA project keys.
+
+If you need any of those, look them up via the `codebase` MCP or the canonical decisions registry — do not hard-code them here.

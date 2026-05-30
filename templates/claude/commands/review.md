@@ -6,6 +6,13 @@ argument-hint: "[scope: module name | PR number | file path]"
 
 # /review — Exhaustive code review with lock-file precedence
 
+> **Opt-in step.** `/review` is a **MANUAL** command — it is NOT auto-chained
+> after `/implement`. Run it yourself on a module / PR / diff. It is one of the
+> highest-signal steps in the flow, so running it after every `/implement` is
+> strongly recommended. To make review a *blocking* gate, harden enforcement:
+> `enforce_mode` strict (`enforce_mode.strict.example.json` → `enforce_mode.json`)
+> or `AGENT_TOOLKIT_STRICT=1`.
+
 ## Goal
 
 Produce an exhaustive review with **stable count** across runs on the same

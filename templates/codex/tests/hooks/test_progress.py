@@ -143,6 +143,58 @@ class TestProgressChecks(unittest.TestCase):
             ),
         ]), "allow")
 
+    def test_C5_reporting_a_missing_file_is_not_phantom(self):
+        # Documenting a dead link / absent file is a FINDING, not a phantom cite.
+        self.assertEqual(self._decide([
+            _user("review docs"),
+            _assistant(text="Dead link: docs/architecture.md is MISSING on disk — the "
+                            "README references it but no such file exists. " + LONG_PAD),
+        ]), "allow")
+
+    def test_C6_file_at_workspace_ancestor_resolves(self):
+        # cwd-drift: cite a file that exists at an ANCESTOR of the workspace
+        # (hook cwd is a subdir of the real project root). Must NOT be phantom.
+        anc = self.ws.parent / "ancestor_only_helper.py"
+        anc.write_text("x = 1\n", encoding="utf-8")
+        try:
+            self.assertEqual(self._decide([
+                _user("ref ancestor"),
+                _assistant(text="See ancestor_only_helper.py:1 for the shared helper. " + LONG_PAD),
+            ]), "allow")
+        finally:
+            anc.unlink(missing_ok=True)
+
+    def test_C7_neutral_absence_not_found_is_not_phantom(self):
+        # "not found" / "file not found" frame the path as ABSENT — not a claim.
+        self.assertEqual(self._decide([
+            _user("đọc foo"),
+            _assistant(text="Read foo/bar_baz.py — not found; file not found on disk. " + LONG_PAD),
+        ]), "allow")
+
+    def test_C8_neutral_absence_deleted_is_not_phantom(self):
+        self.assertEqual(self._decide([
+            _user("xem config"),
+            _assistant(text="config/settings.py was deleted in the last refactor. " + LONG_PAD),
+        ]), "allow")
+
+    def test_C9_neutral_absence_404_is_not_phantom(self):
+        self.assertEqual(self._decide([
+            _user("check docs"),
+            _assistant(text="Got a 404 on docs/api_reference.py — no such file there. " + LONG_PAD),
+        ]), "allow")
+
+    def test_C10_neutral_absence_removed_gone_enoent_is_not_phantom(self):
+        self.assertEqual(self._decide([
+            _user("trace"),
+            _assistant(text="ENOENT: src/legacy_helper.py is gone, removed last week. " + LONG_PAD),
+        ]), "allow")
+
+    def test_C11_vietnamese_absence_is_not_phantom(self):
+        self.assertEqual(self._decide([
+            _user("kiểm tra"),
+            _assistant(text="File src/old_module.py đã xoá rồi, không còn nữa. " + LONG_PAD),
+        ]), "allow")
+
     # ===== D. todo_inconsistency =====
 
     def test_D1_all_done_with_open_todos_blocks(self):

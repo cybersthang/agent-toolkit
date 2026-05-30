@@ -11,10 +11,28 @@ The agent must answer the same project question the same way every conversation.
 
 `.codex/canonical_decisions.json` (registry, version-controlled with explicit `version` integer).
 
-The registry seed shipped by the toolkit varies per preset
-(`canonical_decisions.json` for Odoo 12, `canonical_decisions.odoo-17.json`
-for Odoo 17, etc.). After install the project owner curates entries
-locally — `setup.py update` never overwrites this file.
+The registry seed shipped by the toolkit varies per preset (one
+`canonical_decisions.odoo-<N>.json` per major: 12, 13, 14, 15, 16,
+17, 18, 19, 20 — all 9 ship as of v0.27). After install the project
+owner curates entries locally — `setup.py update` never overwrites
+this file.
+
+## 0. Version detection before lookup
+
+For Odoo projects: when a question has a version-specific answer (most
+do — decorators, models, ORM helpers, view syntax), determine the
+project's Odoo major BEFORE calling `lookup_canonical_decision`:
+
+1. Read `__manifest__.py` of the addon under review (via
+   `codebase.read_manifest`). Parse `version` with `^(\d+)\.0\.`.
+2. Prefer the version-suffixed entry: `lookup_canonical_decision({topic: "api-decorators-odoo-17"})`.
+3. Fall back to the base topic (`api-decorators`) only if no
+   version-suffixed entry exists — and flag the gap so the user can
+   add the missing per-version entry.
+
+Mixed monorepo: detect per addon. The registry can hold separate
+entries per major; the agent picks the one matching the addon under
+review.
 
 Tools (via `codebase` MCP):
 

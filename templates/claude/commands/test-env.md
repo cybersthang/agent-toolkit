@@ -1,19 +1,19 @@
 ---
-description: Capture test environment URL (+ optional credentials reference) into `.agent-toolkit/test_env.json`. Used by /grill auto-chain (Change 2 — compress phases) to enable auto-/go.
+description: Capture test environment URL (+ optional credentials reference) into `.agent-toolkit/test_env.json`. Used by /clarify auto-chain (Change 2 — compress phases) to enable auto-/implement.
 allowed-tools: Read, Write, Bash
 argument-hint: "<url> [--spec <slug>] [--creds inline|<key-ref>]"
 ---
 
-# /test-env — Capture test environment URL for auto-/go
+# /test-env — Capture test environment URL for auto-/implement
 
 ## Mục tiêu
 
-Cho phép DEV cung cấp URL test environment 1 lần (Plan → Grill → review)
-rồi /grill (hoặc /go) tự dùng. Đây là 1 trong 2 DEV touch points của
+Cho phép DEV cung cấp URL test environment 1 lần (Plan → Clarify → review)
+rồi /clarify (hoặc /implement) tự dùng. Đây là 1 trong 2 DEV touch points của
 Vibe-flow sau Change 2 (touch point kia: review spec sau /plan).
 
-Lý do tách thành command riêng (không nhét vào /grill arg) — DEV có thể
-provide URL trước khi grill xong, hoặc đổi URL giữa chừng.
+Lý do tách thành command riêng (không nhét vào /clarify arg) — DEV có thể
+provide URL trước khi clarify xong, hoặc đổi URL giữa chừng.
 
 ## Quy trình
 
@@ -60,13 +60,13 @@ provide URL trước khi grill xong, hoặc đổi URL giữa chừng.
      · spec: <slug>
      · creds: <ref>
      · smoke: <status>
-   → /grill xong sẽ auto-chain /go (Change 2). Đổi URL: gõ /test-env <new>.
+   → /clarify xong sẽ auto-chain /implement (Change 2). Đổi URL: gõ /test-env <new>.
    ```
 
 5. **Side-effect check**:
-   - Nếu spec đang ở `status: grilled` + `eval_status: defined` → /grill
-     auto-chain đã đủ điều kiện chạy /go. In thêm dòng:
-     `→ Gõ /go <slug> bây giờ HOẶC /grill <slug> done để trigger auto.`
+   - Nếu spec đang ở `status: clarified` + `eval_status: defined` → /clarify
+     auto-chain đã đủ điều kiện chạy /implement. In thêm dòng:
+     `→ Gõ /implement <slug> bây giờ HOẶC /clarify <slug> done để trigger auto.`
 
 ## Refuse / clarify khi
 
@@ -84,12 +84,12 @@ provide URL trước khi grill xong, hoặc đổi URL giữa chừng.
 - KHÔNG persist raw credentials. Chỉ `credentials_ref`.
 - KHÔNG override `.agent-toolkit/test_env.json` silently nếu URL khác —
   prompt DEV confirm hoặc tự backup file cũ thành `test_env.<timestamp>.json`.
-- KHÔNG gọi /go inline từ command này — DEV vẫn phải /grill done để chain.
+- KHÔNG gọi /implement inline từ command này — DEV vẫn phải /clarify done để chain.
   Lý do: /test-env có thể được gõ trước khi spec sẵn sàng.
 
 ## Sibling
 
 - `/plan` — Phase 1, sinh spec (kèm `acceptance_evals:` skeleton từ Change 2).
-- `/grill` — Phase 2, refine + auto-chain /go nếu test_env.json sẵn sàng.
-- `/go` — Phase 3, autonomy ON. Đọc test_env.json để show banner.
+- `/clarify` — Phase 2, refine + auto-chain /implement nếu test_env.json sẵn sàng.
+- `/implement` — Phase 4, autonomy ON. Đọc test_env.json để show banner.
 - `/verify` — Phase 5, dùng URL từ test_env.json cho HTTP probes / Playwright.

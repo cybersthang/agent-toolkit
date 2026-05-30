@@ -237,7 +237,7 @@ def _git_files(workspace: Path, base_ref: str) -> List[str]:
             return []
         if proc.returncode != 0:
             return []
-        return [l.strip() for l in (proc.stdout or "").splitlines() if l.strip()]
+        return [ln.strip() for ln in (proc.stdout or "").splitlines() if ln.strip()]
 
     files = _run(["diff", "--name-only", f"{base_ref}...HEAD"])
     if files:

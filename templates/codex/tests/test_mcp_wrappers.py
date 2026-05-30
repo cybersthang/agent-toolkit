@@ -31,6 +31,7 @@ JIRA_INSTALLED = _has_server("jira_server") and (
 POSTGRES_INSTALLED = _has_server("postgres_server") and _has_starter("postgres")
 REALDATA_INSTALLED = _has_server("realdata_test_server") and _has_starter("realdata_test")
 CODEBASE_INSTALLED = _has_server("codebase_server") and _has_starter("codebase")
+GITLAB_INSTALLED = _has_server("gitlab_server") and _has_starter("gitlab")
 
 
 def load_module(module_path: Path, module_name: str):
@@ -543,6 +544,201 @@ class TestCodexMcpWrappers(unittest.TestCase):
         module = load_module(module_path, "test_codebase_inherit_required")
         with self.assertRaises(ValueError):
             module.find_inheritance_chain({"model": ""})
+
+    # ── GitLab CI server (optional, read-only) ───────────────────────────
+    @unittest.skipUnless(GITLAB_INSTALLED, "gitlab server not installed by this preset")
+    def test_gitlab_wrapper_prefers_codex_env_before_cursor_env(self):
+        module_path = ROOT / ".codex" / "start_gitlab_mcp.py"
+        module = load_module(module_path, "test_start_gitlab_mcp")
+        expected_target = ROOT / ".codex" / "mcp_servers" / "gitlab_server.py"
+        codex_env = ROOT / ".codex" / "mcp.local.env"
+        calls = []
+
+        def fake_load_env_file(path, env):
+            calls.append(path)
+            env["LOADED_FROM"] = path.name
+            return path == codex_env
+
+        with patch.object(module, "load_env_file", side_effect=fake_load_env_file):
+            with patch.object(module.os, "chdir") as chdir_mock:
+                with patch.object(module.runpy, "run_path", side_effect=SystemExit(0)) as run_mock:
+                    with self.assertRaises(SystemExit) as exc:
+                        module.main()
+
+        self.assertEqual(exc.exception.code, 0)
+        self.assertEqual(calls, [codex_env])
+        chdir_mock.assert_called_once_with(str(ROOT))
+        run_mock.assert_called_once_with(str(expected_target), run_name="__main__")
+        self.assertEqual(module.os.environ["{{ENV_PREFIX}}_WORKSPACE"], str(ROOT))
+
+    @unittest.skipUnless(GITLAB_INSTALLED, "gitlab server not installed by this preset")
+    def test_gitlab_server_is_read_only_and_lists_expected_tools(self):
+        module_path = ROOT / ".codex" / "mcp_servers" / "gitlab_server.py"
+        module = load_module(module_path, "test_gitlab_server_tools")
+        tools = set(module.SERVER.tools)
+        self.assertEqual(
+            tools,
+            {"env_status", "latest_pipeline", "pipeline_jobs", "job_trace", "build_errors"},
+        )
+        # Read-only contract: no write/trigger/retry/cancel tools.
+        for name in tools:
+            self.assertFalse(
+                re.search(r"trigger|retry|cancel|create|delete|play|write", name),
+                f"unexpected write-capable tool: {name}",
+            )
+
+    @unittest.skipUnless(GITLAB_INSTALLED, "gitlab server not installed by this preset")
+    def test_gitlab_env_status_never_leaks_token(self):
+        module_path = ROOT / ".codex" / "mcp_servers" / "gitlab_server.py"
+        module = load_module(module_path, "test_gitlab_env_status")
+        env = {
+            "{{ENV_PREFIX}}_GITLAB_URL": "https://gitlab.example.test/api/v4",
+            "{{ENV_PREFIX}}_GITLAB_TOKEN": "super-secret-pat",
+            "{{ENV_PREFIX}}_GITLAB_PROJECT": "group/app",
+        }
+        with patch.dict(module.os.environ, env, clear=False):
+            status = module.env_status({})
+        self.assertTrue(status["token_configured"])
+        self.assertNotIn("super-secret-pat", json.dumps(status))
+        # Trailing /api/v4 is stripped so gitlab_get won't double it.
+        self.assertEqual(status["url"], "https://gitlab.example.test")
+
+    @unittest.skipUnless(GITLAB_INSTALLED, "gitlab server not installed by this preset")
+    def test_gitlab_build_errors_attaches_failed_job_traces(self):
+        module_path = ROOT / ".codex" / "mcp_servers" / "gitlab_server.py"
+        module = load_module(module_path, "test_gitlab_build_errors")
+
+        def fake_get(path, params=None, raw_text=False):
+            if path.endswith("/pipelines") and not raw_text:
+                return [{"id": 99, "status": "failed", "ref": "main",
+                         "sha": "abc", "web_url": "u"}]
+            if re.search(r"/pipelines/99/jobs$", path):
+                return [
+                    {"id": 1, "name": "lint", "status": "failed", "allow_failure": False},
+                    {"id": 2, "name": "flaky", "status": "failed", "allow_failure": True},
+                    {"id": 3, "name": "build", "status": "success", "allow_failure": False},
+                ]
+            if re.search(r"/jobs/1/trace$", path):
+                return "line1\nE501 line too long\nERROR: lint failed\n"
+            raise AssertionError(f"unexpected path {path}")
+
+        env = {"{{ENV_PREFIX}}_GITLAB_PROJECT": "42",
+               "{{ENV_PREFIX}}_GITLAB_TOKEN": "t"}
+        with patch.dict(module.os.environ, env, clear=False):
+            with patch.object(module, "gitlab_get", side_effect=fake_get):
+                result = module.build_errors({"tail_lines": 2})
+
+        # allow_failure job (2) and success job (3) excluded; only job 1 counts.
+        self.assertEqual(result["failed_count"], 1)
+        self.assertEqual(result["failed_jobs"][0]["name"], "lint")
+        self.assertIn("lint failed", result["failed_jobs"][0]["trace_tail"])
+        # tail_lines=2 keeps only the last 2 lines.
+        self.assertNotIn("line1", result["failed_jobs"][0]["trace_tail"])
+
+    @unittest.skipUnless(GITLAB_INSTALLED, "gitlab server not installed by this preset")
+    def test_gitlab_resolve_project_requires_value_and_encodes_path(self):
+        module_path = ROOT / ".codex" / "mcp_servers" / "gitlab_server.py"
+        module = load_module(module_path, "test_gitlab_resolve_project")
+        with patch.dict(module.os.environ, {}, clear=True):
+            with self.assertRaises(ValueError):
+                module.resolve_project({})
+        self.assertEqual(module.resolve_project({"project": "123"}), "123")
+        self.assertEqual(module.resolve_project({"project": "grp/app"}), "grp%2Fapp")
+
+    @unittest.skipUnless(GITLAB_INSTALLED, "gitlab server not installed by this preset")
+    def test_gitlab_fetch_jobs_paginates_past_100(self):
+        # Regression: a pipeline with >100 jobs must NOT silently drop page 2+,
+        # else build_errors reports false-green when a late job fails.
+        module_path = ROOT / ".codex" / "mcp_servers" / "gitlab_server.py"
+        module = load_module(module_path, "test_gitlab_pagination")
+        pages = {
+            1: [{"id": i, "status": "success", "allow_failure": False} for i in range(100)],
+            2: [{"id": 200, "name": "late-fail", "status": "failed", "allow_failure": False}],
+            3: [],
+        }
+
+        def fake_get(path, params=None, raw_text=False):
+            return pages.get(int((params or {}).get("page", 1)), [])
+
+        with patch.object(module, "gitlab_get", side_effect=fake_get):
+            jobs = module._fetch_pipeline_jobs("42", 5)
+        self.assertEqual(len(jobs), 101)
+        self.assertTrue(any(j["status"] == "failed" for j in jobs),
+                        "page-2 failed job was dropped — pagination broken")
+
+    @unittest.skipUnless(GITLAB_INSTALLED, "gitlab server not installed by this preset")
+    def test_gitlab_latest_pipeline_normalizes(self):
+        module_path = ROOT / ".codex" / "mcp_servers" / "gitlab_server.py"
+        module = load_module(module_path, "test_gitlab_latest_pipeline")
+
+        def fake_get(path, params=None, raw_text=False):
+            return [{"id": 9, "status": "success", "ref": "main",
+                     "sha": "deadbeef", "web_url": "u", "junk": "drop-me"}]
+
+        env = {"{{ENV_PREFIX}}_GITLAB_PROJECT": "42", "{{ENV_PREFIX}}_GITLAB_TOKEN": "t"}
+        with patch.dict(module.os.environ, env, clear=False):
+            with patch.object(module, "gitlab_get", side_effect=fake_get):
+                res = module.latest_pipeline({"ref": "main"})
+        self.assertEqual(res["id"], 9)
+        self.assertEqual(res["status"], "success")
+        self.assertNotIn("junk", res)  # normalized to a fixed field set
+
+    @unittest.skipUnless(GITLAB_INSTALLED, "gitlab server not installed by this preset")
+    def test_gitlab_pipeline_jobs_scope_filters_and_coerces_id(self):
+        module_path = ROOT / ".codex" / "mcp_servers" / "gitlab_server.py"
+        module = load_module(module_path, "test_gitlab_pipeline_jobs")
+
+        def fake_get(path, params=None, raw_text=False):
+            if int((params or {}).get("page", 1)) != 1:
+                return []
+            return [{"id": 1, "name": "a", "status": "failed", "allow_failure": False},
+                    {"id": 2, "name": "b", "status": "success", "allow_failure": False}]
+
+        env = {"{{ENV_PREFIX}}_GITLAB_PROJECT": "42", "{{ENV_PREFIX}}_GITLAB_TOKEN": "t"}
+        with patch.dict(module.os.environ, env, clear=False):
+            with patch.object(module, "gitlab_get", side_effect=fake_get):
+                res = module.pipeline_jobs({"pipeline_id": "5", "scope": "failed"})  # string id
+        self.assertEqual(res["count"], 1)
+        self.assertEqual(res["jobs"][0]["name"], "a")
+
+    @unittest.skipUnless(GITLAB_INSTALLED, "gitlab server not installed by this preset")
+    def test_gitlab_job_trace_returns_tail(self):
+        module_path = ROOT / ".codex" / "mcp_servers" / "gitlab_server.py"
+        module = load_module(module_path, "test_gitlab_job_trace")
+
+        def fake_get(path, params=None, raw_text=False):
+            assert raw_text, "trace must be fetched as raw text"
+            return "l1\nl2\nl3\nl4\nl5\n"
+
+        env = {"{{ENV_PREFIX}}_GITLAB_PROJECT": "42", "{{ENV_PREFIX}}_GITLAB_TOKEN": "t"}
+        with patch.dict(module.os.environ, env, clear=False):
+            with patch.object(module, "gitlab_get", side_effect=fake_get):
+                res = module.job_trace({"job_id": 3, "tail_lines": 2})
+        self.assertEqual(res["job_id"], 3)
+        self.assertTrue(res["truncated"])
+        self.assertIn("l5", res["trace"])
+        self.assertNotIn("l1", res["trace"])
+
+    @unittest.skipUnless(GITLAB_INSTALLED, "gitlab server not installed by this preset")
+    def test_gitlab_build_errors_survives_trace_fetch_error(self):
+        module_path = ROOT / ".codex" / "mcp_servers" / "gitlab_server.py"
+        module = load_module(module_path, "test_gitlab_build_errors_err")
+
+        def fake_get(path, params=None, raw_text=False):
+            if path.endswith("/pipelines") and not raw_text:
+                return [{"id": 7, "status": "failed", "ref": "main"}]
+            if path.endswith("/pipelines/7/jobs"):
+                return [{"id": 1, "name": "build", "status": "failed", "allow_failure": False}]
+            if "/jobs/1/trace" in path:
+                raise RuntimeError("GitLab HTTP 404: not found")
+            raise AssertionError(f"unexpected path {path}")
+
+        env = {"{{ENV_PREFIX}}_GITLAB_PROJECT": "42", "{{ENV_PREFIX}}_GITLAB_TOKEN": "t"}
+        with patch.dict(module.os.environ, env, clear=False):
+            with patch.object(module, "gitlab_get", side_effect=fake_get):
+                res = module.build_errors({})
+        self.assertEqual(res["failed_count"], 1)
+        self.assertIn("could not fetch trace", res["failed_jobs"][0]["trace_tail"])
 
 
 if __name__ == "__main__":

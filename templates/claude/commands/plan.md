@@ -123,7 +123,7 @@ Argument: `$ARGUMENTS` (mô tả feature). Nếu rỗng, hỏi DEV.
 ## Refuse / clarify khi
 
 - `$ARGUMENTS` < 8 ký tự (quá mơ hồ) → hỏi DEV mô tả rõ hơn.
-- Feature thực ra là bug fix nhỏ < 30 dòng → gợi ý dùng `/grill` thẳng hoặc
+- Feature thực ra là bug fix nhỏ < 30 dòng → gợi ý dùng `/clarify` thẳng hoặc
   `<stack>-<version>-debug-troubleshoot`.
 - Đã có spec mà DEV không muốn update → từ chối tạo bản v2 nếu DEV chưa
   giải thích vì sao 2 spec.

@@ -47,7 +47,9 @@ def test_dry_run_emits_stable_file_count(tmp_path, preset):
     # an accidental large removal trips the test. Bump consciously when you
     # add templates; the assert message tells you the new number.
     # Actual counts at v0.5.0: generic=107, odoo-12=149, odoo-17=149.
-    minimums = {'generic': 100, 'odoo-12': 140, 'odoo-17': 140}
+    # v0.29.0: generic=205, odoo-12=302, odoo-17=303 (after the +28 Odoo
+    # 13-16 references below — all version refs ship to every odoo install).
+    minimums = {'generic': 100, 'odoo-12': 290, 'odoo-17': 290}
     assert len(plan_lines) >= minimums[preset], (
         f'{preset}: {len(plan_lines)} files planned, '
         f'expected >= {minimums[preset]}'
@@ -60,7 +62,13 @@ def test_dry_run_emits_stable_file_count(tmp_path, preset):
     # Bumped at v0.19.0: +gap_completeness_gate.py hook + v0.19 spec.
     # Bumped at v0.23.0: +scope_completeness_gate.py hook + scope-manifest
     # skill + scope_gate.example.json config (R9).
-    maximums = {'generic': 210, 'odoo-12': 270, 'odoo-17': 270}
+    # Bumped at v0.27.0: +enforce_mode.strict.example.json + 8 new Odoo
+    # skills (studio/payment/account-move/mail-v2/install-scripts/l10n/
+    # upgrade/owl-17-refactor) added under templates/cursor/skills/odoo/.
+    # Bumped at v0.29.0: +28 Odoo 13-16 skill reference files (7 types ×
+    # 4 versions) under templates/cursor/skills/odoo/*/references/ — every
+    # odoo install ships all version refs (the skill picks per __manifest__).
+    maximums = {'generic': 210, 'odoo-12': 340, 'odoo-17': 340}
     assert len(plan_lines) <= maximums[preset], (
         f'{preset}: {len(plan_lines)} files planned, '
         f'unexpectedly above ceiling {maximums[preset]} '

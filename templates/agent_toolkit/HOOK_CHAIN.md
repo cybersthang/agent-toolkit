@@ -65,16 +65,26 @@ All non-blocking (warn or invoke). No cascade.
 
 ## Stop (8 hooks, sequential — P1 v0.8.0 reordered)
 
-| Order | Hook | Block? | Timeout | Purpose |
+> **v0.27 cognitive-load cut**: the 3 completeness gates that previously
+> hard-blocked by default (gap, scope, post-edit-verify) now WARN by
+> default. Hard blockers reduced to 3 (evidence_audit + verify_lint +
+> debug_sentry) so the model isn't paralyzed by stacked Stop hooks.
+> DEV opts back into strict mode via `enforce_mode.strict.example.json`
+> or `AGENT_TOOLKIT_STRICT=1`.
+
+| Order | Hook | Block? (default) | Timeout | Purpose |
 |---|---|---|---|---|
 | 1 | `implement_orchestrator.py` | no | 30s | **Phase 5.1-5.4 audit chain** (moved to position 1 per P1 to fire before blocking hooks) |
-| 2 | `evidence_audit.py` | **YES** | 8s | Block PASS/DONE without MCP backing |
+| 2 | `evidence_audit.py` | **YES** | 8s | Block PASS/DONE without MCP backing — the only "claims without proof" gate |
 | 3 | `verify_lint.py` | **YES** | 15s | Block if Verify Report missing eval coverage |
-| 4 | `post_edit_verify_gate.py` | **YES** | 6s | Block done-claim on spec-tracked file without `/verify` |
+| 4 | `post_edit_verify_gate.py` | warn (config) | 6s | v0.27: warn-by-default. Promote to block via `enforce_mode.json` |
 | 5 | `debug_sentry.py` | **YES** | 8s | Block traceback without fix attempt |
 | 6 | `spec_drift_advisory.py` | no | 5s | Warn probe recipe vs script drift |
 | 7 | `implement_notes_gate.py` | no | 5s | Warn implement-noted missing |
-| 8 | `verify_lint_scope.py` | **YES** (config) | 15s | Layer 5 file-level scope check (warn-only default, block via `scope_audit.json`) |
+| 8 | `verify_lint_scope.py` | warn (config) | 15s | Layer 5 file-level scope check (block via `scope_audit.json`) |
+| — | `gap_completeness_gate.py` | warn (config) | 5s | v0.27: warn-by-default. Auto-downgrades if `scope-*` markers present (dedup with scope gate) |
+| — | `scope_completeness_gate.py` | warn (config) | 5s | v0.27: warn-by-default. Silent when no manifest exists |
+| — | `clarification_gate_enforcer.py` | **YES** (default) | 5s | Skips on autonomy active. Stays block in v0.27 — different category from "claim-done" gates; asking-before-acting is a healthy behavior, not paralysis. |
 
 **Cascade post-P1**: orchestrator fires FIRST. Subsequent blocker
 firing doesn't suppress audit output to AGENT.

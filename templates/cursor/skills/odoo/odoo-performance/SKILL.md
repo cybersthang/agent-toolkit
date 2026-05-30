@@ -27,10 +27,14 @@ Same protocol as `odoo-code-review`:
 | Detected major | Reference |
 |---|---|
 | 12 | `references/odoo-12-perf.md` (standalone) |
-| 13–16 | `references/odoo-17-perf.md` + flag LOW |
+| 13 | load `references/odoo-13-perf.md` |
+| 14 | load `references/odoo-14-perf.md` |
+| 15 | load `references/odoo-15-perf.md` |
+| 16 | load `references/odoo-16-perf.md` (+ note: backports some v17 conventions) |
 | 17 | `references/odoo-17-perf.md` |
 | 18 | `references/odoo-18-perf.md` ← 17 |
-| 19/20 | `references/odoo-18-perf.md` ← 17 + flag MEDIUM (placeholder cascade — re-check the target major's release notes; this reference may need overrides) |
+| 19 | `references/odoo-19-perf.md` ← 18 ← 17 (`read_group`→`_read_group`/`formatted_read_group`, `search_fetch`/`fetch`) |
+| 20 | `references/odoo-20-perf.md` ← 19 ← 18 ← 17 (**PRE-GA** stub — re-check master ORM changelog; flag any 20-specific finding LOW / version-tentative) |
 
 Skip Step 0 → wrong prefetch API / wrong cache helper. Restart.
 

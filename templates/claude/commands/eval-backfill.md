@@ -1,5 +1,5 @@
 ---
-description: ECC eval-harness pattern (retrofit variant) — convert the "Testing Decisions" section (written as free-form markdown bullets) of a spec at status `implementing` / `verified` / `gaps-found` into a machine-runnable `acceptance_evals:` YAML block. Unlike `/eval-define` (which only runs before /go), this command is designed for specs that have ALREADY been implemented but whose pass/fail criteria remain in prose.
+description: ECC eval-harness pattern (retrofit variant) — convert the "Testing Decisions" section (written as free-form markdown bullets) of a spec at status `implementing` / `verified` / `gaps-found` into a machine-runnable `acceptance_evals:` YAML block. Unlike `/eval-define` (which only runs before /implement), this command is designed for specs that have ALREADY been implemented but whose pass/fail criteria remain in prose.
 allowed-tools: Read, Edit, Write, Grep, Glob, Bash
 argument-hint: "<spec-slug>"
 ---

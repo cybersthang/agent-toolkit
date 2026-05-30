@@ -31,7 +31,8 @@ import independent_review_gate as gate  # noqa: E402
 
 
 def _git(ws: Path, *a: str) -> None:
-    subprocess.run(["git", "-C", str(ws), *a], capture_output=True, text=True, check=False)
+    subprocess.run(["git", "-C", str(ws), *a], capture_output=True, text=True,
+                   encoding="utf-8", check=False)
 
 
 def _mk_repo(tmp: Path, *, spec_status: str = "verified",
@@ -71,8 +72,12 @@ def _run(ws: Path, envelope: dict, strict: bool = False,
         env["HOME"] = str(home)                # POSIX expanduser('~')
         env["USERPROFILE"] = str(home)         # Windows: Path.home() reads USERPROFILE,
         #                                        NOT $HOME — set both for cross-platform.
+    # encoding="utf-8" is REQUIRED: the hook emits UTF-8 (Vietnamese + `→`); on
+    # Windows `text=True` would otherwise decode stdout with cp1252 and crash the
+    # reader thread (UnicodeDecodeError) → r.stdout=None → TypeError downstream.
     r = subprocess.run([sys.executable, str(HOOK)], input=json.dumps(envelope),
-                       capture_output=True, text=True, env=env, timeout=30)
+                       capture_output=True, text=True, encoding="utf-8",
+                       env=env, timeout=30)
     return r.returncode, r.stdout
 
 

@@ -53,7 +53,7 @@ Full release / mirror / tag procedure documented in [REBUILD.md](REBUILD.md).
 - 🔬 **Real-data verify or it didn't ship.** `/verify` runs MCP probes on
   the live DB; `evidence_audit` Stop hook BLOCKS "tests pass" claims that
   lack an `mcp__realdata_test__*` or `mcp__postgres__*` call in the turn.
-- 📐 **5-phase Spec Kit workflow with gate hooks.** `/plan → /clarify →
+- 📐 **6-8 phase Spec Kit workflow with gate hooks.** `/plan → /clarify →
   /tasks → /analyze → /implement → /verify` — each transition has a
   PreToolUse / Stop hook that refuses to advance if the prior phase
   has gaps.
@@ -195,7 +195,7 @@ DEV: (reads tasks.md, OK) /implement log-request-slowness
 
 |                                  | agent-toolkit | spec-kit | mattpocock/skills | ECC | Aider |
 |---|:---:|:---:|:---:|:---:|:---:|
-| Spec-driven 5-phase workflow     | ✅ | ✅ | partial | partial | ❌ |
+| Spec-driven 6-8 phase workflow   | ✅ | ✅ | partial | partial | ❌ |
 | Hook-level mechanical enforcement | **✅** | ❌ | partial | partial | ❌ |
 | Real-data MCP verify gate        | **✅** | ❌ | ❌ | partial | ❌ |
 | Stack-preset overlay system      | **✅** | partial | ❌ | ❌ | ❌ |
@@ -327,11 +327,11 @@ That's it. DEV does NOT manually run `/analyze`, `/tasks`, or `/verify`
 — those fire automatically. *DEV không cần gõ tay `/analyze`, `/tasks`,
 `/verify` — agent tự chạy.*
 
-### What AGENT does automatically — **5 auto-chained phases** / AGENT tự làm **5 phase auto-chain**
+### What AGENT does automatically — **6-8 auto-chained phases** / AGENT tự làm **6-8 phase auto-chain**
 
 After DEV types `/implement <slug>`, the agent chains these steps under
-autonomy (default 4h, configurable via `--until`). *Sau khi DEV gõ
-`/implement`, agent tự chạy chuỗi sau dưới autonomy (mặc định 4h).*
+autonomy (default +1h, configurable via `--until`). *Sau khi DEV gõ
+`/implement`, agent tự chạy chuỗi sau dưới autonomy (mặc định +1h).*
 
 ```
 DEV: /implement <slug>
@@ -458,9 +458,13 @@ python setup.py list-presets
 
 Default `addon_roots` for Odoo presets: `addons` / `custom_addons` /
 `enterprise`. MCP servers: `codebase` + `postgres` + `realdata_test`.
-The Odoo 13-20 presets (besides 12 and 17) are **stub-extends** that
-share rules/memory packs with their nearest neighbor — fork the preset
-file to capture version-specific deltas.
+Every Odoo version 12-19 ships its **own dedicated** rule pack
+(`templates/cursor/rules/odoo-<v>/`), memory pack
+(`templates/memory/odoo-<v>/`), and canonical-decisions file
+(`templates/codex/canonical_decisions.odoo-<v>.json`) — no sharing.
+Only **odoo-20** is an honest pre-GA **stub-extends-v19** (v20 is not
+yet released; its rules are extrapolated from v19 and every v20-specific
+claim is unconfirmed until verified against installed source).
 
 > **Project-specific overlays**: real projects almost always have extra
 > addon roots, a custom `odoo-bin` path, internal JIRA endpoints,
@@ -966,7 +970,7 @@ Preset khác: `odoo-17`, `generic`. Thêm preset mới (Django/Rails/Go) chỉ l
 - 🔬 **Verify trên data thật hoặc không ship.** `/verify` chạy MCP probe
   lên DB live; `evidence_audit` Stop hook BLOCK "test pass" claim nếu
   turn không có `mcp__realdata_test__*` / `mcp__postgres__*` call.
-- 📐 **5-phase Spec Kit workflow với hook gate.** `/plan → /clarify →
+- 📐 **6-8 phase Spec Kit workflow với hook gate.** `/plan → /clarify →
   /tasks → /analyze → /implement → /verify` — mỗi transition có hook
   từ chối tiến nếu phase trước có GAP.
 - 🧭 **Hệ thống rule 3 tầng.** Constitution (nguyên tắc) → ADR (lý do
@@ -981,12 +985,12 @@ Preset khác: `odoo-17`, `generic`. Thêm preset mới (Django/Rails/Go) chỉ l
 
 ### Workflow cho DEV
 
-DEV chỉ làm **3 bước manual** — agent tự lo 5 phase còn lại dưới autonomy:
+DEV chỉ làm **3 bước manual** — agent tự lo 6-8 phase còn lại dưới autonomy:
 
 ```
 DEV gõ:  /plan <ý tưởng>      →  spec.md có cấu trúc
          /clarify <slug>       →  đóng GAP, agent tự /tasks rồi STOP
-         /implement <slug>     →  bật autonomy 4h
+         /implement <slug>     →  bật autonomy +1h (default)
          
 AGENT tự: /analyze → execute tasks → /verify → report PASS/GAP
 ```

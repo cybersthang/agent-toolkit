@@ -1,5 +1,5 @@
 ---
-description: ECC eval-harness pattern — write CONCRETE pass/fail criteria into the spec BEFORE `/go`. Each User Story must have 1+ MCP probe (code grader, data grader, model grader) + a fixed expected value. /verify then just re-runs those probes → "correct/wrong" becomes a mechanical check.
+description: ECC eval-harness pattern — write CONCRETE pass/fail criteria into the spec BEFORE `/implement`. Each User Story must have 1+ MCP probe (code grader, data grader, model grader) + a fixed expected value. /verify then just re-runs those probes → "correct/wrong" becomes a mechanical check.
 allowed-tools: Read, Edit, Write, Grep, Glob, Bash
 argument-hint: "<spec-slug>"
 ---
@@ -21,7 +21,7 @@ Close the recurring gap: "after implement, /verify runs by feel, the agent
 fails to catch wrong cases against real data". Inspired by ECC
 `eval-harness` skill: **eval = unit test of AI work**.
 
-After `/plan` + `/grill`, BEFORE `/go`, this command appends an
+After `/plan` + `/clarify`, BEFORE `/implement`, this command appends an
 `acceptance_evals:` block into the spec frontmatter. Each entry is an MCP
 probe with a fixed expected value — `/verify` re-runs exactly those probes,
 output is mechanical PASS/FAIL, no "looks fine".
@@ -38,7 +38,7 @@ status `grilled` and ask the user to pick.
 
 2. **Refuse if**:
    - Spec is at `status: implementing | verified | gaps-found` → eval must
-     precede Phase 3 (`/go`). Tell the user: to add eval for existing code,
+     precede implement (`/implement`). Tell the user: to add eval for existing code,
      use `/bug-to-test` instead.
    - No User Stories found → go back to `/plan` for measurable acceptance.
 
@@ -188,7 +188,7 @@ status `grilled` and ask the user to pick.
    - us3-<slug-c> (data) — smoke OK
 
    Next:
-   - /go <slug>     → enable autonomy, implement.
+   - /implement <slug>     → enable autonomy, implement.
    - /verify <slug> → re-run all probes, emit PASS/FAIL table.
    ```
 

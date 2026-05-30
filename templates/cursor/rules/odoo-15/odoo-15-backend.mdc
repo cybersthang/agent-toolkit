@@ -29,7 +29,7 @@ alwaysApply: false
 ## Views and models
 
 - Inheritance edits use `<xpath>` with `position="after|before|inside|replace|attributes"`.
-- View conditions in 15 still accept **both** styles: `attrs="{'invisible': [...]}"` / `states="..."` AND inline Python `invisible="<expr>"`. Both are valid in 15; `attrs` / `states` are deprecated in 16 and removed in 17 — avoid only when the file is already being migrated.
+- View conditions in 15 use `attrs="{'invisible': [...]}"` / `states="..."`. Inline Python expression attributes (`invisible="<expr>"` / `readonly="<expr>"` / `required="<expr>"`) do **not** work in 15 — they replaced `attrs` / `states` only in **Odoo 17**. Keep `attrs` / `states` in 15; do not migrate to inline-expr unless the file is being moved to 17+.
 - New widget types available in 15: `widget="domain"`, `widget="json_editor"`, etc. Prefer them over hand-rolled inputs when present.
 - Keep XML IDs stable across releases.
 - Use `_sql_constraints` or `@api.constrains` for validation.

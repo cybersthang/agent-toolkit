@@ -15,9 +15,9 @@ Same protocol as `odoo-code-review`:
 
 1. **`__manifest__.py` `version` field** — read via `codebase.read_manifest({module_path})`. Pattern `^(\d+)\.0\.`.
 2. **Fallback signals** (only if manifest is missing/unparseable):
-   - `@api.multi` decorator → ≤13 (treat as 12 in our scope).
-   - `attrs="{...}"` / `states="..."` in view XML → ≤13.
-   - `@api.model_create_multi` decorator → ≥14.
+   - `@api.multi` decorator → ≤12 (removed in 13).
+   - `attrs="{...}"` / `states="..."` in view XML → ≤16 (removed in 17).
+   - `@api.model_create_multi` decorator → exists since v12; not a version marker on its own.
    - `invisible="<py expr>"` on `<field>` → ≥17.
    - `/** @odoo-module **/` header → ≥15 (OWL era).
    - `search(domain=...)` keyword → ≥18.

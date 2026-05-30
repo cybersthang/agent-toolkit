@@ -1,10 +1,10 @@
 {
-  "description": "Odoo 12 stack — Python 3.8, QWeb + jQuery, @api.multi. GENERIC preset — no project-specific defaults; user supplies addon_roots, db, etc. via setup.py prompts or agent-toolkit.config.json overrides.",
+  "description": "Odoo 12 stack — Python 3.5+ minimum, QWeb + jQuery, @api.multi. GENERIC preset — no project-specific defaults; user supplies addon_roots, db, etc. via setup.py prompts or agent-toolkit.config.json overrides.",
   "stack_label": "Odoo 12",
   "response_language": "English",
   "stack": {
     "language": "python",
-    "language_version": "3.8",
+    "language_version": "3.5",
     "framework": "odoo",
     "framework_version": "12",
     "frontend": "QWeb + jQuery",

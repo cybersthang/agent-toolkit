@@ -1,11 +1,11 @@
 {
-  "_comment": "Odoo 15 differentiation from odoo-12 base: Python 3.8 baseline, OWL 1.x introduced ALONGSIDE legacy QWeb+jQuery (transitional release), QWeb component split started. Legacy ORM still dominant — reuses odoo-12 rule pack but flag OWL-specific code via skill references. TODO: add templates/cursor/rules/odoo-15/ for OWL 1.x specifics.",
-  "description": "Odoo 15 Community / Enterprise — Python 3.8+, TRANSITIONAL: QWeb+jQuery legacy + OWL 1.x intro. Legacy ORM dominant; reuses odoo-12 rule pack — flag OWL component code separately.",
+  "_comment": "Odoo 15 differentiation from odoo-12 base: Python 3.7 minimum, OWL 1.x introduced ALONGSIDE legacy QWeb+jQuery (transitional release), QWeb component split started. Legacy ORM still dominant — reuses odoo-12 rule pack but flag OWL-specific code via skill references. TODO: add templates/cursor/rules/odoo-15/ for OWL 1.x specifics.",
+  "description": "Odoo 15 Community / Enterprise — Python 3.7+, TRANSITIONAL: QWeb+jQuery legacy + OWL 1.x intro. Legacy ORM dominant; reuses odoo-12 rule pack — flag OWL component code separately.",
   "stack_label": "Odoo 15",
   "response_language": "Vietnamese",
   "stack": {
     "language": "python",
-    "language_version": "3.8",
+    "language_version": "3.7",
     "framework": "odoo",
     "framework_version": "15",
     "frontend": "QWeb + OWL 1.x (transitional)",

@@ -11,7 +11,7 @@ gone and `create()` is batch.
 | Test passes locally but fails in CI | Test depends on DB state from a prior run | Use `TransactionCase`/`SavepointCase` (auto-rollback) — unchanged from v12 |
 | `KeyError: 'ir.model.access'` | New model has no access row | Add `security/ir.model.access.csv` row — unchanged from v12 |
 | `AttributeError: module 'odoo.api' has no attribute 'multi'` at test import | Test (or tested model) carries leftover `@api.multi` | Remove it — gone since v13 (web-verified) |
-| Batch-create test asserts wrong record count | Tested `create()` is single-record while test passes a `vals_list` | Override with `@api.model_create_multi`; pass/assert on the list form (v14+) |
+| Batch-create test asserts wrong record count | Tested `create()` is single-record while test passes a `vals_list` | Override with `@api.model_create_multi`; pass/assert on the list form (decorator exists since v12) |
 | Constraint test silently passes | `_constrains` fires on write not pre-validated create | Force a `record.write({...})` after create — unchanged from v12 |
 | Mock partner `email` rejected | Default email validator | Use `<prefix>.test@example.com` — unchanged from v12 |
 | `@api.depends` test never recomputes | Reading a stored compute on a non-flushed record | Flush before reading with `record.flush()` (see below) — `env.flush_all()`/`flush_recordset()` do NOT exist in 15.0 |

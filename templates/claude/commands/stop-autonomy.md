@@ -29,11 +29,11 @@ Tắt autonomy mode tức thì. Không cần argument.
   · time còn lại bỏ qua: <Xh Ym>
 
 → Agent quay về normal mode (clarification-gate active).
-→ Bật lại: /go <slug> [--until X].
+→ Bật lại: /implement <slug> [--until X].
 ```
 
-5. **Không** update spec status — spec vẫn ở `implementing` cho đến khi DEV gõ `/go` lại
-   hoặc manually đổi qua `/grill` / `/plan`.
+5. **Không** update spec status — spec vẫn ở `implementing` cho đến khi DEV gõ `/implement` lại
+   hoặc manually đổi qua `/clarify` / `/plan`.
 
 ## Refuse / clarify khi
 

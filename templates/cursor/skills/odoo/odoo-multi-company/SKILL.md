@@ -35,7 +35,7 @@ Same protocol as `odoo-code-review` / `odoo-code-patterns`:
    - `_check_company_auto = True` class attribute → **mainstream from 16+**
      (introduced earlier as opt-in around 13 partial / 14, but typical
      v13-15 code does NOT set it; default-True only became standard in 16).
-   - `@api.model_create_multi` decorator → ≥14.
+   - `@api.model_create_multi` decorator → exists since v12; not a version marker on its own.
 3. **Ask the user** only if signals are inconclusive.
 
 Then load the matching reference:

@@ -281,7 +281,7 @@ Condensed; full details + code snippets in
 | v12 → v13 | Accounting | `account.invoice` removed (deprecated in v12) | Complete migration to `account.move` — the model no longer exists in v13. |
 | v12 → v13 | ORM | `@api.multi` removed (silent default) | Strip all `@api.multi` — methods default multi-record. |
 | v12 → v13 | Accounting | `account.invoice` → `account.move` **REAL move** | Rewrite all invoice references: model name, field names, state machine. |
-| v13 → v14 | ORM | `@api.model_create_multi` introduced | Override `create(self, vals_list)`. |
+| v13 → v14 | ORM | `@api.model_create_multi` (exists since v12) is the expected `create()` override | Override `create(self, vals_list)`. |
 | v15 → v16 | Payment | `payment.acquirer` → `payment.provider` (rename landed in 16) | Rename all references; views, security, code. |
 | v14 → v15 | JS | Legacy kanban JS dropped (pre-OWL) | Rewrite custom kanban widgets in OWL. |
 | v15 → v16 | ORM | `_check_company_auto = True` mainstream | Audit multi-company models — see `odoo-multi-company`. |

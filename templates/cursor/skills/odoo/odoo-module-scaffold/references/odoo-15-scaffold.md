@@ -66,7 +66,7 @@ class MyModel(models.Model):
 ```
 
 DELTA vs v12: no `@api.multi` (removed v13); `create()` takes `vals_list`
-with `@api.model_create_multi` (v14+). Web-verified.
+with `@api.model_create_multi` (decorator exists since v12). Web-verified.
 
 ## View template (15 syntax — SAME as v12)
 

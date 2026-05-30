@@ -132,7 +132,7 @@ Argument: `$ARGUMENTS` = a bug slug (kebab-case) or a ticket id. If empty
 
    Next:
    - Commit the test + invariant together with the fix patch.
-   - If the test FAILS: the bug is not fixed yet → /go to implement, then /verify.
+   - If the test FAILS: the bug is not fixed yet → /implement to implement, then /verify.
    ```
 
 ## Refuse / clarify when

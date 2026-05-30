@@ -9,7 +9,7 @@ around that seam.
 | Symptom | Root cause | Fix |
 |---|---|---|
 | `AttributeError: module 'odoo.api' has no attribute 'multi'` | Leftover `@api.multi`/`@api.one` from a v12 module | Remove the decorator — recordset is default since v13 (web-verified) |
-| Batch `create()` only processes first record | `create()` overridden single-record (`@api.model`, `vals`) | Use `@api.model_create_multi` + iterate `vals_list` (v14+, web-verified) |
+| Batch `create()` only processes first record | `create()` overridden single-record (`@api.model`, `vals`) | Use `@api.model_create_multi` + iterate `vals_list` (decorator exists since v12, web-verified) |
 | Compute không re-run khi field con thay đổi | `@api.depends` cite sai path | Sửa depends string đúng theo field name — unchanged from v12 |
 | `attrs="{...}"` raises "no longer used" | Pasted v17 expectation onto v15 OR malformed JSON | In v15 `attrs`/`states` ARE valid (removed only v17). Fix the JSON quoting, do NOT convert to `invisible="<expr>"` |
 | OWL component never mounts / `import` fails | Missing `/** @odoo-module **/` header → ES6 `import` not transpiled | Add the header as line 1 (NEW in v15; transpiled by `js_transpiler.py`, web-verified) |

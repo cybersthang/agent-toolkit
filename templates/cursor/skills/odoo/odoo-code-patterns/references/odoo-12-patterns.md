@@ -34,8 +34,9 @@ class MyModel(models.Model):
 Key rules:
 - `@api.multi` on every method that iterates `self`.
 - `@api.one` exists but is deprecated — never use in new code.
-- `create()` takes ONE `vals` dict; loop yourself if you need batch behaviour
-  (single-record only — Odoo 12 doesn't have `@api.model_create_multi`).
+- `create()` override commonly takes ONE `vals` dict in 12-era code; loop
+  yourself if you need batch behaviour. (`@api.model_create_multi` does exist
+  in v12 and is the batch-safe form, but single-record overrides are typical here.)
 
 ## Wizard
 

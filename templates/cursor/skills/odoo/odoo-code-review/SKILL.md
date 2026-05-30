@@ -26,10 +26,10 @@ of every module in scope. Wrong version → wrong rules → bogus findings.
      `codebase.read_manifest({module_path})`.
 2. **Fallback signals** when manifest is missing or unparseable. Signals
    are listed from "narrowest version" to "broadest":
-   - `from odoo.api import multi` import or `@api.multi` decorator → ≤13 (12 expected in our scope).
-   - View uses `attrs="{...}"` / `states="..."` → ≤13 (deprecated in 14, removed in 17+).
+   - `from odoo.api import multi` import or `@api.multi` decorator → ≤12 (removed in 13).
+   - View uses `attrs="{...}"` / `states="..."` → ≤16 (valid through 16; inline `invisible`/`readonly`/`required="<expr>"` replaced them in 17).
    - `web.AbstractWebClient` import / `var Widget = require('web.Widget')` → 12 / 13.
-   - `@api.model_create_multi` decorator → ≥14, recordset-default era.
+   - `@api.model_create_multi` decorator → exists since v12; on its own not a version marker (pair with other signals for the recordset-default era).
    - `invisible="<py expr>"` directly on `<field>` → ≥17.
    - `/** @odoo-module **/` header at top of `static/src/*.js` → ≥15 (OWL era).
    - `search(domain=...)` keyword instead of `search(args=...)` → ≥18 (renamed in 18).
@@ -58,7 +58,7 @@ older one and overrides only the deltas. 12 is standalone.
 |----------------|--------------------------------------------|-------|
 | 12             | `references/odoo-12-rules.md` (standalone) | `@api.multi`, `attrs/states`, jQuery+QWeb, single-record `create(vals)` |
 | 13             | load `references/odoo-13-rules.md` | `@api.multi` still valid, `attrs/states`, late jQuery era, `account.invoice` not yet merged |
-| 14             | load `references/odoo-14-rules.md` | `@api.model_create_multi` introduced, `account.invoice`→`account.move` merge, OWL v1 staged |
+| 14             | load `references/odoo-14-rules.md` | `@api.model_create_multi` is the expected `create()` override (exists since v12), `account.invoice`→`account.move` merge, OWL v1 staged |
 | 15             | load `references/odoo-15-rules.md` | OWL maturing (`/** @odoo-module **/`), `attrs/states` still valid |
 | 16             | load `references/odoo-16-rules.md` (+ note: backports some v17 conventions) | `_compute_display_name` canonical 16.4, `_check_company_auto` mainstream, OWL v2 mature |
 | 17             | `references/odoo-17-rules.md` | recordset-default, `@api.model_create_multi`, removed `attrs/states`, OWL |

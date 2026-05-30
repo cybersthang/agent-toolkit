@@ -51,7 +51,7 @@ Inline systemMessage (advisory; never blocks):
 
 ```
 [spec-drift] recipe vs script divergences detected (advisory):
-  - probe `hotpot-us5-resilient` description mentions postgres
+  - probe `example-us5-resilient` description mentions postgres
     but the script (.agent-toolkit/scripts/probes/us5.py) does not.
     Update the script or relax the recipe.
 ```

@@ -23,13 +23,13 @@ touches code or tests, so a clean local commit ≈ a green CI test job.
 
 ```bash
 # 1. Activate the project venv first (Windows PowerShell)
-C:/Users/thang.vo/Desktop/NAKIVO/venv/Scripts/Activate.ps1
+C:/Users/<you>/agent-toolkit/venv/Scripts/Activate.ps1
 
 # 2. Install the pre-commit framework
 pip install pre-commit
 
 # 3. Register the git hook in this repo
-cd C:/Users/thang.vo/Desktop/NAKIVO/agent-toolkit
+cd C:/Users/<you>/agent-toolkit
 pre-commit install --hook-type pre-commit
 ```
 
@@ -51,7 +51,7 @@ or the hook will run against the wrong interpreter:
 
 ```powershell
 # Windows
-C:/Users/thang.vo/Desktop/NAKIVO/venv/Scripts/Activate.ps1
+C:/Users/<you>/agent-toolkit/venv/Scripts/Activate.ps1
 git commit -m "..."
 ```
 

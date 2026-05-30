@@ -207,7 +207,7 @@ A "100% rebuild" promise means:
 
 1. **Same input** — committed tree at tag `v0.21.0`.
 2. **Same environment** — Python 3.8/3.10/3.12 + pytest + pytest-cov + ruff at the versions resolved by `make install`.
-3. **Same output** — `make rebuild` ends with `REBUILD GREEN`; CI matrix all green; tests 995 PASS; coverage ≥ 70% on the gated cell.
+3. **Same output** — `make rebuild` ends with `REBUILD GREEN`; CI matrix all green; tests all PASS (~1018 at v0.32.0); coverage ≥ 70% on the gated cell.
 
 Any drift between local `make rebuild` and CI is a **bug**, not "flaky tests". File it, fix it, re-tag.
 

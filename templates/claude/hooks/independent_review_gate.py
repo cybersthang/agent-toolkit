@@ -81,8 +81,19 @@ def _diff_loc(ws: Path, files: List[str]) -> int:
     if not files:
         return 0
     d = _git(ws, "diff", "HEAD", "--", *files)
-    return sum(1 for ln in d.splitlines()
-               if ln[:1] in "+-" and ln[:2] not in ("++", "--"))
+    loc = sum(1 for ln in d.splitlines()
+              if ln[:1] in "+-" and ln[:2] not in ("++", "--"))
+    # BLOCKER-2 fix (v0.32): untracked files don't appear in `git diff HEAD`, so a
+    # whole feature in NEW files would score 0 LOC and be treated as trivial/skipped.
+    # Count their lines too (scope already includes them via `ls-files --others`).
+    untracked = set(_git(ws, "ls-files", "--others", "--exclude-standard").splitlines())
+    for f in files:
+        if f in untracked:
+            try:
+                loc += sum(1 for _ in (ws / f).open(encoding="utf-8", errors="ignore"))
+            except OSError:
+                pass
+    return loc
 
 
 def _verified_spec(ws: Path) -> Optional[str]:
@@ -147,31 +158,38 @@ def _first_user_text(msgs: List[Dict[str, Any]]) -> str:
     return ""
 
 
-def _reviewer_evidence(ws: Path, envelope: Dict[str, Any], sha: str,
-                       cfg: Dict[str, Any]) -> bool:
-    """3-layer (ID-3/12/14/22): (A) a Task/Agent tool_use THIS turn, (B) a
-    session-scoped sub-agent transcript that CONSUMED the packet-sha, (C)
-    packet-purity — the sub-agent's spawn prompt (first user msg) must be SMALL.
-    The skill passes the packet by PATH (the sub-agent Reads it), so a legit
-    prompt is tiny; a bloated first-user msg = injected reasoning/context =
-    tainted (ID-14 anti-leak). Measures the PROMPT, not the whole transcript."""
+def _has_review_task_this_turn(envelope: Dict[str, Any]) -> bool:
+    """Layer A (ID-3): a Task/Agent tool_use in the CURRENT turn."""
     tp = envelope.get("transcript_path")
-    task_used = False
-    if tp and Path(tp).exists():
-        for rec in split_current_turn(read_jsonl_transcript(Path(tp))):
-            msg = rec.get("message") if isinstance(rec.get("message"), dict) else {}
-            content = msg.get("content")
-            if isinstance(content, list):
-                for blk in content:
-                    if (isinstance(blk, dict) and blk.get("type") == "tool_use"
-                            and blk.get("name") in ("Task", "Agent")):
-                        task_used = True
-    if not task_used or not tp:
+    if not tp or not Path(tp).exists():
+        return False
+    for rec in split_current_turn(read_jsonl_transcript(Path(tp))):
+        msg = rec.get("message") if isinstance(rec.get("message"), dict) else {}
+        content = msg.get("content")
+        if isinstance(content, list):
+            for blk in content:
+                if (isinstance(blk, dict) and blk.get("type") == "tool_use"
+                        and blk.get("name") in ("Task", "Agent")):
+                    return True
+    return False
+
+
+def _reviewer_consumed_sha(ws: Path, envelope: Dict[str, Any], sha: str,
+                           cfg: Dict[str, Any]) -> bool:
+    """Layers B+C (ID-12/14, session-scoped, turn-AGNOSTIC): a sub-agent transcript
+    in the CURRENT session ECHOED the packet-sha in an ASSISTANT turn (consumption)
+    AND its spawn prompt (first user msg) is SMALL (purity — a bloated prompt =
+    injected context = tainted, ID-14). This is the un-forgeable-ish anchor that a
+    real reviewer reviewed THIS exact packet; it survives across turns, so a
+    prior-turn review still backs a later done-claim (the cache path). Forging it
+    needs a fabricated session sub-agent jsonl — far harder than one verdict line."""
+    tp = envelope.get("transcript_path")
+    if not tp:
         return False
     max_prompt = int(cfg.get("reviewer_prompt_max_bytes", 4096))
     enc = re.sub(r"[^A-Za-z0-9]", "-", str(ws.resolve()))
     proj = Path.home() / ".claude" / "projects" / enc
-    # M3 fix: scope to the CURRENT session's sub-agents only — `tp` is
+    # M3: scope to the CURRENT session's sub-agents only — `tp` is
     # `<proj>/<sessionUUID>.jsonl`; sub-agents live under `<sessionUUID>/subagents/`.
     sub_dir = proj / Path(tp).stem / "subagents"
     if not sub_dir.is_dir():
@@ -180,10 +198,8 @@ def _reviewer_evidence(ws: Path, envelope: Dict[str, Any], sha: str,
         msgs = read_jsonl_transcript(sub)
         if not msgs:
             continue
-        # R2-MEDIUM fix (ID-12): consumption = the reviewer ECHOED the sha in an
-        # ASSISTANT text turn — NOT merely that the sha appears anywhere (it also
-        # appears inside the Read tool_result of the packet, which a no-op
-        # sub-agent would produce). Require the echo.
+        # R2-MEDIUM (ID-12): consumption = reviewer ECHOED the sha in an ASSISTANT
+        # turn — NOT merely the sha appearing in a Read tool_result of the packet.
         echoed = False
         for m in msgs:
             mm = m.get("message") if isinstance(m.get("message"), dict) else m
@@ -198,12 +214,21 @@ def _reviewer_evidence(ws: Path, envelope: Dict[str, Any], sha: str,
                 echoed = True
                 break
         if not echoed:
-            continue                          # this sub-agent didn't review our packet
+            continue
         # M2: anti-leak = small spawn prompt (not whole-transcript size).
         if len(_first_user_text(msgs).encode("utf-8")) <= max_prompt:
-            return True                       # clean reviewer ran this cycle
-        # else: bloated prompt → injected context → not valid → block (re-review clean)
+            return True
     return False
+
+
+def _reviewer_evidence(ws: Path, envelope: Dict[str, Any], sha: str,
+                       cfg: Dict[str, Any]) -> bool:
+    """Full 3-layer evidence: (A) a Task/Agent spawn THIS turn AND (B+C) a session
+    reviewer transcript that consumed this packet-sha purely. Kept for the
+    same-turn review→done path + the test contract; the cache path uses
+    _reviewer_consumed_sha alone (turn-agnostic) so a prior-turn review still counts."""
+    return (_has_review_task_this_turn(envelope)
+            and _reviewer_consumed_sha(ws, envelope, sha, cfg))
 
 
 def _verdict_for(ws: Path, sha: str) -> str:
@@ -246,9 +271,6 @@ def main() -> int:
         return 0
     state = _load(ws / STATE_REL, {}) or {}
     verdict = _verdict_for(ws, sha)
-    if verdict == "pass":                     # sha-cache: reviewed & clean
-        emit_fire_event(HOOK, "cached")
-        return 0
     if verdict == "escalated":                # terminal — already handed to DEV
         emit_fire_event(HOOK, "ok")           # short-circuit BEFORE re-evidence
         return 0
@@ -256,8 +278,16 @@ def main() -> int:
     mode = get_enforce_mode(ws, "independent_review_gate", default="warn")
 
     # ---- T6: verify reviewer evidence + jam-escape ----
+    # BLOCKER-1 fix (v0.32): "reviewed?" = a real reviewer sub-agent CONSUMED this
+    # packet-sha (session-scoped, un-forgeable-ish), NOT a bare agent-written
+    # verdict. A 'pass' verdict is honored ONLY with that consumption evidence —
+    # one self-written `{"<sha>":{"verdict":"pass"}}` line no longer skips the gate.
+    consumed = _reviewer_consumed_sha(ws, envelope, sha, cfg)
+    if verdict == "pass" and consumed:        # sha-cache: reviewed & clean
+        emit_fire_event(HOOK, "cached")
+        return 0
     rec = state.get(sha) or {"round": 0, "non_progress": 0, "block_streak": 0}
-    if not _reviewer_evidence(ws, envelope, sha, cfg):
+    if not consumed:
         rec["block_streak"] = int(rec.get("block_streak", 0)) + 1
         state[sha] = rec
         _save_state(ws, state)
@@ -295,9 +325,16 @@ def main() -> int:
         else:                                 # new/legit blockers → progressing
             srec["non_progress"] = 0
             srec["seen_fp"] = sorted(seen | set(cur_fp))
+    # P2#10 (v0.32): absolute Stop hard-cap — guarantees termination even if
+    # round/non_progress never advance (flat sha + evidence present + no
+    # fingerprints would otherwise block every Stop). Defense-in-depth atop
+    # stop_hook_active + the per-cycle counters.
+    srec["total_stops"] = int(srec.get("total_stops", 0)) + 1
+    hard_cap = int(cfg.get("absolute_stop_hard_cap", 8))
     ceil = int(cfg.get("absolute_round_ceiling", 5))
     streak = int(cfg.get("non_progress_streak", 3))
-    if srec["round"] >= ceil or srec["non_progress"] >= streak:
+    if (srec["round"] >= ceil or srec["non_progress"] >= streak
+            or srec["total_stops"] >= hard_cap):
         # B-rev1/B-rev2 fix: TERMINAL verdict (later same-sha Stop short-circuits,
         # no re-escalate loop) + emit per MODE. Reset the per-spec counter so a
         # later DEV fix (new sha) starts a fresh cycle, not an instant re-escalate.

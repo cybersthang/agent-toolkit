@@ -98,7 +98,7 @@ example.
 from playwright.sync_api import sync_playwright
 import json, os, sys
 
-BASE_URL = os.environ.get("HOTPOT_BASE_URL", "{test_env.url}")
+BASE_URL = os.environ.get("TOOLKIT_TEST_URL", "{test_env.url}")
 LOGIN = os.environ.get("TOOLKIT_TEST_LOGIN", "{test_env.creds_ref.fallback_login}")
 PASSWORD = os.environ.get("TOOLKIT_TEST_PASSWORD", "{test_env.creds_ref.fallback_password}")
 

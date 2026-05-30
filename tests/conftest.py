@@ -9,7 +9,36 @@ import pytest
 
 TOOLKIT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOLKIT_ROOT / 'lib'))
+sys.path.insert(0, str(TOOLKIT_ROOT / 'tools'))
 sys.path.insert(0, str(TOOLKIT_ROOT))
+
+
+@pytest.fixture(autouse=True)
+def _block_real_desktop_notification(monkeypatch):
+    """ROOT CAUSE FIX (recurring 'Claude session stalled [feat]' GNOME toast):
+    tests like test_main_path_independent_of_multi_mode call the real
+    `check_once`/`notify.dispatch` with default channels `["log","toast"]`,
+    which fired a REAL `notify-send` on the developer's desktop on EVERY pytest
+    run (spec='feat'/600s came straight from the test fixtures).
+
+    Guard `subprocess.run` to swallow ONLY the desktop-notification command
+    (notify-send / osascript / Windows toast); every other subprocess call
+    (git, pytest, setup.py dry-run, hook spawns) passes through untouched."""
+    import subprocess as _sp
+    _real = _sp.run
+
+    class _Result:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def _guard(cmd, *a, **k):
+        flat = " ".join(str(c) for c in cmd) if isinstance(cmd, (list, tuple)) else str(cmd)
+        if any(tok in flat for tok in ("notify-send", "osascript", "MessageBox", "BurntToast")):
+            return _Result()
+        return _real(cmd, *a, **k)
+
+    monkeypatch.setattr(_sp, "run", _guard)
 
 
 @pytest.fixture

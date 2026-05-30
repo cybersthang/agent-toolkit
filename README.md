@@ -12,8 +12,9 @@
 
 
 AI agents ship buggy code when nothing **mechanically** stops them. This toolkit
-makes 6 rules un-skip-able: invariant guard, evidence audit, real-data verify,
-git guardrail, kill-switch banner, bypass-rate alert.
+enforces 6 rules at the Claude Code harness level — invariant guard, evidence
+audit, real-data verify, git guardrail, kill-switch banner, bypass-rate alert.
+Most DENY outright; where a bypass exists it is single-use and logged, never silent.
 
 ## Why agent-toolkit?
 
@@ -127,7 +128,7 @@ architecture diagram → [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 Toolkit is in **active use** on a real Odoo 12 Enterprise workspace since
 May 2026. Illustrative figures from local dogfooding (not a benchmark): a
 typical session shows ~57 hook fire-events, ~26% block rate, ~3.5% bypass
-rate. **30+ hooks** active, **995 unit tests** (as of v0.30.0) green in CI
+rate. **30+ hooks** active, **1018 unit tests** (as of v0.32.0) green in CI
 (matrix: Ubuntu / macOS / Windows × Python 3.8 / 3.10 / 3.12). The reported
 coverage % measures `setup.py` + `lib/` only; the enforcement hooks
 (`templates/claude/hooks/`, ~11k LOC) are ruff-lint-checked and

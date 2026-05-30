@@ -32,7 +32,6 @@ agent-toolkit.config.json
 # Private preset overlays — author + team-specific defaults. Public toolkit
 # stays clean; these stay local. Strip the `.template` from
 # `presets/_example_private_overlay.json.template` to seed your own.
-presets/odoo-12-nakivo.json
 presets/*-private.json
 
 # Runtime ring-buffer / ephemeral state written by hooks during a session.
@@ -50,6 +49,7 @@ presets/*-private.json
 .agent-toolkit/.tdd_runner_last.json
 .agent-toolkit/.review_packet.*.md
 .agent-toolkit/.independent_review.json
+.agent-toolkit/.canonical_expected.json
 # Nested copies too (e.g. a hook writing into templates/.../.agent-toolkit/
 # when cwd drifts) — must never be committed or shipped by the installer.
 **/.hook_fire_log.json

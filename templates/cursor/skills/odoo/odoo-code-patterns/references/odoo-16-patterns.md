@@ -38,7 +38,7 @@ class MyModel(models.Model):
         return records
 ```
 
-- `@api.multi` is REMOVED (since v14) — recordset is the default. Same
+- `@api.multi` is REMOVED (since v13) — recordset is the default. Same
   as v17 — see `odoo-17-patterns.md` §Compute + CRUD.
 - `@api.model_create_multi(vals_list)` is the batch-safe `create`
   override — unchanged from v17.
@@ -126,7 +126,7 @@ registry.category("actions").add("my_module.my_widget", MyWidget);
 
 ## Hard rules (Odoo 16 specific)
 
-- Never `@api.multi` — gone since v14 (same as v17).
+- Never `@api.multi` — gone since v13 (same as v17).
 - `@api.model_create_multi(vals_list)` for `create` overrides (same as v17).
 - **DO use `attrs="{...}"` / `states="..."` in 16 views** — the inline
   `invisible="<expr>"` syntax is v17+. (Reverse of the v17 hard rule.)

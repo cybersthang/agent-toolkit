@@ -19,7 +19,7 @@ mismatches that silently return wrong data:
 - `state='open'` (v12-13 invoice) vs `state='posted'` (v14+ move)
 - `name_get()` (≤16) vs `_compute_display_name` (17+)
 - `aggregator='sum'` (v18+) vs `group_operator='sum'` (≤17) on field declarations
-- `payment.acquirer` (v12-14) vs `payment.provider` (v15+) model name
+- `payment.acquirer` (≤v15) vs `payment.provider` (v16+) model name
 
 **Protocol:** read `__manifest__.py` via `codebase.read_manifest` and
 parse `version` field with regex `^(\d+)\.0\.`. If detection is
@@ -35,7 +35,7 @@ Routing table:
 | 12 | `account.invoice`, `state='open'`, `name_get()`. v12 ORM eval works the same way; just match the symbols. |
 | 13 | Mixed — both `account.invoice` and `account.move` exist; verify which is in use via `search_count` before composing the aggregate. |
 | 14-16 | `account.move`, `state='posted'`, `name_get()` still standard. |
-| 17+ | `account.move`, `_compute_display_name`. v18+ adds `aggregator='sum'`. v19+ adds mail v2 (verify `mail.message` schema before aggregating thread data). |
+| 17+ | `account.move`, `_compute_display_name`. v18+ adds `aggregator='sum'`. v17 renames `mail.channel`→`discuss.channel`; verify `mail.message`/`discuss.channel` schema against installed source before aggregating thread data. |
 
 ## When to use this skill
 

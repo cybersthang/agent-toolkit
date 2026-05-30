@@ -3,6 +3,41 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
+## [0.30.0] — 2026-05-30 — Odoo version-fact accuracy + Stop-hook resilience + installer hygiene
+
+### Stop-hook resilience
+- `evidence_audit` / `gap_completeness_gate` / `scope_completeness_gate` now guard
+  against non-dict Stop envelopes (`null` / list / bare string) — previously an
+  `AttributeError` under run_main_safe's fail-CLOSED default (v0.20.0) would exit 1
+  and BLOCK the agent's Stop. Regression test `test_malformed_envelope.py`.
+- Stall-watcher (`agent_supervisor`) no longer false-positives while a legitimate
+  async background workflow is producing fresh child transcripts (`_active_child_work`).
+
+### Odoo version-fact corrections (source-verified vs odoo/odoo + OCA/OpenUpgrade)
+- `account.invoice`→`account.move` unification = **v13** (not v14; the `move_type`
+  rename is v14); `@api.multi` / `@api.one` removed in **v13**; `@api.returns`
+  retained; `payment.acquirer`→`payment.provider` = **v16**; `<chatter/>` element = **v18**;
+  `name_get` deprecated 17 / removed 18; Python/PostgreSQL minimums; EE license = **OEEL-1**.
+- Applied across 5 specialty SKILL.md, `rules/odoo-13..20`, memory, and the
+  code-review / code-patterns / data-verification references; removed an unverified
+  "v19 mail-v2 storage refactor" narrative (real deltas: `mail.channel`→`discuss.channel`
+  v17 + `<chatter/>` v18 + OWL chatter path moves).
+- Added 21 web-verified Odoo reference docs across 9 specialty skills.
+- Wired OCA/OpenUpgrade `apriori.py` (per-branch `renamed_models` / `merged_models` /
+  `renamed_modules`) as the authoritative model/field-rename source in `odoo-upgrade-scripts`.
+
+### Bug fixes
+- `agent_toolkit_init._starter_settings`: escape `${CLAUDE_PROJECT_DIR}` inside the
+  f-strings (was a reachable `NameError` that crashed codex `init`).
+- Installer (`build_plan`): new `_is_copy_noise` excludes gitignored runtime junk
+  (`.agent-toolkit/.hook_*log`, `__pycache__`, `*.pyc`, `*.bak.*`) from copied
+  templates — a dogfooded/dirty tree was shipping hook runtime logs to consumers.
+
+### Tests / CI
+- New regression suites: malformed-envelope, skill dangling-references (every routed
+  `references/*.md` must exist), codex compile+import gate, agent_toolkit_init,
+  installer noise. Full suite: 928 passing.
+
 ## [0.29.0] — 2026-05-29 — Odoo 12-20 parity + auto-parallel waves + GitLab CI MCP
 
 ### evidence_audit: phantom_citation false-positive fix

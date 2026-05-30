@@ -10,7 +10,7 @@ only where 16 review rules diverge from 17.
 
 ## A. ORM / API decorators (Odoo 16)
 
-- `@api.multi` is **removed** (since v14) — recordset is default.
+- `@api.multi` is **removed** (since v13) — recordset is default.
   Identical to v17 — see `odoo-17-rules.md` §A.
 - `@api.model_create_multi(vals_list)` required for `create()`
   overrides; single-record `@api.model create(self, vals)` silently
@@ -30,7 +30,7 @@ only where 16 review rules diverge from 17.
 | Severity | Concrete example |
 |----------|------------------|
 | BLOCKER  | Override `create()` with `@api.model` instead of `@api.model_create_multi(vals_list)` → batch creates apply only to first record |
-| BLOCKER  | `@api.multi` decorator on a method → import-time AttributeError (gone since 14) |
+| BLOCKER  | `@api.multi` decorator on a method → import-time AttributeError (gone since 13) |
 | MEDIUM   | `@api.depends` missing a field the compute reads → stale cached values |
 | LOW      | Flagging a `name_get()` override as "should be `_compute_display_name`" on a 16.0 target — that conversion only applies from saas-16.4 / 17.0 |
 
@@ -158,5 +158,5 @@ Raw SQL (JSON/index suspicion) goes through `postgres.run_select`.
 - Flagging `<tree>` as "should be `<list>`" — the rename is 17.
 - Flagging a `name_get()` override on 16.0 — correct there; the
   `_compute_display_name` form applies from saas-16.4 onward (removal 17.0).
-- Flagging missing `@api.multi` — correctly absent (gone since 14).
+- Flagging missing `@api.multi` — correctly absent (gone since 13).
 - Re-running an audit without consulting `.codex/audit_findings_*_locked.md`.

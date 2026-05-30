@@ -1,6 +1,6 @@
 ---
 name: odoo-upgrade-scripts
-description: Cross-version Odoo upgrade pipeline — choosing between custom per-module `migrations/<version>/{pre,post}-migration.py`, OCA `openupgrade_scripts` (community), and Odoo's official `upgrade.odoo.com` service (Enterprise). Embedded breaking-change inventory v12→v20 (`@api.one`/`@api.multi` removal, `account.invoice`→`account.move`, `payment.acquirer`→`payment.provider`, `name_get()`→`_compute_display_name`, `attrs=`/`states=` removal, OWL refactor, mail framework v2). Top 5 upgrade anti-patterns (skip-version, edit-applied-script, no source/target parity test, ignored deprecations, SQL renames). Falsification via `ir.module.module.latest_version` + before/after aggregates on `account.move` / `sale.order`. Trigger phrases: "upgrade", "migration", "nâng cấp", "v12 to v17", "openupgrade", "upgrade.odoo.com", "version migration", "breaking change".
+description: Cross-version Odoo upgrade pipeline — choosing between custom per-module `migrations/<version>/{pre,post}-migration.py`, OCA `openupgrade_scripts` (community), and Odoo's official `upgrade.odoo.com` service (Enterprise). Embedded breaking-change inventory v12→v20 (`@api.one`/`@api.multi` removal, `account.invoice`→`account.move`, `payment.acquirer`→`payment.provider`, `name_get()`→`_compute_display_name`, `attrs=`/`states=` removal, OWL refactor, discuss/mail OWL rewrite (`mail.channel`→`discuss.channel` v17, `<chatter/>` v18)). Top 5 upgrade anti-patterns (skip-version, edit-applied-script, no source/target parity test, ignored deprecations, SQL renames). Falsification via `ir.module.module.latest_version` + before/after aggregates on `account.move` / `sale.order`. Trigger phrases: "upgrade", "migration", "nâng cấp", "v12 to v17", "openupgrade", "upgrade.odoo.com", "version migration", "breaking change".
 license: MIT
 ---
 
@@ -32,7 +32,7 @@ Pair with `odoo-code-review` (severity anchors), `odoo-module-install-scripts`
 3. **Fallback signals** (only if manifest's `version` is missing):
    - `@api.one` → ≤12. `@api.multi` → ≤12 (removed in v13).
    - `account.invoice` model references → ≤12 source.
-   - `payment.acquirer` references → ≤14 source.
+   - `payment.acquirer` references → ≤15 source.
    - `name_get(self)` without `_compute_display_name` → ≤16.
 4. **Ask DEV** when signals are inconclusive — never guess across two majors.
 
@@ -44,7 +44,7 @@ Load delta references **for every major between source and target inclusive**
 | 12 → 13 | v12→v13 delta |
 | 12 → 17 | v12→v13, v13→v14, v14→v15, v15→v16, v16→v17 |
 | 16 → 18 | v16→v17, v17→v18 |
-| 18 → 19 | v18→v19 (BIG — mail framework v2) |
+| 18 → 19 | v18→v19 (discuss/mail OWL rewrite — verify against installed source) |
 | 19 → 20 | v19→v20 (limited verified delta — apply stub-extends-v19) |
 
 ## 1. The three upgrade paths
@@ -231,7 +231,7 @@ warning becomes hard `AttributeError`, upgrade hangs at module load.
 | v15 | `payment.acquirer is deprecated` | v16 (model renamed) |
 | v16 | `name_get() override deprecated` | v17 (`_compute_display_name`) |
 | v16 | `attrs="..." in views deprecated` | v17 (removed) |
-| v18 | `mail.message legacy API` | v19 (mail v2 refactor) |
+| v18 | `mail.message legacy API` | verify against source (no monolithic v2 confirmed) |
 
 ```bash
 # CI gate — fail on any DeprecationWarning from your addon namespace
@@ -292,7 +292,7 @@ Condensed; full details + code snippets in
 | v16 → v17 | JS | OWL refactored (lifecycle, hooks) | Audit OWL components for `onMounted` / `onWillStart` migration. |
 | v17 → v18 | ORM | Minor refinements (no big breaks) | Re-run deprecation gate (§3 Anti-Pattern D). |
 | v17 → v18 | JS | OWL continued evolution | Patch custom OWL components. |
-| v18 → v19 | **Mail** | **Mail framework v2 refactored (BIG)** | `mail.thread` internals rewritten; `message_post` signature stable but underlying engine changed. See `odoo-mail-v2-migration`. |
+| v18 → v19 | **Mail/Discuss** | discuss/mail OWL rewrite (no monolithic "v2") | `mail.channel`→`discuss.channel` landed v17, `<chatter/>` element v18; `message_post` signature stable. Verify `mail.message` schema vs installed source. See `odoo-mail-v2-migration`. |
 | v19 → v20 | All | Limited verified delta — **stub-extends-v19** | Treat as v19 + monitor release notes; do NOT assume new breakage absent verified notes. |
 
 > **Authoritative source for each row:** Odoo official release notes +
@@ -403,7 +403,7 @@ assert not broken_views, "Extensions point to deleted parents — migration gap"
 
 | Concern | Skill / file |
 |---|---|
-| Mail framework v2 (v18→v19) | `odoo-mail-v2-migration` |
+| discuss/mail OWL rewrite (v17 `discuss.channel`, v18 `<chatter/>`) | `odoo-mail-v2-migration` |
 | Module-level install/uninstall hooks (sibling) | `odoo-module-install-scripts` |
 | Severity anchors for migration findings | `odoo-code-review` §D |
 | Multi-company gotchas during upgrade (`_check_company_auto` flip v15→v16) | `odoo-multi-company` |

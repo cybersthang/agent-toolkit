@@ -232,7 +232,7 @@ template path is overwritten — your edits land in `.bak.<timestamp>`.
 **Fix**:
 1. Restore: `cp .agent-toolkit/debug.json.bak.<timestamp> .agent-toolkit/debug.json`.
 2. Don't edit synced files in-project. Either:
-   - Edit the upstream toolkit (`C:/Users/thang.vo/Desktop/NAKIVO/agent-toolkit/templates/...`)
+   - Edit the upstream toolkit (`C:/Users/<you>/agent-toolkit/templates/...`)
      and re-run `setup.py update`, OR
    - Use override files: most JSON configs (`debug.json`, `tdd.json`,
      `enforce_mode.json`) merge with template defaults — keep only the

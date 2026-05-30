@@ -26,11 +26,16 @@ exception, logs it to `.agent-toolkit/.hook_crash_log.json`, emits a fire
 event tagged `crash`, then exits according to the crash-policy gate
 (`is_fail_closed_mode()`, `_common.py:303`):
 
-- **Default**: fail-CLOSED — `exit 1`. Hook crash blocks the response (or
-  for PreToolUse, blocks the tool call). The conservative posture: if the
-  guard itself broke, don't silently let the action through.
-- **Override**: set `AGENT_TOOLKIT_NO_STRICT=1` to revert to legacy
-  fail-open (`exit 0`). Useful when iterating on a buggy hook locally.
+- **Default** (`is_fail_closed_mode()`): a crash exits **1** and is logged to
+  `.hook_crash_log.json`. Per Claude Code's hook contract a bare `exit 1` is a
+  **non-blocking error** — only `exit 2` or a stdout `{"decision":"block"}` blocks
+  — so a crashed hook does NOT jam the workflow; it surfaces stderr and the action
+  proceeds. This is the `hooks-fail-open` invariant in practice: a broken guard
+  degrades to allow, never permanently wedging the session. Real enforcement blocks
+  are emitted via stdout JSON, independent of exit code.
+- **Override**: `AGENT_TOOLKIT_NO_STRICT=1` exits `0` on crash instead of `1` —
+  changes only the logged exit code / fire-event verdict (`ok` vs `error`), not the
+  (already non-blocking) outcome. Useful when iterating on a buggy hook locally.
 
 This crash policy is **independent** of per-hook `enforce_mode.json`. The
 latter controls what the hook does in the *happy path* when it detects a

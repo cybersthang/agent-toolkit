@@ -16,7 +16,7 @@
     {
       "id": "trigger-shadow-rpc",
       "match_regex": "(?i)shadow\\s*[=:]\\s*true",
-      "template": "        # Arm the interceptor to tag the NEXT request as shadow=true (ASYNC).\n        page.evaluate('''() => {{\n            const m = odoo && odoo.__DEBUG__ && odoo.__DEBUG__.services\n                && odoo.__DEBUG__.services['<project_namespace>.HotpotInterceptor'];\n            if (m && m._setPendingShadowForTest) m._setPendingShadowForTest(true);\n        }}''')\n",
+      "template": "        # Arm the interceptor to tag the NEXT request as shadow=true (ASYNC).\n        page.evaluate('''() => {{\n            const m = odoo && odoo.__DEBUG__ && odoo.__DEBUG__.services\n                && odoo.__DEBUG__.services['<project_namespace>.RpcInterceptor'];\n            if (m && m._setPendingShadowForTest) m._setPendingShadowForTest(true);\n        }}''')\n",
       "vars": {}
     },
     {

@@ -3,6 +3,47 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
+## [0.32.0] — 2026-05-30 — Public-release hardening: privacy scrub + enforcement soundness
+
+### Security / privacy (public-release gate)
+- Removed all client/company identifiers from the published tree: renamed
+  client-codename env vars + the interceptor example → generic `TOOLKIT_TEST_*` /
+  `RpcInterceptor` in shipped templates (`recipe_to_probe_script.py`,
+  `rpc_triggers.json`, 2 cursor skills); scrubbed the author's corporate Windows
+  path from `docs/precommit-setup.md` + `docs/troubleshooting.md`; genericized the
+  company-name provenance notes in `templates/agent_toolkit/invariants.json` +
+  `docs/AUDIT_HISTORY.md` + the changelog.
+- Dropped internal dev-history from the public tree (kept local via
+  `.git/info/exclude` / `.gitignore`): `specs/` (57 files), `CHANGELOG_ARCHIVE.md`,
+  and the runtime `.agent-toolkit/.canonical_expected.json`. No tracked secret ever
+  existed (verified `git ls-files` + grep); the exposure was client-codename +
+  corporate-path provenance only.
+
+### Enforcement soundness (`independent_review_gate`)
+- **BLOCKER fix** — a `verdict:pass` is now honored ONLY when a real reviewer
+  sub-agent CONSUMED the packet-sha (session-scoped transcript echo + prompt
+  purity, turn-agnostic). A self-written `{"<sha>":{"verdict":"pass"}}` line no
+  longer skips the gate.
+- **BLOCKER fix** — `_diff_loc` now counts untracked-file lines; a whole feature in
+  NEW (un-`git add`-ed) files no longer scores 0 LOC and slips the skip-trivial gate.
+- Added an absolute Stop hard-cap (`absolute_stop_hard_cap`, default 8) so the gate
+  terminates even on a flat-sha block loop — defense-in-depth atop `stop_hook_active`
+  + the per-cycle convergence counters.
+- +2 regression tests (`test_pass_without_consumption_not_honored`,
+  `test_diff_loc_counts_untracked`); gate suite 15 → 17, **full suite 1018 passing**.
+
+### Docs honesty
+- Reframed "un-skip-able mechanical enforcement" → harness-level enforcement where
+  any bypass is single-use + logged (detection-grade, not cryptographically
+  un-forgeable). The git bypass token + review verdict rest on DEV authorization +
+  `bypass_rate_alarm` telemetry; an out-of-band/crypto anchor is roadmap.
+- Corrected `docs/hook-fail-modes.md`: a crashed hook's `exit 1` is a NON-blocking
+  error per Claude Code's contract (only `exit 2` / stdout `{"decision":"block"}`
+  blocks) — the workflow proceeds (fail-open in practice, satisfying the
+  `hooks-fail-open` invariant). Real blocks are emitted via stdout JSON, independent
+  of exit code.
+- Synced test counts (995 → 1018; gate-file 11 → 15).
+
 ## [0.31.0] — 2026-05-30 — Independent-review sub-agent (fresh-context review at done-boundary)
 
 ### Added
@@ -22,7 +63,7 @@ breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
   - Config `independent_review.example.json` (off by default); invariant
     `independent-review-cap` (must-keep recursion guard + ceiling).
 - Spec/tasks/tests: `specs/v0.31.0-independent-review-subagent.*`,
-  `tests/test_independent_review_gate.py` (11 tests). Stop chain 14 → 15.
+  `tests/test_independent_review_gate.py` (15 tests). Stop chain 14 → 15.
 
 ### Notes
 - Honest framing: "fresh-context review", NOT absolute independence — packet
@@ -284,7 +325,7 @@ fell back to nearest neighbour).
   `v0.26.0-sub-agent-stall-watcher.md` assumed Claude Code writes
   sub-agent transcripts flat under `~/.claude/projects/<encoded>/*.jsonl`.
   Field-verification on 2026-05-28 (3-way parallel Agent fan-out on
-  `/home/voducthang/Toolkit`) shows the real layout is **nested**:
+  the dogfood workspace) shows the real layout is **nested**:
   `~/.claude/projects/<encoded>/<sessionUUID>/subagents/agent-<hash>.jsonl`
   + per-agent `.meta.json`. `tools/agent_supervisor.discover_sub_agent_transcripts`
   globbed only the top level, so it silently saw zero sub-agents in
@@ -318,7 +359,7 @@ fell back to nearest neighbour).
 
 Aggregate release covering v0.23 → v0.26 features that shipped on `1.0`
 branch but never received a `__version__` bump or tag. Plus parity work
-to remove asymmetric Odoo coverage flagged by the NAKIVO consumer audit.
+to remove asymmetric Odoo coverage flagged by a consumer audit.
 
 **Versioning catch-up**:
 
@@ -516,7 +557,7 @@ documented at [docs/AUDIT_HISTORY.md](docs/AUDIT_HISTORY.md).
   `<file>.tmp` + `os.replace` + per-file `.bak.<timestamp>` backup. A
   mid-run failure no longer leaves a half-installed project.
 - **L2** — `recipe_to_probe_script.py` generated scripts now document
-  the env-var precedence (`HOTPOT_BASE_URL` > `TOOLKIT_TEST_URL` >
+  the env-var precedence (`TOOLKIT_TEST_URL` >
   localhost fallback) and emit a `[probe] WARN` to stderr when falling
   back to localhost, suppressible via `TOOLKIT_TEST_ALLOW_LOCALHOST=1`.
 
@@ -746,8 +787,8 @@ drafted as P3-LARGE follow-ups (`v0.14.0`/`v0.15.0`/`v0.16.0`/`v0.17.0`).
   `invariant_guard.py` stays at `PreToolUse[0]` for chain-order tests.
 
 **Changed — license metadata**:
-- `LICENSE` — Copyright holder email switched from work email
-  (`thang.vo@nakivo.com`) to personal (`ducthangict.dhtn@gmail.com`).
+- `LICENSE` — Copyright holder email switched from a work email
+  to personal (`ducthangict.dhtn@gmail.com`).
 - `README.md` Author/maintenance section — same switch; work email moved
   to Contributors/acknowledgements with field-test context.
 - `CONTRIBUTING.md` — neutral GitLab/GitHub framing (was "GitHub Discussion").
@@ -756,7 +797,7 @@ drafted as P3-LARGE follow-ups (`v0.14.0`/`v0.15.0`/`v0.16.0`/`v0.17.0`).
 - `tests/test_stop_chain_interactions.py::test_stop_chain_length` — count
   9 → 10 (matches actual `settings.json` Stop chain post-v0.13.0).
 - `tests/test_git_guardrails.py` — `PY` fallback `sys.executable` instead
-  of hardcoded `/home/voducthang/NAKIVO/venv/bin/python`.
+  of a hardcoded venv python path.
 - `tests/test_debug_sentry_split.py::test_odoo_exception_qualified_matches`
   — rewritten to assert NEW structure (`odoo.exceptions` pattern lives in
   `debug.odoo.json` overlay, NOT in hook's hardcoded defaults).

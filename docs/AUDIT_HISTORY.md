@@ -130,7 +130,7 @@ anyone look at X?" without re-running every round.
 #### L2 — `recipe_to_probe_script.py` hardcoded `localhost:8069` fallback — ✅ FIXED (documented)
 
 - **Path**: `templates/codex/tools/recipe_to_probe_script.py:133-141`
-- **Fix**: Document env-var precedence in generated script (`HOTPOT_BASE_URL` > `TOOLKIT_TEST_URL` > localhost); emit `[probe] WARN` to stderr when falling back to localhost unless `TOOLKIT_TEST_ALLOW_LOCALHOST=1` is set.
+- **Fix**: Document env-var precedence in generated script (`TOOLKIT_TEST_URL` > localhost); emit `[probe] WARN` to stderr when falling back to localhost unless `TOOLKIT_TEST_ALLOW_LOCALHOST=1` is set.
 
 ---
 

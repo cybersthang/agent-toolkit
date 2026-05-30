@@ -85,7 +85,7 @@ commit if they predate the 0.6.0 work.
   reviewers can't follow the dependency chain.
 - Do **not** commit `.coverage` (binary pytest artifact, already in
   `.gitignore` upstream — should be untracked).
-- Do **not** commit a private preset overlay (`presets/odoo-12-nakivo.json`)
+- Do **not** commit a private preset overlay (`presets/<name>-private.json`)
   to the public toolkit. Re-add `.gitignore` rule for it if not already.
 
 ## After commits land

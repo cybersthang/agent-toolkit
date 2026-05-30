@@ -62,10 +62,15 @@ def _mk_repo(tmp: Path, *, spec_status: str = "verified",
     return ws
 
 
-def _run(ws: Path, envelope: dict, strict: bool = False) -> tuple[int, str]:
+def _run(ws: Path, envelope: dict, strict: bool = False,
+         home: Path | None = None) -> tuple[int, str]:
     env = dict(os.environ, PYTHONIOENCODING="utf-8")
     if strict:
         env["AGENT_TOOLKIT_STRICT"] = "1"
+    if home is not None:                       # override Path.home() in the subprocess
+        env["HOME"] = str(home)                # POSIX expanduser('~')
+        env["USERPROFILE"] = str(home)         # Windows: Path.home() reads USERPROFILE,
+        #                                        NOT $HOME — set both for cross-platform.
     r = subprocess.run([sys.executable, str(HOOK)], input=json.dumps(envelope),
                        capture_output=True, text=True, env=env, timeout=30)
     return r.returncode, r.stdout
@@ -115,14 +120,42 @@ def test_skip_or_cache_trivial_diff(tmp_path):
 
 
 def test_skip_or_cache_cached_when_pass(tmp_path):
-    # Seed state with a 'pass' verdict for the CLI's computed sha → cached.
+    # v0.32 BLOCKER-1: a 'pass' verdict is honored (cached, silent) ONLY when a
+    # real reviewer sub-agent CONSUMED this packet-sha in the session — seed both.
     ws = _mk_repo(tmp_path)
     sha = gate._review_sha(ws, "feat")
     assert sha, "CLI should compute a sha"
     (ws / ".agent-toolkit" / ".independent_review.json").write_text(
         json.dumps({sha: {"verdict": "pass"}}), encoding="utf-8")
+    home = tmp_path / "home"
+    main_tp = _seed_subagent(home, ws, "sessC", "agent-1.jsonl",
+                             f"Read packet. packet_sha {sha}. Review only from packet.")
+    rc, out = _run(ws, _env(ws, transcript_path=str(main_tp)), strict=True, home=home)
+    assert rc == 0 and '"decision"' not in out, out
+
+
+def test_pass_without_consumption_not_honored(tmp_path):
+    # v0.32 BLOCKER-1 regression: a self-written 'pass' verdict with NO reviewer
+    # consumption evidence must NOT skip the gate (strict → block). One JSON line
+    # can no longer forge a clean review.
+    ws = _mk_repo(tmp_path)
+    sha = gate._review_sha(ws, "feat")
+    (ws / ".agent-toolkit" / ".independent_review.json").write_text(
+        json.dumps({sha: {"verdict": "pass"}}), encoding="utf-8")
     rc, out = _run(ws, _env(ws), strict=True)
-    assert rc == 0 and '"decision"' not in out
+    assert '"decision": "block"' in out, out
+
+
+def test_diff_loc_counts_untracked(tmp_path):
+    # v0.32 BLOCKER-2 regression: a feature in NEW (untracked) files must NOT
+    # score 0 LOC — `git diff HEAD` is blind to untracked, so count their lines.
+    ws = _mk_repo(tmp_path)
+    (ws / "tools" / "new_feat.py").write_text(
+        "\n".join(f"line{i} = 1" for i in range(40)) + "\n", encoding="utf-8")
+    cfg = json.loads((ws / ".agent-toolkit" / "independent_review.json").read_text())
+    files = gate._scope_files(ws, cfg)
+    assert "tools/new_feat.py" in files
+    assert gate._diff_loc(ws, files) >= 40, "untracked feature lines must be counted"
 
 
 # ---------- block (us1) ----------

@@ -129,7 +129,7 @@ class TestDiscovery:
     def test_nested_subagents_layout_v0_27(self, ws, tmp_path):
         """v0.27 B2 fix — Claude Code's real layout is
         `<proj>/<sessionUUID>/subagents/agent-<hash>.jsonl`, NOT flat.
-        Field-verified 2026-05-28 on /home/voducthang/Toolkit session."""
+        Field-verified 2026-05-28 on a real dogfood session."""
         _seed_manifest(ws, created_offset=-120)
         manifest = json.loads(
             (ws / ".agent-toolkit/.parallel_wave.json").read_text(encoding="utf-8"))

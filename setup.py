@@ -570,6 +570,25 @@ def _run_merge_invariants(target: Path, dry_run: bool,
         info(f'  skipped (already present): {inv_id}')
 
 
+def _is_copy_noise(rel: Path) -> bool:
+    """Machine-local / runtime junk that must never ship into a project.
+
+    A maintainer's working tree (or a dogfooded checkout) can accumulate
+    gitignored runtime state under the templates — e.g. a hook writing
+    `.agent-toolkit/.hook_fire_log.json` when its cwd drifts into a skill
+    dir. The installer copies from disk (not git), so without this guard
+    that junk would be propagated to every consumer project.
+    """
+    parts = set(rel.parts)
+    if '__pycache__' in parts or '.agent-toolkit' in parts:
+        return True
+    if rel.suffix == '.pyc':
+        return True
+    if rel.name.startswith('.hook_') or '.bak.' in rel.name:
+        return True
+    return False
+
+
 # -----------------------------------------------------------------------
 def build_plan(preset, ctx, target):
     """Decide for each toolkit file: copy raw, template, or skip.
@@ -600,7 +619,7 @@ def build_plan(preset, ctx, target):
         rel = src.relative_to(codex_src)
         rel_str = str(rel).replace('\\', '/')
         # Skip noise that's machine-local or project-specific
-        if '__pycache__' in rel.parts or src.suffix == '.pyc':
+        if _is_copy_noise(rel):
             continue
         if rel.name.startswith('_') and src.suffix == '.py' and len(rel.parts) <= 1:
             # Skip top-level `.codex/_foo.py` ad-hoc probe scripts (toolkit
@@ -673,7 +692,10 @@ def build_plan(preset, ctx, target):
         for src in stack_dir.rglob('*'):
             if not src.is_file():
                 continue
-            dst = target / '.cursor' / 'skills' / src.relative_to(stack_dir)
+            rel = src.relative_to(stack_dir)
+            if _is_copy_noise(rel):
+                continue
+            dst = target / '.cursor' / 'skills' / rel
             plan.append((src, dst, 'TEMPLATE' if _looks_templated(src) else 'COPY'))
 
     # 4. AGENTS.md + CLAUDE.md + .pre-commit-config.yaml
@@ -695,7 +717,7 @@ def build_plan(preset, ctx, target):
             if not src.is_file():
                 continue
             rel = src.relative_to(claude_src)
-            if '__pycache__' in rel.parts or src.suffix == '.pyc':
+            if _is_copy_noise(rel):
                 continue
             dst = target / '.claude' / rel
             is_template = src.suffix in ('.j2', '.tmpl') or _looks_templated(src)

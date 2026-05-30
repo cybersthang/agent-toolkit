@@ -213,6 +213,7 @@ workspace since May 2026. As illustrative figures from local dogfooding
 block rate, and ~3.5% bypass rate.
 **30+ hooks** active, **948 unit tests** (as of v0.30.0) in CI (matrix: Ubuntu / macOS /
 Windows × Python 3.8 / 3.10 / 3.12 — all green).
+The reported coverage % measures `setup.py` + `lib/` only; the enforcement hooks (`templates/claude/hooks/`, ~11k LOC) are ruff-lint-checked and behavior-tested via subprocess (`tests/test_hooks.py` + per-hook suites) but are not line-coverage-measured because they run as subprocesses.
 
 > 🤖 **AI agents installing into a project**: Read
 > [`AI_REBUILD_CHECKLIST.md`](AI_REBUILD_CHECKLIST.md) BEFORE invoking
@@ -1008,6 +1009,7 @@ Enterprise workspace thật từ tháng 5/2026. Các con số minh hoạ từ do
 (không phải benchmark): mỗi session điển hình ~57 hook fire-event, ~26% block,
 ~3.5% bypass. **30+ hook** active, **948 unit test** (tính đến v0.30.0) trên CI
 (matrix: Ubuntu / macOS / Windows × Python 3.8 / 3.10 / 3.12 — all green).
+Con số coverage % chỉ đo `setup.py` + `lib/`; các enforcement hook (`templates/claude/hooks/`, ~11k LOC) được ruff-lint check và behavior-test qua subprocess (`tests/test_hooks.py` + các suite per-hook) nhưng không được đo line-coverage vì chúng chạy dưới dạng subprocess.
 
 ### Liên hệ tác giả
 

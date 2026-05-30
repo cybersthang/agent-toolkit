@@ -57,6 +57,10 @@ CITATION_RE = re.compile(
     re.IGNORECASE,
 )
 CITATION_READING_TOOLS = {"Read", "Grep", "Glob", "NotebookRead"}
+# A file the agent demonstrably WROTE this turn exists — credit its
+# file_path/notebook_path into seen_paths so a same-turn citation of a
+# just-created file is not flagged phantom. (FP vector (a), 2026-05-30.)
+CITATION_WRITING_TOOLS = {"Write", "MultiEdit", "NotebookEdit"}
 
 # A cited path is NOT a phantom when the response explicitly frames it as
 # ABSENT — i.e. you are reporting a gap / dead link, not claiming the file
@@ -158,6 +162,7 @@ def check_phantom_citation(
     text: str,
     tool_calls: List[Dict[str, Any]],
     workspace: Path,
+    results_by_id: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Optional[str]:
     link_urls: List[str] = []
     for m in re.finditer(r"\[([^\]]+)\]\(([^)]+)\)", text):
@@ -170,13 +175,34 @@ def check_phantom_citation(
     seen_paths: set = set()
     for call in tool_calls:
         name = call.get("name") or ""
-        if name not in CITATION_READING_TOOLS:
-            continue
         inp = call.get("input") or {}
-        for k in ("file_path", "path", "notebook_path", "pattern", "glob"):
-            v = inp.get(k)
-            if isinstance(v, str):
-                seen_paths.add(v.replace("\\", "/"))
+        if name in CITATION_READING_TOOLS:
+            for k in ("file_path", "path", "notebook_path", "pattern", "glob"):
+                v = inp.get(k)
+                if isinstance(v, str):
+                    seen_paths.add(v.replace("\\", "/"))
+        elif name in CITATION_WRITING_TOOLS:
+            # A file the agent wrote this turn demonstrably exists — credit
+            # its file_path/notebook_path so a same-turn citation of a just-
+            # created file is not a phantom. (FP vector (a), 2026-05-30.)
+            for k in ("file_path", "notebook_path"):
+                v = inp.get(k)
+                if isinstance(v, str):
+                    seen_paths.add(v.replace("\\", "/"))
+    # A cited path string that literally appears in a prior tool_result's
+    # CONTENT (e.g. a filename in grep / cat / ls output) is proven to exist
+    # by that output — collect all result text so such citations are credited.
+    # (FP vector (b), 2026-05-30.)
+    result_text = ""
+    for result in (results_by_id or {}).values():
+        rcontent = result.get("content") if isinstance(result, dict) else None
+        if isinstance(rcontent, str):
+            result_text += "\n" + rcontent
+        elif isinstance(rcontent, list):
+            for b in rcontent:
+                if isinstance(b, dict) and b.get("type") == "text":
+                    result_text += "\n" + (b.get("text") or "")
+    result_text_norm = result_text.replace("\\", "/")
     for u in link_urls:
         try:
             norm = u.replace("\\", "/").lstrip("./")
@@ -194,6 +220,10 @@ def check_phantom_citation(
     def _seen(p: str) -> bool:
         np = _normalize(p)
         if any(np in s.replace("\\", "/") for s in seen_paths):
+            return True
+        # Cited path literally present in a prior tool_result's content text
+        # (grep/cat/ls output) — the output proves it exists. (FP vector (b).)
+        if result_text_norm and np in result_text_norm:
             return True
         cite_base = _basename(np)
         if cite_base and any(_basename(s) == cite_base for s in seen_paths):
@@ -337,7 +367,7 @@ def run_progress_checks(
         if v:
             violations.append(v)
     if "phantom_citation" not in disabled:
-        v = check_phantom_citation(text, tool_calls, workspace)
+        v = check_phantom_citation(text, tool_calls, workspace, results_by_id)
         if v:
             violations.append(v)
     if "todo_inconsistency" not in disabled:

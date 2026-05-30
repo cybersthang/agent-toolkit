@@ -166,7 +166,7 @@ anyone look at X?" without re-running every round.
 
 | # | Issue | Source | Severity | Status |
 |---|-------|--------|----------|--------|
-| F1 | Test coverage measurement reported 13.40% — `setup.py` "never imported" warning dragged total below the gate | Reg | HIGH | ✅ Fixed v0.21 — `.coveragerc source = setup` (module name, not literal path) → coverage now 87%+ on Python 3.8 |
+| F1 | Test coverage measurement reported 13.40% — `setup.py` "never imported" warning dragged total below the gate | Reg | HIGH | ✅ Fixed v0.21 — `.coveragerc source = setup` (module name, not literal path) → coverage now 87%+ on Python 3.8. **Caveat (R1 transparency):** the reported % covers `setup.py` + `lib/` only, NOT `templates/claude/hooks/` (~11k LOC enforcement core). Those hooks are ruff-lint-checked and behavior-tested via subprocess (`tests/test_hooks.py` + per-hook suites) but not line-coverage-measured because they run as subprocesses — so the % is not evidence of hook test depth. |
 | F2 | Hook crash log + fire log retention bounded by ring buffer (1000 events) — no SQLite | R2 | HIGH | 🔴 Open (v0.22, overlaps with E4) |
 | F3 | No `.gitlab-ci.yml` mirror | Reg | MEDIUM | ✅ Added v0.21 |
 | F4 | `_capture_bypass_*` regex requires single-word reason (UX issue across 5 sibling tokens) | R2-F3 | LOW | 🔴 Open |

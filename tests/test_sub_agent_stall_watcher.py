@@ -67,6 +67,25 @@ def _make_jsonl(dir: Path, name: str, age_seconds: float) -> Path:
     return p
 
 
+def _sub_dir(proj_dir: Path, main_stem: str = "main") -> Path:
+    """Return (creating) the nested `subagents/` dir for the CURRENT session.
+
+    Claude Code's real layout nests sub-agent transcripts under
+    `<proj>/<sessionUUID>/subagents/agent-<hash>.jsonl`. The watcher only
+    scans this nested layout (the flat back-compat scan was removed because
+    it could not be session-scoped), so tests must place sub-agents here —
+    under the main session's UUID dir (= the main transcript stem)."""
+    d = proj_dir / main_stem / "subagents"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _make_sub_jsonl(proj_dir: Path, name: str, age_seconds: float,
+                    main_stem: str = "main") -> Path:
+    """Create a sub-agent transcript in the nested real layout."""
+    return _make_jsonl(_sub_dir(proj_dir, main_stem), name, age_seconds)
+
+
 @pytest.fixture
 def ws(tmp_path: Path) -> Path:
     return tmp_path
@@ -83,11 +102,12 @@ class TestDiscovery:
             (ws / ".agent-toolkit/.parallel_wave.json").read_text(encoding="utf-8"))
         proj_root = tmp_path / "projects-root"
         proj_dir = _projects_dir(proj_root, ws)
-        # Three jsonl: one OLD (pre-wave), one MAIN (newest mtime = main session),
-        # one SUB (post-wave, not the main).
-        _make_jsonl(proj_dir, "old", age_seconds=3600)        # pre-wave (> 1h old)
+        # MAIN session at top level (newest mtime = main session). Sub-agents
+        # nest under the main session UUID dir: one OLD (pre-wave) + one SUB
+        # (post-wave). Only the post-wave nested sub should be discovered.
         _make_jsonl(proj_dir, "main", age_seconds=10)         # newest = main
-        sub = _make_jsonl(proj_dir, "sub", age_seconds=60)    # post-wave, not main
+        _make_sub_jsonl(proj_dir, "old", age_seconds=3600)    # pre-wave (>1h old)
+        sub = _make_sub_jsonl(proj_dir, "sub", age_seconds=60)  # post-wave
         # Ensure manifest.created_ts ~ 2 minutes ago so 'old' (1h) is pre-wave.
         manifest["created_ts"] = int(time.time()) - 120
         (ws / ".agent-toolkit/.parallel_wave.json").write_text(
@@ -129,29 +149,26 @@ class TestDiscovery:
         assert str(sub_a) in found_paths, f"sub_a not found in {found_paths}"
         assert str(sub_b) in found_paths, f"sub_b not found in {found_paths}"
 
-    def test_combined_flat_and_nested_layouts(self, ws, tmp_path):
-        """Mix-mode safety: if a future Claude Code revision writes some
-        sub-agents flat and some nested (or during migration), both are
-        discovered without duplicates."""
+    def test_only_nested_subagents_discovered(self, ws, tmp_path):
+        """Flat top-level *.jsonl are NO LONGER scanned (the flat back-compat
+        loop was removed because it could not be session-scoped and
+        mis-counted OTHER same-project sessions' transcripts as hung
+        sub-agents). Only nested `<sessionUUID>/subagents/**/*.jsonl` count."""
         _seed_manifest(ws, created_offset=-120)
         manifest = json.loads(
             (ws / ".agent-toolkit/.parallel_wave.json").read_text(encoding="utf-8"))
         proj_root = tmp_path / "projects-root"
         proj_dir = _projects_dir(proj_root, ws)
-        # Main + 1 flat sub + 1 nested sub. Nested sub lives under the CURRENT
-        # session's UUID dir (= main transcript stem "main") since discovery
-        # is scoped to the active session (STALL-1).
+        # Main + 1 flat sibling (must be IGNORED) + 1 nested sub (discovered).
         _make_jsonl(proj_dir, "main", age_seconds=1)  # newest = main
         flat_sub = _make_jsonl(proj_dir, "sub-flat", age_seconds=30)
-        nested_dir = proj_dir / "main" / "subagents"
-        nested_dir.mkdir(parents=True)
-        nested_sub = _make_jsonl(nested_dir, "agent-nested", age_seconds=45)
+        nested_sub = _make_sub_jsonl(proj_dir, "agent-nested", age_seconds=45)
         found = sup.discover_sub_agent_transcripts(ws, manifest, projects_root=proj_root)
         found_paths = {str(p) for p in found}
-        assert str(flat_sub) in found_paths
-        assert str(nested_sub) in found_paths
-        # No dups.
-        assert len(found) == len(set(found_paths))
+        assert str(nested_sub) in found_paths, "nested sub-agent must be found"
+        assert str(flat_sub) not in found_paths, (
+            "flat top-level *.jsonl must NOT be scanned anymore")
+        assert found == [nested_sub], "only the nested sub-agent is discovered"
 
 
 # -------- TestDetect (us2) ----------------------------------------------
@@ -168,8 +185,8 @@ class TestDetect:
         # A stale, B fresh, plus a "main" newest sibling so A/B aren't picked
         # as the main transcript.
         _make_jsonl(proj_dir, "main", age_seconds=1)
-        _make_jsonl(proj_dir, "sub-A", age_seconds=600)   # stale
-        _make_jsonl(proj_dir, "sub-B", age_seconds=5)     # fresh
+        _make_sub_jsonl(proj_dir, "sub-A", age_seconds=600)   # stale
+        _make_sub_jsonl(proj_dir, "sub-B", age_seconds=5)     # fresh
 
         calls = []
         monkeypatch.setattr(notify, "dispatch",
@@ -201,7 +218,7 @@ class TestDetect:
         proj_dir = _projects_dir(proj_root, ws)
         _make_jsonl(proj_dir, "main", age_seconds=1)
         # Sub-agent with stale mtime AND unmatched tool_use → mid-tool-call.
-        sub = proj_dir / "sub-A.jsonl"
+        sub = _sub_dir(proj_dir) / "sub-A.jsonl"
         sub.write_text(json.dumps({
             "type": "assistant",
             "message": {
@@ -234,7 +251,7 @@ class TestDetect:
         proj_root = tmp_path / "proj-root"
         proj_dir = _projects_dir(proj_root, ws)
         _make_jsonl(proj_dir, "main", age_seconds=1)
-        sub = proj_dir / "sub-A.jsonl"
+        sub = _sub_dir(proj_dir) / "sub-A.jsonl"
         lines = [
             json.dumps({
                 "type": "assistant",
@@ -277,7 +294,7 @@ class TestDetect:
         proj_root = tmp_path / "proj-root"
         proj_dir = _projects_dir(proj_root, ws)
         _make_jsonl(proj_dir, "main", age_seconds=1)
-        sub = _make_jsonl(proj_dir, "sub-A", age_seconds=600)
+        sub = _make_sub_jsonl(proj_dir, "sub-A", age_seconds=600)
 
         calls = []
         monkeypatch.setattr(notify, "dispatch",
@@ -303,7 +320,7 @@ class TestNotifyPayload:
         proj_root = tmp_path / "proj-root"
         proj_dir = _projects_dir(proj_root, ws)
         _make_jsonl(proj_dir, "main", age_seconds=1)
-        _make_jsonl(proj_dir, "sub-A", age_seconds=600)
+        _make_sub_jsonl(proj_dir, "sub-A", age_seconds=600)
 
         captured = []
         monkeypatch.setattr(notify, "dispatch",
@@ -332,7 +349,7 @@ class TestActivation:
         proj_root = tmp_path / "proj-root"
         proj_dir = _projects_dir(proj_root, ws)
         _make_jsonl(proj_dir, "main", age_seconds=1)
-        _make_jsonl(proj_dir, "sub-A", age_seconds=600)
+        _make_sub_jsonl(proj_dir, "sub-A", age_seconds=600)
         return proj_root
 
     def _capture(self, monkeypatch):
@@ -363,6 +380,40 @@ class TestActivation:
         _seed_autonomy(ws)
         _seed_manifest(ws, ttl=3600, created_offset=-7200)  # expired
         assert sup.read_parallel_wave_manifest(ws) is None
+
+    def test_missing_ttl_defaults_and_expires(self, ws):
+        """R3 regression — a manifest with `created_ts` in the past but NO
+        `ttl_seconds` must STILL expire via DEFAULT_TTL_SECONDS (3600).
+        Previously `ttl=0` short-circuited the expiry check so orphaned /
+        hand-edited manifests never expired and kept the watcher armed."""
+        _seed_autonomy(ws)
+        # created 2h ago, default TTL is 1h → must be treated as expired.
+        p = ws / ".agent-toolkit/.parallel_wave.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({
+            "version": 1, "wave": "orphan",
+            "created_ts": int(time.time()) - 7200,
+            # NO ttl_seconds key at all.
+            "zones": [{"agent_id": "agent-a", "owned": ["src/a.py"]}],
+            "wave_done": False,
+        }), encoding="utf-8")
+        assert sup.read_parallel_wave_manifest(ws) is None, (
+            "manifest missing ttl_seconds must still expire via DEFAULT_TTL")
+
+    def test_missing_ttl_recent_still_active(self, ws):
+        """Companion to R3 — a recent manifest (within default TTL) with NO
+        `ttl_seconds` must still be ACTIVE (not falsely expired)."""
+        _seed_autonomy(ws)
+        p = ws / ".agent-toolkit/.parallel_wave.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({
+            "version": 1, "wave": "recent",
+            "created_ts": int(time.time()) - 60,   # 1 min ago, within 1h default
+            "zones": [{"agent_id": "agent-a", "owned": ["src/a.py"]}],
+            "wave_done": False,
+        }), encoding="utf-8")
+        m = sup.read_parallel_wave_manifest(ws)
+        assert m is not None and m["wave"] == "recent"
 
     def test_autonomy_off_silent(self, ws, tmp_path, monkeypatch):
         # No autonomy file written.
@@ -422,7 +473,7 @@ class TestNoRelaunch:
         proj_root = tmp_path / "proj-root"
         proj_dir = _projects_dir(proj_root, ws)
         _make_jsonl(proj_dir, "main", age_seconds=1)
-        _make_jsonl(proj_dir, "sub-A", age_seconds=600)
+        _make_sub_jsonl(proj_dir, "sub-A", age_seconds=600)
         # Spy on relaunch_loop: must NOT be called.
         called = []
         monkeypatch.setattr(sup, "relaunch_loop",

@@ -361,9 +361,14 @@ def read_parallel_wave_manifest(workspace: Path) -> Optional[Dict[str, Any]]:
         return None
     if data.get("wave_done"):
         return None
+    # A manifest missing `ttl_seconds` must still expire — otherwise orphaned
+    # or hand-edited manifests would keep the sub-agent watcher armed forever.
+    # Apply DEFAULT_TTL_SECONDS when ttl_seconds is absent/falsy.
+    DEFAULT_TTL_SECONDS = 3600
+    _ttl = data.get("ttl_seconds")
+    ttl = int(_ttl) if _ttl else DEFAULT_TTL_SECONDS
     created = int(data.get("created_ts") or 0)
-    ttl = int(data.get("ttl_seconds") or 0)
-    if created and ttl and time.time() > created + ttl:
+    if created and time.time() > created + ttl:
         return None
     return data
 
@@ -381,10 +386,14 @@ def discover_sub_agent_transcripts(workspace: Path,
     transcripts under `<projectsRoot>/<encoded>/<sessionUUID>/subagents/
     agent-<hash>.jsonl`, NOT flat in `<projectsRoot>/<encoded>/`. The
     previous implementation globbed only the top level, so it never saw
-    any sub-agent — silent no-op against the real layout. We now glob:
-      - `*/subagents/*.jsonl`  (real layout)
-      - plus any top-level `*.jsonl` MINUS the main session  (back-compat
-        in case a future Claude Code revision moves them flat again)."""
+    any sub-agent — silent no-op against the real layout. We glob the
+    nested real layout only:
+      - `<sessionUUID>/subagents/**/*.jsonl`  (real layout, session-scoped)
+
+    The earlier flat-layout back-compat loop was REMOVED: in a flat layout
+    sub-agent transcripts cannot be session-scoped reliably, so it
+    mis-counted OTHER same-project sessions' transcripts as hung
+    sub-agents. Current Claude Code uses the nested layout exclusively."""
     if projects_root is None:
         projects_root = Path.home() / ".claude" / "projects"
     enc = encode_project_path(workspace)
@@ -408,22 +417,6 @@ def discover_sub_agent_transcripts(workspace: Path,
         except OSError:
             continue
         if created and mtime < created:
-            continue
-        key = str(p.resolve())
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(p)
-
-    # Back-compat: flat layout (older Claude Code, or future change).
-    for p in proj.glob("*.jsonl"):
-        try:
-            mtime = p.stat().st_mtime
-        except OSError:
-            continue
-        if created and mtime < created:
-            continue
-        if main is not None and p.resolve() == main.resolve():
             continue
         key = str(p.resolve())
         if key in seen:

@@ -163,3 +163,49 @@ class TestPhantomCitationExemptsAbsenceReporting:
         # Control: a cited non-existent path with NO absence framing is phantom.
         text = "See imaginary/ghost_helper.py:42 for the shared logic."
         assert check_phantom_citation(text, [], tmp_path) is not None
+
+
+# EVID-FP regression (2026-05-30): phantom_citation false-positived on
+# (a) paths the same turn WROTE via Write/MultiEdit/NotebookEdit, and
+# (b) paths that literally appeared in a prior tool_result's content.
+class TestPhantomCitationCreditsTurnEvidence:
+    """check_phantom_citation must credit files the turn demonstrably wrote
+    and paths proven by prior tool_result output."""
+
+    def test_written_file_is_not_phantom(self, tmp_path):
+        # (a) The path was created via Write THIS turn → it exists.
+        text = "Implemented the helper in src/new_helper.py:12 as planned."
+        tool_calls = [{"name": "Write", "input": {"file_path": "src/new_helper.py"}}]
+        assert check_phantom_citation(text, tool_calls, tmp_path) is None
+
+    def test_multiedit_file_is_not_phantom(self, tmp_path):
+        text = "Refactored config/app_settings.py with the new defaults."
+        tool_calls = [{"name": "MultiEdit", "input": {"file_path": "config/app_settings.py"}}]
+        assert check_phantom_citation(text, tool_calls, tmp_path) is None
+
+    def test_notebookedit_path_is_not_phantom(self, tmp_path):
+        text = "Added a cell to notebooks/analysis_main.py for the plot."
+        tool_calls = [{"name": "NotebookEdit", "input": {"notebook_path": "notebooks/analysis_main.py"}}]
+        assert check_phantom_citation(text, tool_calls, tmp_path) is None
+
+    def test_path_in_prior_tool_result_is_not_phantom(self, tmp_path):
+        # (b) The path showed up in a grep/cat tool_result → it exists.
+        text = "The match lives in lib/parser_core.py:88 per the grep."
+        results_by_id = {
+            "toolu_1": {"content": "lib/parser_core.py:88: def parse(): ..."}
+        }
+        assert check_phantom_citation(text, [], tmp_path, results_by_id) is None
+
+    def test_path_in_structured_tool_result_is_not_phantom(self, tmp_path):
+        text = "See utils/string_format.py from the ls output."
+        results_by_id = {
+            "toolu_2": {"content": [{"type": "text", "text": "utils/string_format.py\nutils/other.py"}]}
+        }
+        assert check_phantom_citation(text, [], tmp_path, results_by_id) is None
+
+    def test_genuinely_unseen_path_still_blocks(self, tmp_path):
+        # Control: never written, never output, never read, doesn't exist → phantom.
+        text = "See imaginary/ghost_helper.py:42 for the shared logic."
+        results_by_id = {"toolu_3": {"content": "some unrelated grep output here"}}
+        tool_calls = [{"name": "Write", "input": {"file_path": "src/something_else.py"}}]
+        assert check_phantom_citation(text, tool_calls, tmp_path, results_by_id) is not None

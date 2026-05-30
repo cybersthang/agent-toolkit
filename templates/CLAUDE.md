@@ -7,6 +7,7 @@ Installed by **agent-toolkit** preset `{{PRESET_NAME}}` ({{STACK_LABEL}}).
 - Workspace: `{{WORKSPACE_ROOT}}`
 - Python: `{{PYTHON_BIN}}` — never the system Python
 - Default reply language: {{RESPONSE_LANGUAGE}}
+  - Language is per-preset configurable via `response_language` in `presets/<preset>.json` (override per project in your config); the `generic` preset defaults to English while the `odoo-*` presets default to Vietnamese.
 
 ## Where things live
 
@@ -71,6 +72,16 @@ Installed by **agent-toolkit** preset `{{PRESET_NAME}}` ({{STACK_LABEL}}).
 | `verify_lint` | Stop | **BLOCK** stop on a Verify Report missing required sections / acceptance_eval coverage. Delegates to `.codex/lint_verify_report.py`. |
 | `post_edit_verify_gate` | Stop | **WARN** (v0.27 default; was block in v0.18–0.26) "done" claims after Edit on a spec-tracked file without a `/verify` run this session. Promote to block via `enforce_mode.strict.example.json` or `AGENT_TOOLKIT_STRICT=1`. |
 | `debug_sentry` | Stop | **BLOCK** stop when traceback/exception text appears in tool output without a fix attempt (Vibe-flow Phase 4 — toggle via `.agent-toolkit/debug.json`). |
+
+**Opt-in quality steps (recommended, NOT auto-chained):** `/review` is a
+**MANUAL opt-in** step — it is *not* auto-chained after `/implement`; run it
+yourself on a module / PR / diff when you want an exhaustive review.
+`/implement-notes` is **WARN/advisory by default** (`implement_notes_gate`
+nudges but does not block). Both are the highest-signal steps in the flow —
+running them after every `/implement` is strongly recommended. To *harden*
+them into blocking gates, set `enforce_mode` to strict (copy
+`.agent-toolkit/enforce_mode.strict.example.json` → `enforce_mode.json`) or
+export `AGENT_TOOLKIT_STRICT=1`.
 
 Adding a new rule: `/adr-add` (capture WHY) → `/inv-add` (translate to
 enforced pattern). See `.agent-toolkit/README.md`.

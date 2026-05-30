@@ -5,6 +5,15 @@ argument-hint: <slug> [--format md|html|both]
 
 # /implement-notes
 
+> **Advisory / opt-in step.** The `implement_notes_gate` hook is **WARN by
+> default** — it nudges when a done-claim lacks the sidecar but does NOT block.
+> This is one of the highest-signal steps in the flow, so running
+> `/implement-notes` after every `/implement` is strongly recommended. To make
+> the sidecar a *blocking* requirement, set `per_hook.implement_notes_gate` to
+> `block` in `.agent-toolkit/enforce_mode.json` (note: the strict profile and
+> `AGENT_TOOLKIT_STRICT=1` keep this gate at `warn` by default, so you must
+> override this specific hook to `block`).
+
 Emit the implement-noted sidecar artifact for a spec slug. AGENT
 walks the current session's transcript, classifies Edits, identifies
 trade-offs with cite-required evidence, and writes

@@ -1,0 +1,22 @@
+{
+  "_doc": "v0.31.0 independent-review config. Copy to .agent-toolkit/independent_review.json. Drives the independent_review_gate (Stop) + the independent-review skill. The gate fires at the done-boundary (spec status=verified + tasks done + feature-scope diff — STATE-based, NOT done-text regex; ID-16) and requires a fresh-context reviewer sub-agent (ID-14 'fresh-context review', NOT absolute independence) whose review artifact matches the current review-sha. Two convergence counters (ID-27): non_progress_streak escalates on N consecutive non-progress rounds; absolute_round_ceiling is the hard cap even when each round surfaces a NEW legitimate blocker (ID-20). Mode warn/block per enforce_mode (ID-3/ID-11): warn -> nudge + allow done; block (strict / AGENT_TOOLKIT_STRICT=1) -> chặn done until 0-BLOCKER or escalated. NEVER permanent-jams (ID-17): reviewer fail/timeout or block-streak -> degrade WARN + escalate DEV via gap-cant-fix.",
+
+  "enabled": true,
+  "_mode_note": "block/warn is read from enforce_mode.json per_hook.independent_review_gate (toolkit convention) / AGENT_TOOLKIT_STRICT — NOT a field here.",
+
+  "reviewer_count": 1,
+  "reviewer_model": "inherit",
+  "adversarial_prompt": true,
+
+  "skip_trivial_loc": 200,
+  "feature_scope_regex": "(?:(?:models|controllers|wizard|wizards|jobs)/[^/]+\\.py$)|(?:^(?:tools|lib)/[^/]+\\.py$)|(?:templates/claude/hooks/[^/]+\\.py$)",
+
+  "max_reads_per_round": 10,
+  "reviewer_prompt_max_bytes": 4096,
+
+  "non_progress_streak": 3,
+  "absolute_round_ceiling": 5,
+  "block_streak_before_escalate": 3,
+
+  "_state_doc": "Runtime state at .agent-toolkit/.independent_review.json, keyed by review_sha (hash of diff+spec+evals+invariants, normalized; ID-18/ID-23). Shape: {review_sha: {verdict: 'pass'|'tainted-review'|'escalated'|'open', round: int, non_progress: int, blocker_fingerprints: [..], packet_sha: str, updated_ts: int}}. verdict 'cached' is implicit when review_sha unchanged from a prior pass. Multi-session (ID-26): content-addressed by review_sha -> same diff = same artifact (idempotent, no collision)."
+}

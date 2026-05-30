@@ -68,7 +68,10 @@ def test_dry_run_emits_stable_file_count(tmp_path, preset):
     # Bumped at v0.29.0: +28 Odoo 13-16 skill reference files (7 types ×
     # 4 versions) under templates/cursor/skills/odoo/*/references/ — every
     # odoo install ships all version refs (the skill picks per __manifest__).
-    maximums = {'generic': 210, 'odoo-12': 340, 'odoo-17': 340}
+    # Bumped at v0.31.0: +independent-review feature (CLI tools/independent_review.py,
+    # independent-review skill, /review-independent command, independent_review_gate.py
+    # hook, independent_review.example.json config) → generic 205→212.
+    maximums = {'generic': 220, 'odoo-12': 350, 'odoo-17': 350}
     assert len(plan_lines) <= maximums[preset], (
         f'{preset}: {len(plan_lines)} files planned, '
         f'unexpectedly above ceiling {maximums[preset]} '

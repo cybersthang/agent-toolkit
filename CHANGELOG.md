@@ -3,6 +3,33 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
+## [0.31.0] — 2026-05-30 — Independent-review sub-agent (fresh-context review at done-boundary)
+
+### Added
+- **Independent review at the done-boundary.** A `status: verified` spec with a
+  feature-scope diff now requires a FRESH-CONTEXT reviewer sub-agent (sees ONLY a
+  code-assembled context packet — diff + spec + acceptance_evals + invariants —
+  never the implementer's reasoning, prompted to refute each hunk) before a
+  done-claim. Catches blockers the same-context `/review` misses.
+  - `tools/independent_review.py` `emit-context`: code-assembled packet +
+    deterministic `packet_sha` (normalized over diff+spec+evals+invariants).
+  - `independent-review` skill + `/review-independent` command (manual path).
+  - `independent_review_gate.py` Stop hook (**WARN** default; strict→block):
+    STATE-based trigger (spec status, NOT done-text regex), skip-trivial,
+    sha-cache, 3-layer evidence verify, packet-purity, **jam-escape** (reviewer
+    fail / block-streak → degrade WARN + escalate `gap-cant-fix`), 2-counter
+    convergence (non_progress=3 / ceiling=5).
+  - Config `independent_review.example.json` (off by default); invariant
+    `independent-review-cap` (must-keep recursion guard + ceiling).
+- Spec/tasks/tests: `specs/v0.31.0-independent-review-subagent.*`,
+  `tests/test_independent_review_gate.py` (11 tests). Stop chain 14 → 15.
+
+### Notes
+- Honest framing: "fresh-context review", NOT absolute independence — packet
+  bounds reviewer input but cannot stop extra context; gate verifies the
+  minimum (packet-sha consumed). Reviewer model `inherit` (MVP); multi-lens +
+  cheaper-model = Phase 2.
+
 ## [0.30.0] — 2026-05-30 — Odoo version-fact accuracy + enforcement resilience + release hygiene
 
 ### Stop-hook & watcher resilience

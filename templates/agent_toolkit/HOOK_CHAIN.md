@@ -77,11 +77,12 @@ All non-blocking (warn or invoke). No cascade.
 | 1 | `implement_orchestrator.py` | no | 30s | **Phase 5.1-5.4 audit chain** (moved to position 1 per P1 to fire before blocking hooks) |
 | 2 | `evidence_audit.py` | **YES** | 8s | Block PASS/DONE without MCP backing — the only "claims without proof" gate |
 | 3 | `verify_lint.py` | **YES** | 15s | Block if Verify Report missing eval coverage |
-| 4 | `post_edit_verify_gate.py` | warn (config) | 6s | v0.27: warn-by-default. Promote to block via `enforce_mode.json` |
-| 5 | `debug_sentry.py` | **YES** | 8s | Block traceback without fix attempt |
-| 6 | `spec_drift_advisory.py` | no | 5s | Warn probe recipe vs script drift |
-| 7 | `implement_notes_gate.py` | no | 5s | Warn implement-noted missing |
-| 8 | `verify_lint_scope.py` | warn (config) | 15s | Layer 5 file-level scope check (block via `scope_audit.json`) |
+| 4 | `independent_review_gate.py` | warn (config) | 15s | v0.31: WARN-default. Block done-claim on a `verified` spec without a fresh-context independent review (strict→block). Jam-escape + 2-counter cap. |
+| 5 | `post_edit_verify_gate.py` | warn (config) | 6s | v0.27: warn-by-default. Promote to block via `enforce_mode.json` |
+| 6 | `debug_sentry.py` | **YES** | 8s | Block traceback without fix attempt |
+| 7 | `spec_drift_advisory.py` | no | 5s | Warn probe recipe vs script drift |
+| 8 | `implement_notes_gate.py` | no | 5s | Warn implement-noted missing |
+| 9 | `verify_lint_scope.py` | warn (config) | 15s | Layer 5 file-level scope check (block via `scope_audit.json`) |
 | — | `gap_completeness_gate.py` | warn (config) | 5s | v0.27: warn-by-default. Auto-downgrades if `scope-*` markers present (dedup with scope gate) |
 | — | `scope_completeness_gate.py` | warn (config) | 5s | v0.27: warn-by-default. Silent when no manifest exists |
 | — | `clarification_gate_enforcer.py` | **YES** (default) | 5s | Skips on autonomy active. Stays block in v0.27 — different category from "claim-done" gates; asking-before-acting is a healthy behavior, not paralysis. |

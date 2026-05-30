@@ -68,7 +68,9 @@ def _run(ws: Path, envelope: dict, strict: bool = False,
     if strict:
         env["AGENT_TOOLKIT_STRICT"] = "1"
     if home is not None:                       # override Path.home() in the subprocess
-        env["HOME"] = str(home)
+        env["HOME"] = str(home)                # POSIX expanduser('~')
+        env["USERPROFILE"] = str(home)         # Windows: Path.home() reads USERPROFILE,
+        #                                        NOT $HOME — set both for cross-platform.
     r = subprocess.run([sys.executable, str(HOOK)], input=json.dumps(envelope),
                        capture_output=True, text=True, env=env, timeout=30)
     return r.returncode, r.stdout

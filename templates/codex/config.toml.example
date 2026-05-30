@@ -1,0 +1,30 @@
+# Append these sections to `~/.codex/config.toml` (POSIX) or
+# `%USERPROFILE%/.codex/config.toml` (Windows) for this workspace.
+#
+# `command` MUST point at the project venv Python so MCP servers import the
+# same interpreter the project runtime uses. Do NOT use the system Python.
+# All paths are filled in at install time by `agent-toolkit/setup.py`.
+
+[mcp_servers.codebase]
+command = '{{PYTHON_BIN}}'
+args = ['{{WORKSPACE_ROOT}}/.codex/start_codebase_mcp.py']
+
+[mcp_servers.postgres]
+command = '{{PYTHON_BIN}}'
+args = ['{{WORKSPACE_ROOT}}/.codex/start_postgres_mcp.py']
+
+[mcp_servers.realdata_test]
+command = '{{PYTHON_BIN}}'
+args = ['{{WORKSPACE_ROOT}}/.codex/start_realdata_test_mcp.py']
+
+[mcp_servers.jira_production]
+command = '{{PYTHON_BIN}}'
+args = ['{{WORKSPACE_ROOT}}/.codex/start_jira_production_mcp.py']
+
+[mcp_servers.jira_preproduction]
+command = '{{PYTHON_BIN}}'
+args = ['{{WORKSPACE_ROOT}}/.codex/start_jira_preproduction_mcp.py']
+
+[projects.'{{WORKSPACE_ROOT}}']
+trust_level = 'trusted'
+model_instructions_file = '{{WORKSPACE_ROOT}}/.codex/model_instructions.md'

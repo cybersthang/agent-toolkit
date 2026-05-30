@@ -1,0 +1,112 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agent-toolkit/test_env.schema.json",
+  "title": "agent-toolkit test_env config (v2)",
+  "type": "object",
+  "description": "Test environment config consumed by /verify, /run-probes, browser-driver skills, daemon_manager hook, and creds_resolver hook. Project-agnostic: any stack with an HTTP daemon + login flow can use it. v1 was just {url, credentials_ref, captured_at, spec}; v2 adds process_manager + structured creds_ref so AGENT can bootstrap the env without DEV intervention.",
+  "required": ["url"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 2,
+      "description": "Always 2 for this schema. Migration tool at templates/codex/tools/migrate_test_env_v2.py converts v1 → v2."
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Base URL of the running test server. e.g. http://localhost:8069 (Odoo), http://localhost:8000 (Django dev), http://127.0.0.1:3000 (Rails). Used by browser-driver as baseURL."
+    },
+    "db": {
+      "type": "string",
+      "description": "Database identifier (stack-specific): Odoo DB name, Django settings module, Rails RAILS_ENV. Optional."
+    },
+    "creds_ref": {
+      "type": "object",
+      "description": "How to resolve credentials at probe-run time. AGENT never prompts DEV when this is set. NEVER store real passwords here — always env-var or external file references.",
+      "properties": {
+        "login_env": {
+          "type": "string",
+          "description": "Env var name containing login (e.g. TOOLKIT_TEST_LOGIN). Resolved by creds_resolver hook."
+        },
+        "password_env": {
+          "type": "string",
+          "description": "Env var name containing password. Resolved by creds_resolver hook from <project>/.codex/mcp.local.env or any file listed in creds_files."
+        },
+        "creds_files": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Files to search for env-var definitions, in priority order. Defaults to ['.codex/mcp.local.env']."
+        },
+        "fallback_login": {
+          "type": "string",
+          "description": "Plain text fallback ONLY for development / demo databases. Never a real production login. Skipped if env_var resolves."
+        },
+        "fallback_password": {
+          "type": "string",
+          "description": "Plain text fallback for demo/admin/admin. NEVER persist real production passwords here."
+        },
+        "spawn_test_user_via_mcp": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, creds_resolver hook spawns a per-run test user via realdata_test MCP eval (recommended for shared dev DBs). Else uses fallback_*."
+        }
+      }
+    },
+    "process_manager": {
+      "type": "object",
+      "description": "How AGENT starts/stops the test server. Used by daemon_manager hook for auto-restart after source edits in feature-scope files.",
+      "properties": {
+        "start_cmd": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "argv to spawn the daemon. Placeholders like {PYTHON_BIN}, {ODOO_CONF}, {DB} are interpolated from the preset config. Example: ['{PYTHON_BIN}', 'odoo-bin', '-c', '{ODOO_CONF}', '-d', '{DB}']"
+        },
+        "start_cmd_env_passthrough": {
+          "type": "array",
+          "items": {"type": "string"},
+          "default": ["PATH"],
+          "description": "Env-vars to copy from current shell when spawning. PATH is the minimum needed."
+        },
+        "health_check_url": {
+          "type": "string",
+          "description": "Relative path appended to `url`. e.g. /web/login (Odoo), /admin/login/ (Django), / (Rails). daemon_manager polls until 200 or 401."
+        },
+        "health_timeout_s": {
+          "type": "integer",
+          "default": 60,
+          "description": "How long daemon_manager waits for health_check_url to respond before declaring start failed."
+        },
+        "pid_track_file": {
+          "type": "string",
+          "default": ".agent-toolkit/.daemon_pid",
+          "description": "File where daemon_manager writes the spawned PID for later kill+restart. Stored relative to project root."
+        },
+        "shutdown_signal": {
+          "type": "string",
+          "enum": ["SIGTERM", "SIGKILL", "Stop-Process"],
+          "default": "SIGTERM",
+          "description": "How daemon_manager terminates the daemon before restart. Windows uses Stop-Process; POSIX uses SIGTERM (or SIGKILL fallback after 5s)."
+        },
+        "auto_start_if_dead": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, daemon_manager spawns the daemon via start_cmd even if it was not running before the triggering edit. Default false so the hook ONLY restarts an existing daemon — never starts cold. Flip to true if you want every source-edit to guarantee a live test daemon."
+        }
+      }
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO timestamp from when /test-env captured this config."
+    },
+    "spec": {
+      "type": "string",
+      "description": "Spec slug that triggered the capture, for traceability."
+    },
+    "_doc_url": {
+      "type": "string",
+      "description": "URL to the canonical docs for this schema."
+    }
+  }
+}

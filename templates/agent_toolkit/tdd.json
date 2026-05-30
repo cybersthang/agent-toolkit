@@ -1,0 +1,14 @@
+{
+  "_doc": "Vibe-flow Phase 3 — TDD auto-loop config. Đọc bởi `.claude/hooks/tdd_runner.py` (PostToolUse). Toggle qua `/tdd on|off|status|run`.",
+  "enabled": true,
+  "mode": "nudge",
+  "test_glob": [
+    "**/tests/test_*.py"
+  ],
+  "source_glob": [
+    "**/models/**.py",
+    "**/controllers/**.py",
+    "**/wizards/**.py"
+  ],
+  "test_command": "{{PYTHON_BIN}} -m pytest -x"
+}

@@ -1,0 +1,26 @@
+# agent-toolkit — development / CI dependencies
+#
+# Used by:
+#   - `make install`
+#   - `.github/workflows/test.yml`
+#   - `.gitlab-ci.yml`
+#   - downstream contributors: `pip install -r requirements-dev.txt`
+#
+# All packages live in the test/lint/coverage path only; the toolkit's
+# runtime is stdlib-only and ships zero install-time Python deps.
+
+# Test runner — version range tracks what we test against in CI matrix.
+pytest>=7,<10
+
+# Coverage — pytest-cov 5.x and 7.x both work with the project's
+# `.coveragerc` (which sets parallel=True + concurrency=multiprocessing)
+# AND the `COVERAGE_PROCESS_START` env var exported by Makefile + CI
+# (see docs/AUDIT_HISTORY.md finding F7 for the diagnosis).
+#
+# If you install pytest-cov without these two side conditions, expect
+# setup.py coverage to drop from 85% to 17% on Python 3.10+ (pytest-cov
+# 7.x changed the subprocess-tracking activation env var).
+pytest-cov>=5
+
+# Lint — pinned to a major to avoid silent rule-set drift across CI runs.
+ruff>=0.4,<0.13

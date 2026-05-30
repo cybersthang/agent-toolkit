@@ -1,0 +1,72 @@
+{
+  "_doc": "Patterns for Rails stack — RSpec output, Devise login, ActiveRecord callbacks, FactoryBot, ActiveJob/Sidekiq, system tests. Detection: presence of `config/application.rb`. Same plug-in rules as other recipe files. Public PR welcome.",
+  "stack": "rails",
+  "patterns": [
+    {
+      "id": "devise-login",
+      "match_regex": "(?i)devise\\s+login|/users/sign_in",
+      "template": "        # Devise login via /users/sign_in.\n        page.goto(BASE + '/users/sign_in')\n        page.fill('input[name=\"user[email]\"]', LOGIN)\n        page.fill('input[name=\"user[password]\"]', PASSWORD)\n        page.click('input[type=submit]')\n        page.wait_for_load_state('networkidle', timeout=15000)\n",
+      "vars": {}
+    },
+    {
+      "id": "rails-authenticity-token-rpc",
+      "match_regex": "(?i)trigger\\s+(?P<count>\\d+)\\s+(?:Rails|rails)\\s+(?:RPC|controller|endpoint)",
+      "template": "        # {count} Rails POST calls (authenticity_token from meta tag).\n        for _i in range({count}):\n            page.evaluate('''async () => {{\n                const meta = document.querySelector('meta[name=csrf-token]');\n                const token = meta ? meta.getAttribute('content') : '';\n                await fetch('/api/test_endpoint', {{\n                    method: 'POST',\n                    headers: {{'Content-Type':'application/json',\n                              'X-CSRF-Token': token}},\n                    credentials: 'same-origin',\n                    body: JSON.stringify({{}})\n                }});\n            }}''')\n",
+      "vars": {"count": "from_match"}
+    },
+    {
+      "id": "rspec-run",
+      "match_regex": "(?i)run\\s+rspec\\s+(?P<spec_path>[\\w./_-]+)",
+      "template": "        # Run RSpec subprocess + assert exit code 0.\n        import subprocess\n        proc = subprocess.run(['bin/rspec', '{spec_path}'],\n                              capture_output=True, text=True, timeout=300)\n        EVIDENCE['checks']['rspec_{spec_path}'] = {{\n            'returncode': proc.returncode,\n            'stdout_tail': (proc.stdout or '')[-400:],\n            'pass': proc.returncode == 0\n        }}\n",
+      "vars": {"spec_path": "from_match"}
+    },
+    {
+      "id": "rails-ar-create-callback",
+      "match_regex": "(?i)(?P<callback>before_create|after_create|before_save|after_save|before_destroy|after_destroy)\\s+(?:callback\\s+)?(?:on\\s+)?(?P<model>[A-Z]\\w+)",
+      "template": "        # Assert ActiveRecord {callback} fires on {model}.\n        import subprocess\n        rb_script = '''\n            require_relative \"config/environment\"\n            counter = 0\n            {model}.send(:define_method, :_audit) {{ counter += 1 }}\n            {model}.set_callback(:create, :{callback_phase}, :_audit)\n            instance = {model}.create!(name: \"audit-test\")\n            puts \"AUDIT_CALLBACK_FIRES=#{{counter}}\"\n        '''\n        proc = subprocess.run(['bin/rails', 'runner', rb_script],\n                              capture_output=True, text=True, timeout=60)\n        fires = 0\n        for line in (proc.stdout or '').splitlines():\n            if line.startswith('AUDIT_CALLBACK_FIRES='):\n                fires = int(line.split('=',1)[1])\n        EVIDENCE['checks']['{model}_{callback}'] = {{\n            'fires': fires,\n            'pass': fires >= 1\n        }}\n",
+      "vars": {"callback": "from_match", "callback_phase": "from_match", "model": "from_match"}
+    },
+    {
+      "id": "rspec-let-verification",
+      "match_regex": "(?i)RSpec\\s+let\\s+(?P<name>\\w+)|spec\\s+uses\\s+let\\(:(?P<name2>\\w+)\\)",
+      "template": "        # Verify RSpec let block resolves + memoizes.\n        import subprocess\n        proc = subprocess.run(\n            ['bin/rspec', '--example', 'uses let({name})',\n             '--format', 'documentation'],\n            capture_output=True, text=True, timeout=120\n        )\n        EVIDENCE['checks']['rspec_let_{name}'] = {{\n            'returncode': proc.returncode,\n            'stdout_tail': (proc.stdout or '')[-300:],\n            'pass': proc.returncode == 0 and 'examples, 0 failures' in (proc.stdout or '')\n        }}\n",
+      "vars": {"name": "from_match", "name2": "from_match"}
+    },
+    {
+      "id": "factorybot-create",
+      "match_regex": "(?i)FactoryBot\\.create\\((?::|')(?P<factory>\\w+)|create\\(:(?P<factory2>\\w+)\\)\\s+(?:factory|in\\s+test)",
+      "template": "        # FactoryBot create + assert record persisted.\n        import subprocess\n        rb_script = '''\n            require_relative \"config/environment\"\n            require \"factory_bot_rails\"\n            instance = FactoryBot.create(:{factory})\n            puts \"AUDIT_FACTORY_ID=#{{instance.id}}\"\n            puts \"AUDIT_VALID=#{{instance.valid?}}\"\n        '''\n        proc = subprocess.run(['bin/rails', 'runner', rb_script],\n                              capture_output=True, text=True, timeout=60)\n        EVIDENCE['checks']['factory_{factory}'] = {{\n            'returncode': proc.returncode,\n            'stdout_tail': (proc.stdout or '')[-300:],\n            'pass': proc.returncode == 0 and 'AUDIT_VALID=true' in (proc.stdout or '')\n        }}\n",
+      "vars": {"factory": "from_match", "factory2": "from_match"}
+    },
+    {
+      "id": "rails-before-action",
+      "match_regex": "(?i)before_action\\s+:(?P<action>\\w+)|controller\\s+(?P<controller>[A-Z]\\w+)\\s+before_action",
+      "template": "        # Assert before_action filter fires before controller action.\n        import subprocess\n        rb_script = '''\n            require_relative \"config/environment\"\n            ctrl = {controller}.new\n            chain = ctrl._process_action_callbacks.map(&:filter)\n            puts \"AUDIT_FILTER_PRESENT=#{{chain.include?(:{action})}}\"\n        '''\n        proc = subprocess.run(['bin/rails', 'runner', rb_script],\n                              capture_output=True, text=True, timeout=30)\n        EVIDENCE['checks']['{controller}_{action}_filter'] = {{\n            'returncode': proc.returncode,\n            'present': 'AUDIT_FILTER_PRESENT=true' in (proc.stdout or ''),\n            'pass': 'AUDIT_FILTER_PRESENT=true' in (proc.stdout or '')\n        }}\n",
+      "vars": {"action": "from_match", "controller": "from_match"}
+    },
+    {
+      "id": "rails-active-job-perform",
+      "match_regex": "(?i)(?P<job>[A-Z]\\w+Job)(?:\\.perform_(?:later|now)|\\s+enqueued)",
+      "template": "        # Assert ActiveJob {job} enqueues + runs (inline adapter).\n        import subprocess\n        rb_script = '''\n            require_relative \"config/environment\"\n            ActiveJob::Base.queue_adapter = :inline\n            before = ActiveJob::Base.queue_adapter.enqueued_jobs.size rescue 0\n            {job}.perform_later\n            after = ActiveJob::Base.queue_adapter.enqueued_jobs.size rescue 0\n            puts \"AUDIT_JOB_RAN=#{{after - before}}\"\n        '''\n        proc = subprocess.run(['bin/rails', 'runner', rb_script],\n                              capture_output=True, text=True, timeout=60)\n        EVIDENCE['checks']['{job}_perform'] = {{\n            'returncode': proc.returncode,\n            'stdout_tail': (proc.stdout or '')[-200:],\n            'pass': proc.returncode == 0\n        }}\n",
+      "vars": {"job": "from_match"}
+    },
+    {
+      "id": "rails-system-test-capybara",
+      "match_regex": "(?i)system\\s+test\\s+(?P<feature>[\\w_]+)|Capybara\\s+visit\\s+(?P<path>/[\\w/]+)",
+      "template": "        # Run Capybara system test for {feature}.\n        import subprocess\n        proc = subprocess.run(\n            ['bin/rails', 'test:system', 'TEST=test/system/{feature}_test.rb'],\n            capture_output=True, text=True, timeout=300\n        )\n        EVIDENCE['checks']['system_{feature}'] = {{\n            'returncode': proc.returncode,\n            'stdout_tail': (proc.stdout or '')[-400:],\n            'pass': proc.returncode == 0 and 'failures' not in (proc.stdout or '').lower()\n        }}\n",
+      "vars": {"feature": "from_match", "path": "from_match"}
+    },
+    {
+      "id": "rake-task-run",
+      "match_regex": "(?i)(?:run\\s+)?rake\\s+(?P<task>[\\w:_-]+)|rails\\s+(?P<task2>[\\w:_-]+):\\w+",
+      "template": "        # Execute rake task + assert exit code.\n        import subprocess\n        proc = subprocess.run(['bin/rake', '{task}'],\n                              capture_output=True, text=True, timeout=120)\n        EVIDENCE['checks']['rake_{task}'] = {{\n            'returncode': proc.returncode,\n            'stdout_tail': (proc.stdout or '')[-400:],\n            'pass': proc.returncode == 0\n        }}\n",
+      "vars": {"task": "from_match", "task2": "from_match"}
+    },
+    {
+      "id": "rails-validation-error",
+      "match_regex": "(?i)(?P<model>[A-Z]\\w+)\\s+validation\\s+(?:fails?\\s+on\\s+)?(?P<field>\\w+)",
+      "template": "        # Assert {model}.errors contains {field} validation error.\n        import subprocess\n        rb_script = '''\n            require_relative \"config/environment\"\n            instance = {model}.new\n            instance.valid?\n            puts \"AUDIT_ERROR_FIELDS=#{{instance.errors.attribute_names.inspect}}\"\n        '''\n        proc = subprocess.run(['bin/rails', 'runner', rb_script],\n                              capture_output=True, text=True, timeout=30)\n        EVIDENCE['checks']['{model}_validation_{field}'] = {{\n            'has_error': ':{field}' in (proc.stdout or ''),\n            'stdout_tail': (proc.stdout or '')[-200:],\n            'pass': ':{field}' in (proc.stdout or '')\n        }}\n",
+      "vars": {"model": "from_match", "field": "from_match"}
+    }
+  ]
+}

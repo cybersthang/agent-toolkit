@@ -1,0 +1,69 @@
+---
+description: Generic, module-agnostic Odoo 20 rules. Hard-coded module names are forbidden in invariant rules; everything is discovered at runtime.
+alwaysApply: true
+---
+
+# Odoo 20 — Generic Rules (Module-Agnostic)
+
+This file applies to **any** addon under any addon root. Never embed a specific module name into an invariant rule. When you need a concrete module, discover it at runtime via the `codebase` MCP.
+
+> ## STUB-EXTENDS-V19 DISCLAIMER (read first)
+>
+> Odoo 20 is **not yet released** (as of 2026-05-29; expected ~Sept/Oct 2026 — the `20.0` branch does not exist on odoo/odoo and `master` is still 19.x). The toolkit's coverage for it is **stub-extends-v19** — these rules are extrapolated from v19 trajectory, not from a verified v20 delta. Treat any v20-specific API claim as expected/unconfirmed until verified on release.
+>
+> **Before applying any non-trivial pattern: verify against the actual installed Odoo source.** Use `codebase` MCP (`search_text`, `find_inheritance_chain`, `search_model_definitions`, `read_file_chunk`) to grep for the symbol / decorator / method / widget name in the installed tree before assuming v19 carryover. Treat every guideline below as "best-effort based on v19 trajectory" until a verified v20-delta document lands in this directory.
+>
+> When the installed source disagrees with this rule, **the installed source wins** — capture the delta as an ADR and revise this file.
+
+## Discovery (always before edits)
+
+1. `workspace_status` -> confirm addon roots.
+2. `discover_modules({ root_hint })` -> narrow to one module.
+3. `read_manifest({ module_path })` -> understand depends and data load order.
+4. `find_inheritance_chain({ model })` -> see every place a model is extended.
+5. `list_test_targets({ module_path })` -> learn the test entry points.
+
+## Invariants (Odoo 20)
+
+- **Models**: `_name` for new model, `_inherit` for extension, `_inherits` for delegation. Never both `_name` and `_inherit` to the same string in one class.
+- **API**: recordset by default — `@api.multi` / `@api.one` removed since 13. `@api.model` only for class-level methods. `@api.model_create_multi` is mandatory for `create()` overrides.
+- **Display name / multi-company**: override `_compute_display_name` (not `name_get`); set `_check_company_auto = True` with matching `check_company` on related fields.
+- **`ensure_one()`** when a method assumes a single record.
+- **Loops**: no `search()`, `browse(id)`, `write()`, `unlink()` inside loops. Push filtering into domains, batch with `mapped` / `filtered` / `filtered_domain` / `read_group`.
+- **Counts**: `search_count(domain)` over `len(search(domain))`.
+- **Computed fields**: complete `@api.depends`. Store only when searched / grouped / sorted at scale.
+- **SQL**: prefer ORM. If unavoidable, parameterize and invalidate / refresh affected caches.
+- **`sudo()`** documented with a one-line reason. **Errors**: `UserError` for business rules, `ValidationError` for invalid data. **Logging**: `_logger`, never `print`. **Imports**: stdlib, third-party, `odoo`, local.
+- **Python**: 3.11+ contract; 3.12 standard interpreter.
+
+## Manifest hygiene
+
+- `data` order: `security/` → `data/` → `views/` → menus. `depends` lists exactly what the module imports / inherits.
+- `version` follows project pattern (e.g. `20.0.x.y.z`). `installable: True`; `application` only for top-level apps.
+
+## XML / view hygiene
+
+- Inheritance edits use `xpath` with `position="after|before|inside|replace|attributes"`.
+- View conditions: `invisible="<expr>"`, `readonly="<expr>"`, `required="<expr>"` as Python expressions. **`attrs="{...}"` and `states="…"` removed since 17 — never reintroduce.**
+- XML IDs stable; never rename a published XML ID without a migration step.
+
+## Frontend / mail / security
+
+- **OWL v2** mature: class-based components + declarative templates. No jQuery, no legacy widgets.
+- **Mail framework v2** assumed (carried from 19). Grep installed source before touching subtype / notification internals.
+- Every new model has at least one `ir.model.access.csv` row; record rules align with the `_inherit` chain.
+
+## Verification recipes (narrowest first)
+
+1. `{{PYTHON_BIN}} odoo-bin -u <module> --stop-after-init -d {{DEFAULT_DB}}`.
+2. `--test-enable --test-tags /<module> --stop-after-init`.
+3. `eval_orm_expression` + `consistency_check_eval` for algorithm correctness.
+4. DB engine: PostgreSQL ≥ 14 (16 preferred) — check `SHOW server_version;` when behaviour differs from staging.
+
+## What this rule **does not** mention by design
+
+- Specific module names.
+- Specific menu / model paths.
+- Specific JIRA project keys.
+
+If you need any of those, look them up via the `codebase` MCP or the canonical decisions registry — do not hard-code them here.

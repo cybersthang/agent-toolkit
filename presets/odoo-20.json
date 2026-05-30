@@ -1,0 +1,38 @@
+{
+  "_comment": "Odoo 20 PRE-GA STUB (expected late 2026). No verified deltas yet — falls back to Odoo 19 patterns per templates/cursor/skills/odoo/odoo-code-patterns/references/odoo-20-patterns.md. Reuses odoo-17 rule pack. When v20 GA ships: read changelog, populate odoo-20-patterns.md verified deltas, then revisit this preset.",
+  "description": "Odoo 20 Community / Enterprise — Python 3.11+, OWL. PRE-GA STUB (expected late 2026) — patterns fall back to odoo-19 until GA changelog ships. Reuses odoo-17 rule pack.",
+  "stack_label": "Odoo 20",
+  "response_language": "Vietnamese",
+  "stack": {
+    "language": "python",
+    "language_version": "3.11",
+    "framework": "odoo",
+    "framework_version": "20",
+    "frontend": "OWL framework",
+    "_doc": "Per-stack optional path overrides — used by realdata_test MCP. Leave empty to let user set <PREFIX>_ODOO_BIN / <PREFIX>_ODOO_CONF env vars at runtime.",
+    "odoo_bin_rel": "",
+    "odoo_conf_rel": "",
+    "smoke_test_rel": ""
+  },
+  "addon_roots": ["addons", "custom_addons", "enterprise"],
+  "mcp_servers": ["codebase", "postgres", "realdata_test"],
+  "external_mcp_servers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--browser=chromium", "--headless", "--isolated"]
+    }
+  },
+  "db": {
+    "default_db": "odoo20_dev",
+    "default_port": 5432,
+    "default_user": "odoo"
+  },
+  "rules": ["_common", "odoo-20"],
+  "_rules_comment": "TODO: differentiate from odoo-17 base when v20 GA ships and templates/cursor/rules/odoo-20/ is authored. Currently treats v20 == v19 with pre-GA caveat.",
+  "skills": ["_common", "odoo"],
+  "memory_packs": ["odoo-20"],
+  "_overlay_doc": "Version-specific invariants merged on top of project invariants.json by a FUTURE installer step (setup.py --merge-invariants, not yet wired — Wave C). Same schema as .agent-toolkit/invariants.json entries. severity=warn. Cite a confirmed Odoo release fact per entry.",
+  "_inherits_overlay": "odoo-19",
+  "_overlay_note": "TODO: author v20 invariants when API diff confirmed. Odoo 20 is a PRE-GA STUB (expected late 2026) with no verified deltas — falls back to the odoo-19 overlay. When v20 GA changelog ships, populate odoo-20-patterns.md verified deltas first, then encode them here.",
+  "invariants_overlay": []
+}

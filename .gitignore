@@ -1,0 +1,61 @@
+# agent-toolkit
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+.vscode/
+.idea/
+
+# Test + coverage artefacts
+.coverage
+.coverage.*
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+
+# Build / packaging artefacts
+*.egg-info/
+dist/
+build/
+.tox/
+
+# Local dev artifacts — never commit
+.codex/mcp.local.env
+.cursor/mcp.local.env
+.mcp.json
+.cursor/mcp.json
+agent-toolkit.config.json
+.agent-toolkit-install.json
+
+# Private preset overlays — author + team-specific defaults. Public toolkit
+# stays clean; these stay local. Strip the `.template` from
+# `presets/_example_private_overlay.json.template` to seed your own.
+presets/*-private.json
+
+# Runtime ring-buffer / ephemeral state written by hooks during a session.
+# These are PER-MACHINE telemetry and should not bleed across commits.
+.agent-toolkit/.hook_fire_log.json
+.agent-toolkit/.hook_crash_log.json
+.agent-toolkit/.bypass_next_edit.json
+.agent-toolkit/.autonomy_active.json
+.agent-toolkit/.last_intent_suggested.json
+.agent-toolkit/.skip_clarification_next.json
+.agent-toolkit/.skip_git_guard_next.json
+.agent-toolkit/.skip_debug_sentry_next.json
+.agent-toolkit/.open_gaps.json
+.agent-toolkit/.stop_audit_count.json
+.agent-toolkit/.tdd_runner_last.json
+.agent-toolkit/.review_packet.*.md
+.agent-toolkit/.independent_review.json
+.agent-toolkit/.canonical_expected.json
+# Nested copies too (e.g. a hook writing into templates/.../.agent-toolkit/
+# when cwd drifts) — must never be committed or shipped by the installer.
+**/.hook_fire_log.json
+**/.hook_loc_log.json
+
+# Setup.py update auto-generated backup files. Consumer projects need to
+# inherit this pattern — see lib/installer.py post-install hook (v0.21).
+*.bak.*
+.bak.*

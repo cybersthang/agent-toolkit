@@ -1,0 +1,70 @@
+---
+description: Generic, module-agnostic Odoo 19 rules. Hard-coded module names are forbidden in invariant rules; everything is discovered at runtime.
+alwaysApply: true
+---
+
+# Odoo 19 - Generic Rules (Module-Agnostic)
+
+This file applies to **any** addon under any addon root. Never embed a specific module name into an invariant rule. When you need a concrete module, discover it at runtime via the `codebase` MCP.
+
+## Version caveat (top of mind)
+
+Odoo 19.0 is recent (released ~late 2025 / early 2026). The **mail framework was refactored to v2**: `mail.thread` and `mail.activity.mixin` changed thread message storage and the follower model. **Do not assume v18 mail patterns carry over** — read the actual installed Odoo 19 source under the addon root before editing any mail-related code (`message_post`, follower handling, activity scheduling, `_track_*` hooks, mixin subclasses). Other v18 patterns (OWL v2, `invisible="..."` view syntax, `_compute_display_name`, `_check_company_auto`) generally do carry.
+
+## Discovery (always before edits)
+
+1. `workspace_status` -> confirm addon roots.
+2. `discover_modules({ root_hint })` -> narrow to one module.
+3. `read_manifest({ module_path })` -> understand depends and data load order.
+4. `find_inheritance_chain({ model })` -> see every place a model is extended.
+5. `list_test_targets({ module_path })` -> learn the test entry points.
+
+## Invariants (Odoo 19)
+
+- **Models**: `_name` for new model, `_inherit` for extension, `_inherits` for delegation. Never declare both `_name` and `_inherit` to the same string in one class.
+- **API**: recordset by default. `@api.multi` is removed (since v13) and must not be added. `@api.model` only for class-level methods. `@api.model_create_multi` for `create()` overrides.
+- **Display name**: override `_compute_display_name` (standard since v17); do not add new `name_get` overrides.
+- **`ensure_one()`**: required when a method assumes a single record.
+- **Loops**: no `search()`, `browse(id)`, `write()`, or `unlink()` inside loops. Push filtering into domains, batch with `mapped` / `filtered` / `read_group`.
+- **Counts**: `search_count(domain)` over `len(search(domain))`.
+- **Computed fields**: declare a complete `@api.depends`. Store only when searched / grouped / sorted at scale.
+- **SQL**: prefer ORM. If SQL is unavoidable, use parameters and invalidate or refresh affected caches when writing.
+- **`sudo()`**: avoid unless clearly required; document the reason in a one-line comment.
+- **Errors**: `UserError` for business rules, `ValidationError` for invalid data.
+- **Logging**: `_logger`, never `print`.
+- **Imports**: stdlib, third-party, `odoo`, local.
+
+## Manifest hygiene (any module)
+
+- `data` order: `security/` first, then `data/`, then `views/`, then menus.
+- `depends` lists exactly what the module imports / inherits.
+- `version` follows the existing project pattern (e.g. `19.0.x.y.z`).
+- `installable: True`; `application: True` only when the module is a top-level app.
+
+## XML / view hygiene
+
+- Inheritance edits use `xpath` with `position="after|before|inside|replace|attributes"`.
+- View conditions: `invisible="<expr>"`, `readonly="<expr>"`, `required="<expr>"` as Python expressions. **Do not** introduce `attrs="{...}"` or `states="..."` — both removed since v17.
+- XML IDs are stable across releases.
+
+## Mail / activity (Odoo 19 specifics)
+
+Before editing any subclass of `mail.thread` or `mail.activity.mixin`, open the v19 source for the mixin and run `find_inheritance_chain({ model: "mail.thread" })`. The v2 refactor changed internal storage; v18 field names and helper signatures may differ.
+
+## Security / ACL
+
+- Every new model has at least one `ir.model.access.csv` row.
+- Record rules align with the model's `_inherit` chain — check the parent's rules first.
+- `_check_company_auto = True` for multi-company-sensitive models.
+
+## Verification recipes (narrowest first)
+
+1. `-u <module> --stop-after-init -d <db>`.
+2. `--test-enable --test-tags /<module> --stop-after-init`.
+3. For algorithm correctness: `eval_orm_expression` + `consistency_check_eval`.
+
+## What this rule **does not** mention by design
+
+- Specific module names, menu/model paths, JIRA project keys.
+
+Look those up via the `codebase` MCP or the canonical decisions registry — do not hard-code them here.

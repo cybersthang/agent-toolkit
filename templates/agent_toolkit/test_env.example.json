@@ -1,0 +1,33 @@
+{
+  "_comment": "Example test_env.json v2 — copy into <project>/.agent-toolkit/test_env.json and customize. NEVER commit real passwords. Use env-vars resolved by creds_resolver hook from <project>/.codex/mcp.local.env (which is gitignored). Related: probes auto_run default is FALSE after `migrate_probes_v2.py`; explicitly opt-in per probe by setting `auto_run: true` on entries you want PostToolUse-fired.",
+  "schema_version": 2,
+  "url": "http://localhost:8069",
+  "db": "test_db",
+  "creds_ref": {
+    "login_env": "TOOLKIT_TEST_LOGIN",
+    "password_env": "TOOLKIT_TEST_PASSWORD",
+    "creds_files": [".codex/mcp.local.env"],
+    "fallback_login": "admin",
+    "fallback_password": "admin",
+    "spawn_test_user_via_mcp": false
+  },
+  "process_manager": {
+    "start_cmd": [
+      "{PYTHON_BIN}",
+      "odoo-bin",
+      "-c",
+      "{ODOO_CONF}",
+      "-d",
+      "{DB}"
+    ],
+    "start_cmd_env_passthrough": ["PATH"],
+    "health_check_url": "/web/login",
+    "health_timeout_s": 60,
+    "pid_track_file": ".agent-toolkit/.daemon_pid",
+    "shutdown_signal": "SIGTERM",
+    "auto_start_if_dead": false
+  },
+  "captured_at": null,
+  "spec": null,
+  "_doc_url": "https://agent-toolkit/docs/test_env.html"
+}

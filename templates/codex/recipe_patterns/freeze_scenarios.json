@@ -1,0 +1,23 @@
+{
+  "_doc": "Patterns for SIGSTOP / docker stop / kill scenarios used in resilience probes.",
+  "patterns": [
+    {
+      "id": "sigstop-target",
+      "match_regex": "(?i)SIGSTOP\\s+(?:the\\s+)?(?P<target>worker|server|odoo|postgres|django|rails)",
+      "template": "        # Freeze the {target} process (Windows: Stop-Process; POSIX: SIGSTOP).\n        import platform\n        if platform.system() == 'Windows':\n            subprocess.run(['powershell', '-NoProfile', '-Command',\n                            f'Stop-Process -Id {{ODOO_PID}} -Force'],\n                           capture_output=True, timeout=10)\n        else:\n            subprocess.run(['kill', '-STOP', str(ODOO_PID)], timeout=5)\n        page.wait_for_timeout(2000)\n",
+      "vars": {"target": "from_match"}
+    },
+    {
+      "id": "docker-stop-target",
+      "match_regex": "(?i)docker\\s+stop\\s+(?P<container>\\w+)",
+      "template": "        # docker stop {container}.\n        subprocess.run(['docker', 'stop', '{container}'], capture_output=True, timeout=30)\n        page.wait_for_timeout(2000)\n",
+      "vars": {"container": "from_match"}
+    },
+    {
+      "id": "assert-after-freeze",
+      "match_regex": "(?i)assert\\s+(?P<count>\\d+)\\s+entries\\s+(?:still|continue\\s+to)\\s+display",
+      "template": "        # After freeze: IndexedDB read path must still return >= {count} entries.\n        post = fetch_indexeddb_count(page)\n        EVIDENCE['checks']['post_freeze_count'] = {{\n            'count': post, 'expected_min': {count}, 'pass': post >= {count}\n        }}\n",
+      "vars": {"count": "from_match"}
+    }
+  ]
+}

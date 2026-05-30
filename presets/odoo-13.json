@@ -1,0 +1,46 @@
+{
+  "_comment": "Odoo 13 differentiation from odoo-12 base: dropped @api.one (use @api.depends/iterate self), Python 3.6 baseline. Architecture otherwise close to v12 — reuses odoo-12 rule pack until a dedicated odoo-13 rule dir exists. TODO: add templates/cursor/rules/odoo-13/ when v13-specific .mdc content is authored.",
+  "description": "Odoo 13 Community / Enterprise — Python 3.6+, QWeb + jQuery, recordset-default (no @api.one). Legacy ORM era; reuses odoo-12 rule pack — fork when v13 deltas materialize.",
+  "stack_label": "Odoo 13",
+  "response_language": "Vietnamese",
+  "stack": {
+    "language": "python",
+    "language_version": "3.6",
+    "framework": "odoo",
+    "framework_version": "13",
+    "frontend": "QWeb + jQuery",
+    "_doc": "Per-stack optional path overrides — used by realdata_test MCP. Leave empty to let user set <PREFIX>_ODOO_BIN / <PREFIX>_ODOO_CONF env vars at runtime.",
+    "odoo_bin_rel": "",
+    "odoo_conf_rel": "",
+    "smoke_test_rel": ""
+  },
+  "addon_roots": ["addons", "custom_addons", "enterprise"],
+  "mcp_servers": ["codebase", "postgres", "realdata_test"],
+  "external_mcp_servers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--browser=chromium", "--headless", "--isolated"]
+    }
+  },
+  "db": {
+    "default_db": "odoo13_dev",
+    "default_port": 5432,
+    "default_user": "odoo"
+  },
+  "rules": ["_common", "odoo-13"],
+  "_rules_comment": "TODO: differentiate from odoo-12 base when templates/cursor/rules/odoo-13/ is authored. v13 still uses @api.multi-era patterns so odoo-12 rules apply.",
+  "skills": ["_common", "odoo"],
+  "memory_packs": ["odoo-13"],
+  "_overlay_doc": "Version-specific invariants merged on top of project invariants.json by a FUTURE installer step (setup.py --merge-invariants, not yet wired — Wave C). Same schema as .agent-toolkit/invariants.json entries. severity=warn (informational). Cite a confirmed Odoo release fact per entry.",
+  "invariants_overlay": [
+    {
+      "id": "odoo13-no-api-one",
+      "description": "Odoo 13 removed @api.one — methods that previously used it now run on a recordset; iterate self instead of returning a scalar.",
+      "applies_to": ["**/models/**/*.py", "**/wizards/**/*.py"],
+      "rules": {"must_keep_regex": ["for\\s+\\w+\\s+in\\s+self\\b|self\\.ensure_one\\("]},
+      "severity": "warn",
+      "rationale": "@api.one was dropped in Odoo 13 (it auto-looped and returned a list). Code ported from v12 that relied on @api.one's implicit single-record behavior must explicitly iterate `self` or call `ensure_one()`. Fix when violated: restore the explicit loop / ensure_one() that the edit dropped.",
+      "_version": "13+"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+---
+description: {{PROJECT_NAME}} Odoo 13 project context and agent rules - always apply
+alwaysApply: true
+---
+
+**Stack**: Odoo 13 (Python {{STACK_LANGUAGE_VERSION}}, jQuery + QWeb frontend, PostgreSQL >= 10)
+**Root**: `{{WORKSPACE_ROOT}}`
+**Database**: `{{DEFAULT_DB}}`
+**Python**: `{{PYTHON_BIN}}`
+**Run**: `{{PYTHON_BIN}} odoo-bin -d {{DEFAULT_DB}}` (cwd: `{{WORKSPACE_ROOT}}`)
+
+**Agent rules**:
+- Keep output concise and result-focused.
+- Reply in {{RESPONSE_LANGUAGE}} when the user writes in {{RESPONSE_LANGUAGE}}.
+- Read the target file before editing it.
+- Keep diffs small and stay inside scope.
+- Do not add features outside the request without asking first.
+- Prefer ORM helpers such as `mapped`, `filtered`, and `read_group`.
+- Avoid `search()` / `browse(id)` calls inside loops.
+- Do **not** add `@api.multi` — removed in 13 (raises AttributeError; present only ≤12). Recordset is the default.
+- Never introduce `@api.one` — removed in 13 (raises AttributeError; present only ≤12). `@api.returns` still exists in 13 — it was not removed.
+- Override `create()` with `@api.model_create_multi` so batch creates work.
+- `attrs="{...}"` and `states="..."` in views are **valid in 13** — do not pre-migrate them out.
+- No OWL: stay on jQuery + `odoo.define(...)` AMD modules. OWL only arrived in 14.0.

@@ -1,0 +1,34 @@
+{
+  "_doc": "PRIVATE PRESET OVERLAY EXAMPLE — copy this file to <your-fork>/presets/<your-project>.json, edit the placeholders, then run `python setup.py init <target> --preset <your-project>`. The overlay extends a public preset and adds project-specific defaults WITHOUT polluting the public toolkit. See templates/agent_toolkit/PORTING.md for the full recipe.",
+
+  "_template_warning": "This file ends in `.template` so the loader skips it. Strip that suffix in your private fork.",
+
+  "extends": "odoo-12",
+  "description": "Example private overlay — replace with your project description",
+  "stack_label": "Odoo 12 — <YOUR-PROJECT-NAME>",
+  "response_language": "English",
+
+  "stack": {
+    "_doc": "Per-project optional path overrides. Empty = use public preset defaults; non-empty = override.",
+    "odoo_bin_rel": "",
+    "odoo_conf_rel": "",
+    "smoke_test_rel": ""
+  },
+
+  "addon_roots_append": [
+    "custom_addons",
+    "enterprise",
+    "_replace_with_your_actual_addon_root"
+  ],
+
+  "_mcp_servers_doc": "Add optional Python MCP servers shipped by the toolkit. 'jira_production' / 'jira_preproduction' enable the JIRA server; 'gitlab' enables the read-only GitLab CI server (check pipeline status + pull failing job traces — fill {{ENV_PREFIX}}_GITLAB_* in .codex/mcp.local.env).",
+  "mcp_servers_append": [],
+
+  "external_mcp_servers": {},
+
+  "db": {
+    "default_db": "",
+    "default_port": 5432,
+    "default_user": "odoo"
+  }
+}

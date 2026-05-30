@@ -1,0 +1,46 @@
+{
+  "_doc": "Acceptance probes — empirical checks the agent MUST run before claiming 'PASS / DONE / VERIFIED'. Read by .claude/hooks/evidence_audit.py at Stop. If a probe-required claim is made without at least one matching MCP tool call in the same turn, the Stop is BLOCKED.",
+  "_schema": {
+    "id": "kebab-case unique probe id",
+    "description": "one-line human summary",
+    "applies_when": {
+      "claim_regex": "regex on assistant text — if matched, this probe contract activates (default: catches 'pass|passed|done|verified|works|hoàn thành|đã test|đã verify')",
+      "path_globs": "optional list of file globs — if a turn's Edit/Write touched any matching path, probe is required even without explicit claim words",
+      "task_tags": "optional list — agent can declare current task tag via [task: X] in response; probe required if tag matches"
+    },
+    "evidence": {
+      "required_tools": "list of MCP tool names (mcp__<server>__<tool>) — at least ONE must appear in this turn for the claim to pass",
+      "min_calls": "integer (default 1) — minimum number of evidence tool calls required",
+      "must_include_call": "optional regex on tool input — e.g. expression must contain 'search_count' for orm probes; if missing, evidence doesn't count",
+      "required_result_fingerprint": "optional sha256 of expected tool_result content — catches dummy MCP calls (e.g. eval_orm_expression('1+1') won't match fingerprint of real query result)"
+    },
+    "falsification": {
+      "type": "timing_perturb | side_effect_inject | log_assertion | playwright | null",
+      "description": "human-readable hypothesis-falsification step. Runner sub-block configures mechanical execution via `.codex/tools/falsify.py`. Supported runner types: `timing_perturb` (inject sleep, measure delta), `side_effect_inject` (marker file detection), `log_assertion` (regex on command output), `playwright` (spawn npx playwright test, parse JSON reporter)."
+    },
+    "severity": "blocker (deny stop, force re-verify) | warn (allow + inject reminder)",
+    "rationale": "why this probe must run — surfaced in block message",
+    "added": "YYYY-MM-DD",
+    "added_by": "user|agent|<email>",
+    "related_adr": "optional ADR-NNN reference"
+  },
+  "_workflow": [
+    "1. User describes a verifiable behavior: 'this request must BLOCK the UI'.",
+    "2. Run /adr-add to capture WHY in decision-log.md.",
+    "3. Run /probe-add to translate the behavior into a probe entry (claim_regex, required MCP tools, falsification recipe).",
+    "4. The Stop hook now BLOCKS any 'PASS/DONE' claim that doesn't include at least one matching MCP tool call.",
+    "5. Bypass single-shot: add 'probe-skip: <probe-id> <reason>' line to the response. Tracked for audit."
+  ],
+  "_defaults": {
+    "_doc": "Fallback contract when no probe matches but a PASS-class claim is detected. This is the LOOSE generic guard — strict per-feature probes override this when claim_regex matches.",
+    "pass_claim_regex": "\\b(passed|tests?\\s*pass(ed)?|all\\s*pass|verified|đã\\s*verify|đã\\s*test|đã\\s*chạy\\s*xong|hoàn\\s*thành|done\\b|implementation\\s*done|ready\\s*to\\s*ship|works\\s*correctly|hoạt\\s*động\\s*đúng)\\b",
+    "required_tool_prefixes": ["mcp__realdata_test__", "mcp__postgres__"],
+    "exempt_when_response_contains": ["[probe-skip:", "[assumption]", "[unverified]"],
+    "pass_exempt_markers": ["[meta-review]", "[meta]"],
+    "_pass_exempt_doc": "Response markers that fully exempt PASS-claim contract AND generic claim audit (but NOT progress checks). Use when the response is a meta-analysis of the toolkit/agent-system itself.",
+    "disabled_progress_checks": [],
+    "_progress_checks_doc": "Hallucinated-progress categories enforced by evidence_audit.py. List category names here to disable per-project. Valid names: action_ghost, tool_result_fabrication, phantom_citation, todo_inconsistency, overcount. Bypass single-shot via 'progress-skip: <category|all> <reason>' in the response."
+  },
+  "version": 2,
+  "probes": []
+}

@@ -1,0 +1,387 @@
+#!/usr/bin/env python
+"""PostToolUse hook — verification loop on every .py Edit/Write/MultiEdit.
+
+Upstream provenance
+-------------------
+- Repo   : https://github.com/affaan-m/everything-claude-code
+- Author : @affaan-m
+- Skill  : skills/verification-loop/SKILL.md
+- URL    : https://github.com/affaan-m/everything-claude-code/blob/main/skills/verification-loop/SKILL.md
+- Adopted: 2026-05-17 (commit not pinned — upstream evolves fast)
+- License: see upstream repo
+
+This file is a derivative — adapted from a generic Node/TS build-lint-
+typecheck loop to the Odoo 12 MCP probe set
+(`python_syntax_check` / `python_import_check` / `xml_validate` /
+`odoo_manifest_validate`). To re-sync with upstream, WebFetch the URL
+above and diff against this docstring's behaviour section.
+
+After each Edit / Write / MultiEdit on a `.py` file inside one of the
+configured `addon_roots`, this hook emits an `additionalContext` reminder
+listing the MCP probes the agent SHOULD run before the next response:
+
+  1. `python_syntax_check` — catches IndentationError / SyntaxError at edit
+     time, before any test runs.
+  2. `python_import_check` — catches ModuleNotFoundError / ImportError that
+     would surface only at module install.
+  3. `xml_validate` if the edit was an XML view / data file.
+  4. `odoo_manifest_validate` if the edit was a `__manifest__.py`.
+
+The hook is **nudge-only** (never blocks the Edit). It is the *Stop* hook
+`evidence_audit.py` that will reject the final response if the agent claims
+"done" without these checks in its tool-call history for this turn.
+
+Config: `<workspace>/.agent-toolkit/verification.json`:
+
+```json
+{
+  "enabled": true,
+  "mcp_prefix": "mcp__<project-slug>-<framework><version>__",
+  "addon_globs": [
+    "**/__manifest__.py",
+    "**/models/**.py",
+    "**/controllers/**.py",
+    "**/wizards/**.py",
+    "**/views/**.xml"
+  ]
+}
+```
+
+Behaviour:
+
+- Hook silent when config missing / enabled=false / tool not Edit/Write/
+  MultiEdit / file path not under addon_globs.
+- Duplicate suppression: don't re-nudge the same file within 30 s.
+- File-type aware: `.py` → syntax + import; `.xml` → xml_validate;
+  `__manifest__.py` → manifest_validate (in addition to syntax).
+- Fails open on any error.
+"""
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+sys.path.insert(0, str(Path(__file__).parent))
+from _common import (  # noqa: E402
+    wrap_utf8_stdio, atomic_write_json, match_glob, discover_mcp_prefix, run_main_safe)
+
+wrap_utf8_stdio()
+
+
+CONFIG_REL = ".agent-toolkit/verification.json"
+STATE_REL = ".agent-toolkit/.verification_loop_last.json"
+SUPPORTED_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
+NUDGE_TTL_SECONDS = 30
+
+
+def _exit_silent() -> None:
+    sys.exit(0)
+
+
+def _emit(text: str) -> None:
+    payload = {
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": text,
+        }
+    }
+    print(json.dumps(payload, ensure_ascii=False))
+    sys.exit(0)
+
+
+def _load_config(workspace: Path) -> Optional[Dict[str, Any]]:
+    path = workspace / CONFIG_REL
+    if not path.exists():
+        return None
+    try:
+        cfg = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    return cfg if isinstance(cfg, dict) else None
+
+
+def _classify(file_path: str, cfg: Optional[Dict[str, Any]] = None) -> List[str]:
+    """Return list of probe kinds applicable to this file.
+
+    Two modes:
+
+    - **Config-driven** (G8 v0.11.0): when `cfg["probe_rules"]` is present,
+      iterate rules and emit each matching probe `kind`. Rules are evaluated
+      in order; first match-per-kind wins to avoid duplicate nudges. This
+      is the stack-agnostic path — Django/Rails/FastAPI projects can ship a
+      `verification.json` with their own probe_rules and the hook works.
+
+    - **Default Odoo** (legacy / fallback): when `cfg` is None or
+      `probe_rules` is missing/empty, run the hardcoded Odoo-12-flavoured
+      classification. Preserves behaviour for every project that hasn't
+      migrated their `verification.json` yet — zero migration burden.
+
+    Note: `import` probe is NOT applicable to Odoo addon code — the MCP
+    `python_import_check` runs in a bare subprocess without the Odoo
+    registry, so any module under `odoo.addons.*` will always raise
+    ModuleNotFoundError. The right path for Odoo addon tests is
+    `odoo-bin -d <db> -i <addon> --test-enable --stop-after-init`.
+    """
+    if cfg and isinstance(cfg.get("probe_rules"), list) and cfg["probe_rules"]:
+        return _classify_from_rules(file_path, cfg["probe_rules"])
+    return _classify_default_odoo(file_path)
+
+
+def _classify_default_odoo(file_path: str) -> List[str]:
+    """Original Odoo-specific classification (Odoo 12 / 17 shape)."""
+    p = Path(file_path)
+    name = p.name
+    suffix = p.suffix.lower()
+    kinds: List[str] = []
+    if suffix == ".py":
+        kinds.append("syntax")
+        if name == "__manifest__.py":
+            kinds.append("manifest")
+        elif _has_sibling_tests(p):
+            kinds.append("addon_test")  # nudge odoo-bin --test-enable
+    elif suffix == ".xml":
+        kinds.append("xml")
+    return kinds
+
+
+def _classify_from_rules(file_path: str, probe_rules: List[Dict[str, Any]]) -> List[str]:
+    """G8 v0.11.0 — declarative classification from cfg.probe_rules.
+
+    Each rule: {"match": {"suffix": ".py", "basename": "foo.py", ...},
+                "kinds": ["syntax", ...]}
+
+    Match criteria (all that are present must match):
+    - `suffix`: file extension incl. dot, case-insensitive. E.g. `.py`.
+    - `basename`: exact filename match, case-sensitive. E.g. `__manifest__.py`.
+    - `requires_sibling_tests`: True → file's addon must have `tests/__init__.py`.
+    - `glob`: fnmatch pattern on file path (workspace-relative ok).
+
+    Kinds: arbitrary strings — passed to `_build_message` which looks up
+    probe metadata via `cfg["probe_metadata"]` or falls back to Odoo
+    defaults. Unknown kinds emit a generic "run probe <kind>" line.
+    """
+    p = Path(file_path)
+    suffix = p.suffix.lower()
+    basename = p.name
+    out: List[str] = []
+    seen_kinds = set()
+    for rule in probe_rules:
+        if not isinstance(rule, dict):
+            continue
+        match = rule.get("match") or {}
+        if not isinstance(match, dict):
+            continue
+        if "suffix" in match and match["suffix"].lower() != suffix:
+            continue
+        if "basename" in match and match["basename"] != basename:
+            continue
+        if match.get("requires_sibling_tests") and not _has_sibling_tests(p):
+            continue
+        if "glob" in match:
+            import fnmatch
+            if not fnmatch.fnmatch(file_path, match["glob"]):
+                continue
+        for kind in rule.get("kinds") or []:
+            if isinstance(kind, str) and kind not in seen_kinds:
+                out.append(kind)
+                seen_kinds.add(kind)
+    return out
+
+
+def _has_sibling_tests(file_path: Path) -> bool:
+    """Return True if file's addon has a `tests/` folder with __init__.py.
+
+    Walks up from file_path looking for the closest `__manifest__.py`, then
+    checks if that addon directory contains `tests/__init__.py`. Avoids
+    nudging odoo-bin --test-enable when no test infrastructure exists.
+    """
+    try:
+        cursor = file_path.parent if file_path.is_file() else file_path
+        # M1 fix (2026-05-17): walk to FS root instead of magic bound — handles
+        # arbitrarily deep addon trees (e.g. OCA nested submodules ≥ 8 levels).
+        while True:
+            if (cursor / "__manifest__.py").exists():
+                tests_init = cursor / "tests" / "__init__.py"
+                return tests_init.exists()
+            if cursor.parent == cursor:
+                return False
+            cursor = cursor.parent
+    except OSError:
+        return False
+    return False
+
+
+def _addon_name(file_path: Path) -> Optional[str]:
+    """Find addon name (directory containing __manifest__.py) for a file."""
+    try:
+        cursor = file_path.parent if file_path.is_file() else file_path
+        # M1 fix: walk to FS root instead of magic bound.
+        while True:
+            if (cursor / "__manifest__.py").exists():
+                return cursor.name
+            if cursor.parent == cursor:
+                return None
+            cursor = cursor.parent
+    except OSError:
+        pass
+    return None
+
+
+def _is_duplicate(workspace: Path, file_path: str) -> bool:
+    path = workspace / STATE_REL
+    state: Dict[str, Any] = {}
+    if path.exists():
+        try:
+            state = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            state = {}
+    now = int(time.time())
+    if state.get("file_path") == file_path and (now - int(state.get("at", 0))) < NUDGE_TTL_SECONDS:
+        return True
+    atomic_write_json(path, {"file_path": file_path, "at": now})
+    return False
+
+
+# G8 v0.11.0 — default probe metadata for Odoo. Stays the implicit
+# fallback when verification.json has no `probe_metadata` block. New
+# stacks override this by shipping their own probe_metadata.
+_DEFAULT_PROBE_METADATA: Dict[str, Dict[str, str]] = {
+    "syntax": {
+        "mcp": "python_syntax_check",
+        "desc": "bắt SyntaxError / IndentationError ngay tại edit-time.",
+    },
+    "manifest": {
+        "mcp": "odoo_manifest_validate",
+        "desc": "depends/data/version structure phải hợp lệ trước khi install.",
+    },
+    "xml": {
+        "mcp": "xml_validate",
+        "desc": "bắt malformed XML / unknown view inherit_id / arch sai.",
+    },
+    # `addon_test` is special-cased in _build_message (shell command, not MCP).
+}
+
+
+def _build_message(file_path: str, rel_path: str, kinds: List[str],
+                   mcp_prefix: str, cfg: Optional[Dict[str, Any]] = None) -> str:
+    """Compose the nudge message.
+
+    Probe metadata source (G8 v0.11.0): `cfg["probe_metadata"]` (per-kind
+    `{mcp, desc}` dict) overrides defaults if present. Unknown kinds get
+    a generic "run <kind> probe" line so stack-specific kinds don't
+    silently disappear.
+    """
+    probe_metadata = dict(_DEFAULT_PROBE_METADATA)
+    if cfg and isinstance(cfg.get("probe_metadata"), dict):
+        # Merge: project override wins per-key.
+        for kind, meta in cfg["probe_metadata"].items():
+            if isinstance(meta, dict):
+                probe_metadata[kind] = meta
+
+    lines = [
+        f"[verification-loop] Vừa Edit/Write `{rel_path}` — TRƯỚC khi trả lời "
+        "\"đã xong / ready / verified\", phải chạy các probe sau và đưa output "
+        "vào tool-call history của turn này:",
+        "",
+    ]
+    step = 1
+    for kind in kinds:
+        if kind == "addon_test":
+            addon = _addon_name(Path(file_path)) or "<addon>"
+            lines.append(
+                f"  {step}. Chạy test addon `{addon}` qua `odoo-bin --test-enable`:\n"
+                f"     ```\n"
+                f"     <venv-python> <odoo-bin-path> -d <dev_db> "
+                f"-i {addon} --test-enable --stop-after-init --log-level=test\n"
+                f"     ```\n"
+                f"     (Thay `<odoo-bin-path>` bằng `odoo-bin` thực tế của "
+                f"project — discover qua `agent-toolkit.config.json` "
+                f"`stack.odoo_bin_rel`, hoặc `find . -name odoo-bin`.)\n"
+                f"     KHÔNG dùng MCP `python_import_check` hoặc `run_python_tests` "
+                f"cho Odoo addon — cả hai chạy subprocess KHÔNG load Odoo registry "
+                f"→ HttpCase/TransactionCase fail import `from odoo.tests.common`."
+            )
+            step += 1
+            continue
+        meta = probe_metadata.get(kind)
+        if meta and meta.get("mcp"):
+            desc = meta.get("desc", "")
+            lines.append(
+                f"  {step}. `{mcp_prefix}{meta['mcp']}` với path `{rel_path}`"
+                + (f" → {desc}" if desc else "")
+            )
+        else:
+            # Unknown kind — emit generic line so stack-specific probes
+            # still appear in the nudge.
+            lines.append(
+                f"  {step}. Chạy probe `{kind}` với path `{rel_path}` "
+                f"(probe_metadata cho `{kind}` chưa được khai báo trong "
+                f"`.agent-toolkit/verification.json`)."
+            )
+        step += 1
+    lines.extend([
+        "",
+        "Nếu probe FAIL → fix ngay, KHÔNG được claim done.",
+        "Tắt nhắc này: sửa `.agent-toolkit/verification.json` → `enabled: false`.",
+    ])
+    return "\n".join(lines)
+
+
+def main() -> int:
+    # Kill-switch: env var disables all enforcement (emergency).
+    if os.environ.get("AGENT_TOOLKIT_DISABLE") == "1":
+        _exit_silent()
+
+    raw = sys.stdin.read()
+    if not raw.strip():
+        _exit_silent()
+
+    try:
+        envelope = json.loads(raw)
+    except json.JSONDecodeError:
+        _exit_silent()
+
+    tool_name = envelope.get("tool_name") or ""
+    if tool_name not in SUPPORTED_TOOLS:
+        _exit_silent()
+
+    tool_input = envelope.get("tool_input") or {}
+    file_path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
+    if not file_path:
+        _exit_silent()
+
+    workspace_str = envelope.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    workspace = Path(workspace_str).resolve()
+
+    cfg = _load_config(workspace)
+    if not cfg or not cfg.get("enabled"):
+        _exit_silent()
+
+    addon_globs = cfg.get("addon_globs") or []
+    if not match_glob(file_path, addon_globs, workspace, empty_returns=False):
+        _exit_silent()
+
+    kinds = _classify(file_path, cfg)
+    if not kinds:
+        _exit_silent()
+
+    if _is_duplicate(workspace, file_path):
+        _exit_silent()
+
+    # Dynamic discovery: trust cfg if concrete, else read .mcp.json.
+    mcp_prefix = discover_mcp_prefix(workspace, cfg.get("mcp_prefix"))
+    try:
+        rel_path = str(Path(file_path).resolve().relative_to(workspace)).replace("\\", "/")
+    except (ValueError, OSError):
+        rel_path = file_path
+
+    _emit(_build_message(file_path, rel_path, kinds, mcp_prefix, cfg))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(run_main_safe(main))

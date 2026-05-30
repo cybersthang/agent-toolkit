@@ -1,0 +1,38 @@
+---
+description: Verify Odoo 17 algorithms against real or staging data. Read-only ORM eval through the realdata_test MCP; mutation tokens are statically rejected.
+alwaysApply: false
+---
+
+# Odoo 17 — Data Verification (MCP-first)
+
+Use this rule when the question is "is this calculation correct?", "does this method behave the same way every run?", or "does the new code match the old totals?". Always verify against real data **before** declaring an algorithm correct.
+
+## Three primary tools
+
+| Tool                     | Purpose                                                                                  |
+|--------------------------|------------------------------------------------------------------------------------------|
+| `eval_orm_expression`    | One-shot read-only ORM expression. Returns value + sha256 fingerprint.                   |
+| `consistency_check_eval` | Runs the same expression N times and asserts identical fingerprints. Proves determinism. |
+| `compare_with_expected`  | Runs an expression and compares against a caller-supplied expected JSON value.           |
+
+## Workflow
+
+1. Frame the question as **one Python expression** (no `=`, no `;`, no statements).
+   - `env['sale.order'].search_count([('state','=','done')])`
+   - `sum(env['account.move'].search([('date','=','2026-04-30')]).mapped('amount_total'))`
+2. `eval_orm_expression` → inspect value + fingerprint.
+3. `consistency_check_eval` (runs=2 or 3) → if `deterministic: false`, the algorithm depends on hidden state (clock, random, ordering). Fix before promoting.
+4. `compare_with_expected` → only when the user gives you an exact ground-truth value.
+
+## Hard rules
+
+- The expression is a **single Python expression**, never a statement. No `=`, `;`, or newlines.
+- Never bypass the sandbox by chaining unrelated calls; if you need state, ask the user.
+- Module install/update tests use `run_module_test` with `allow_db_write=true` only on a **staging** DB.
+- `database_looks_production=true` → stop and ask.
+
+## Anti-patterns
+
+- "Just run the cron and see what happens" → write a sandboxed expression first.
+- Comparing aggregates by eye → use `compare_with_expected` so the comparison is JSON-canonical.
+- Running once and declaring "looks deterministic" → always use `consistency_check_eval` for that claim.

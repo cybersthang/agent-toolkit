@@ -1,0 +1,74 @@
+---
+description: Determinism rule — recurring project answers must come from the canonical registry, never re-derived per conversation.
+alwaysApply: true
+---
+
+# Decision Consistency
+
+Same question asked twice -> same answer. The agent enforces this by routing recurring questions through the canonical registry instead of re-deriving them.
+
+## Registry
+
+- Path: `.codex/canonical_decisions.json`
+- Schema: `{ version, decisions[] }` where each decision has `id, topic, aliases[], question, answer, source`.
+- Mutation requires explicit user approval (the registry is the contract).
+
+### Source citation requirement (every new entry)
+
+The `source` field is **not optional padding**. Each decision must point to
+the artifact that grounds the answer, in one of these forms:
+
+| Source kind | Format | Example |
+|---|---|---|
+| Code line | `path:line` (or range) | `<addon>/models/cron.py:118-124` |
+| Manifest / config | `path` | `<addon>/__manifest__.py` |
+| Framework doc | URL + section title | `https://www.odoo.com/documentation/12.0/reference/orm.html#methods` |
+| Locked finding | `.codex/audit_findings_locked.md#<id>` | `.codex/audit_findings_locked.md#BLOCKER-3` |
+| Stack convention | `<stack>:<rule>` referring to a `.cursor/rules/*.mdc` file | `odoo-12:backend.api-multi-decorator` |
+| User decision (rare) | `user-decision:<date>` + 1-line rationale stored in entry | `user-decision:2026-04-12 — approved deviation from Odoo norm` |
+
+Entries without one of these source forms are **proposals**, not decisions
+— they must not be merged into the registry. "common knowledge",
+"obviously correct", and "the audit agent said so" are not valid sources.
+
+### Why this matters
+
+The registry deduplicates the answer space; the source field deduplicates
+the *reason*. Without a source, a future contradiction (a refactor, an
+Odoo upgrade, a CVE) has no way to invalidate the entry, and the registry
+silently encodes a wrong answer forever.
+
+## Lookup workflow (mandatory before answering recurring questions)
+
+1. Call `codebase.lookup_canonical_decision({ topic })`.
+2. If `match_count >= 1`: return the registered `answer` verbatim, then cite `registry_path` + `version`.
+3. If `match_count == 0`:
+   - Do NOT invent a one-shot answer.
+   - Propose a new entry as a JSON block: `{id, topic, aliases, question, answer, source}`.
+   - Wait for the user to approve before adding it.
+4. If the user contradicts a registered answer: stop. Treat it as an update request, propose the diff, then write the new entry only after approval and bump `version`.
+
+## What counts as "recurring"
+
+- Stack / language / framework versions.
+- Where addons / modules live.
+- API conventions (decorators, sudo policy, error types, logger).
+- Verification recipes (which command to run).
+- MCP routing (which MCP for which question).
+- Server endpoints / credentials policy.
+- Security defaults.
+
+## What is NOT registry material
+
+- One-shot debugging conclusions.
+- Per-ticket implementation details.
+- Anything that depends on the current branch state.
+
+## Enforcement self-check
+
+Before sending an answer to a "how do we do X" question, the agent silently asks itself:
+"Did I check the registry?" If no, retry the lookup before responding.
+
+## Why
+
+Without the registry, two equally plausible answers exist for many project questions, and the agent will alternate between them based on prompt phrasing. That breaks user trust. The registry collapses the answer space to one canonical entry per topic.

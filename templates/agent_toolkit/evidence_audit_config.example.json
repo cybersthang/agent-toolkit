@@ -1,0 +1,33 @@
+{
+  "_doc": "Additional evidence recognizers for evidence_audit hook. Copy to <project>/.agent-toolkit/evidence_audit_config.json and customize. Each pattern declares a regex over tool_result text; when matched in the current turn, the probe whose required_tools includes the pattern's `counts_as` value is considered satisfied even without an MCP tool call matching by name. Public toolkit ships only generic patterns; PR more upstream.",
+  "additional_evidence_patterns": [
+    {
+      "name": "falsify-cli-proven",
+      "claim_regex": "(?i)PROVEN|verified|all_pass",
+      "match_tool_results": "\\[falsify\\]\\s+PROVEN:",
+      "counts_as": "real-data-proof",
+      "rationale": "templates/codex/tools/falsify.py prints '[falsify] PROVEN:' on a successful timing_perturb / side_effect_inject / log_assertion / playwright run. Treat that as real-data evidence for the matching probe."
+    },
+    {
+      "name": "playwright-python-stdout-block",
+      "claim_regex": "(?i)PASS|verified|all_pass",
+      "match_tool_results": "===[A-Z_]+_BEGIN===[\\s\\S]*?\"all_pass\"\\s*:\\s*true[\\s\\S]*?===[A-Z_]+_END===",
+      "counts_as": "manual-browser",
+      "rationale": "Playwright Python scripts conventionally emit a JSON evidence block flanked by ===PROBE_<id>_BEGIN===/===END===. When the block contains all_pass=true, accept it as browser-driven evidence in place of the manual-browser tool."
+    },
+    {
+      "name": "mcp-realdata-module-test-ok",
+      "claim_regex": "(?i)PASS|tests?\\s*pass(ed)?|verified",
+      "match_tool_results": "Ran\\s+\\d+\\s+tests?\\s+in\\s+[\\d.]+s[\\s\\S]*?OK\\b",
+      "counts_as": "real-data-proof",
+      "rationale": "mcp__realdata_test__run_module_test prints unittest's 'Ran N tests in T s ... OK' on success. Recognize that as real-data evidence."
+    },
+    {
+      "name": "pytest-xdist-passed",
+      "claim_regex": "(?i)PASS|tests?\\s*pass(ed)?",
+      "match_tool_results": "\\d+\\s+passed(\\s+in\\s+[\\d.]+s)?",
+      "counts_as": "real-data-proof",
+      "rationale": "pytest output '<N> passed in <T>s'. Common across Django/Rails/generic Python stacks."
+    }
+  ]
+}

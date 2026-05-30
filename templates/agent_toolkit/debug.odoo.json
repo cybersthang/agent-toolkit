@@ -1,0 +1,19 @@
+{
+  "_doc": "Vibe-flow Phase 4 — Debug sentry config. Đọc bởi `.claude/hooks/debug_sentry.py` (Stop). Set `enabled: false` để tắt; `block_on_match: false` để chỉ warn.",
+  "enabled": true,
+  "block_on_match": true,
+  "patterns": [
+    "Traceback \\(most recent call last\\)",
+    "\\bAssertionError\\b",
+    "\\bAttributeError\\b",
+    "\\bIntegrityError\\b",
+    "\\bAccessError\\b",
+    "\\bKeyError\\b",
+    "\\bTypeError\\b",
+    "\\bValueError\\b",
+    "\\bImportError\\b",
+    "psycopg2\\.errors\\.",
+    "odoo\\.exceptions\\.",
+    "werkzeug\\.exceptions\\."
+  ]
+}

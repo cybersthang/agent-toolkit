@@ -1,0 +1,20 @@
+---
+description: {{PROJECT_NAME}} Odoo 12 project context and agent rules - always apply
+alwaysApply: true
+---
+
+**Stack**: {{STACK_LABEL}}, Python {{STACK_LANGUAGE_VERSION}}, PostgreSQL, QWeb/jQuery
+**Root**: `{{WORKSPACE_ROOT}}`
+**Custom addons**: see `agent-toolkit.config.json` → `addon_roots[0]`
+**Database**: `{{DEFAULT_DB}}`
+**Venv**: `{{PYTHON_BIN}}`
+**Run**: invoke the project venv directly; the toolkit exposes the path as `{{ENV_PREFIX}}_PYTHON_BIN` in `.codex/mcp.local.env`. Use `<venv>/bin/python <odoo-bin> -c <odoo.conf>` (POSIX) or the equivalent on Windows.
+
+**Agent rules**:
+- Keep output concise and result-focused.
+- Answer in {{RESPONSE_LANGUAGE}} when the user writes in {{RESPONSE_LANGUAGE}}; otherwise mirror the user's language.
+- Read the target file before editing it.
+- Keep diffs small and stay inside scope.
+- Do not add features outside the request without asking first.
+- Prefer ORM helpers such as `mapped`, `filtered`, and `read_group`.
+- Avoid `search()` calls inside loops.

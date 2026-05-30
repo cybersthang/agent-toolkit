@@ -1,0 +1,65 @@
+{
+  "_comment": "Odoo 18 differentiation from odoo-17 base: search(domain=...) keyword (was search(args=...)), aggregator='sum' field attr (was group_operator=), unified check_access(operation), <list> view tag preferred over <tree>, name_get() deprecated → _compute_display_name(). Reuses odoo-17 rule pack since deltas are additive-not-breaking for review purposes. See templates/cursor/skills/odoo/odoo-code-patterns/references/odoo-18-patterns.md for full delta list.",
+  "description": "Odoo 18 Community / Enterprise — Python 3.10+, OWL, search(domain=...), <list> view tag, unified check_access(). Reuses odoo-17 rule pack — see odoo-18-patterns.md for deltas.",
+  "stack_label": "Odoo 18",
+  "response_language": "Vietnamese",
+  "stack": {
+    "language": "python",
+    "language_version": "3.10",
+    "framework": "odoo",
+    "framework_version": "18",
+    "frontend": "OWL framework",
+    "_doc": "Per-stack optional path overrides — used by realdata_test MCP. Leave empty to let user set <PREFIX>_ODOO_BIN / <PREFIX>_ODOO_CONF env vars at runtime.",
+    "odoo_bin_rel": "",
+    "odoo_conf_rel": "",
+    "smoke_test_rel": ""
+  },
+  "addon_roots": ["addons", "custom_addons", "enterprise"],
+  "mcp_servers": ["codebase", "postgres", "realdata_test"],
+  "external_mcp_servers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--browser=chromium", "--headless", "--isolated"]
+    }
+  },
+  "db": {
+    "default_db": "odoo18_dev",
+    "default_port": 5432,
+    "default_user": "odoo"
+  },
+  "rules": ["_common", "odoo-18"],
+  "_rules_comment": "TODO: differentiate from odoo-17 base when templates/cursor/rules/odoo-18/ is authored. v18 deltas (search keyword, aggregator, check_access) covered in skill references only.",
+  "skills": ["_common", "odoo"],
+  "memory_packs": ["odoo-18"],
+  "_overlay_doc": "Version-specific invariants merged on top of project invariants.json by a FUTURE installer step (setup.py --merge-invariants, not yet wired — Wave C). Inherits the odoo-17 overlay conceptually (name_get, attrs/states, create_multi all still apply) plus the v18 deltas below. Same schema as .agent-toolkit/invariants.json entries. severity=warn. Cite a confirmed Odoo release fact per entry.",
+  "_inherits_overlay": "odoo-17",
+  "invariants_overlay": [
+    {
+      "id": "odoo18-list-view-tag",
+      "description": "Odoo 18 prefers the <list> view tag over <tree> for new list views (both legal; do not auto-rewrite existing <tree>).",
+      "applies_to": ["**/views/**/*.xml"],
+      "rules": {"must_keep_regex": ["<list\\b|<tree\\b"]},
+      "severity": "warn",
+      "rationale": "v18 introduced <list> as the preferred list-view tag; <tree> still works but new views should use <list> (odoo-18-patterns.md). Fix when violated: keep a valid <list> or <tree> root for the list view the edit was modifying.",
+      "_version": "18+"
+    },
+    {
+      "id": "odoo18-unified-check-access",
+      "description": "Odoo 18 unified check_access_rights()+check_access_rule() into check_access(operation).",
+      "applies_to": ["**/models/**/*.py", "**/controllers/**/*.py", "**/wizards/**/*.py"],
+      "rules": {"must_keep_regex": ["check_access\\("]},
+      "severity": "warn",
+      "rationale": "v18 replaced the separate check_access_rights()/check_access_rule() pair with a single check_access(operation) call (odoo-18-patterns.md). New ACL guards must use the unified form. Fix when violated: restore the check_access(...) call the edit dropped.",
+      "_version": "18+"
+    },
+    {
+      "id": "odoo18-aggregator-not-group-operator",
+      "description": "Odoo 18 renamed the read_group aggregator field attr group_operator='sum' to aggregator='sum'.",
+      "applies_to": ["**/models/**/*.py"],
+      "rules": {"must_keep_regex": ["aggregator\\s*=|group_operator\\s*="]},
+      "severity": "warn",
+      "rationale": "v18 renamed the field aggregation attribute from group_operator= to aggregator= (odoo-18-patterns.md). New stored/aggregated fields use aggregator=. Fix when violated: restore the aggregator= attribute the edit dropped (or migrate group_operator= → aggregator=).",
+      "_version": "18+"
+    }
+  ]
+}

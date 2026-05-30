@@ -1,0 +1,23 @@
+{
+  "_doc": "ECC-inspired verification-loop config. Read by `.claude/hooks/verification_loop.py` (PostToolUse). After every Edit/Write/MultiEdit on a file matching `addon_globs`, the hook nudges the agent to run MCP probes (`python_syntax_check`, `python_import_check`, `xml_validate`, `odoo_manifest_validate`) BEFORE claiming the change is done. Disable: set `enabled: false`. Customize `addon_globs` per project if your tree layout differs.",
+  "_doc_default_enabled": "Defaults to `enabled: true` — installer policy: enforcement value > onboarding noise. If first-install floods nudges on a dirty project, run `/verification-loop off` (toggle command, future) or edit this file directly. Per-file dedupe (NUDGE_TTL_SECONDS=30) prevents same-file spam but multi-file Edit bursts WILL nudge per file — intentional.",
+  "_upstream": {
+    "repo": "https://github.com/affaan-m/everything-claude-code",
+    "author": "@affaan-m",
+    "skill": "skills/verification-loop/SKILL.md",
+    "url": "https://github.com/affaan-m/everything-claude-code/blob/main/skills/verification-loop/SKILL.md",
+    "adopted": "2026-05-17",
+    "note": "Adapted from generic build/lint/typecheck loop to Odoo 12 MCP probes."
+  },
+  "enabled": true,
+  "mcp_prefix": "mcp__{{PROJECT_NAME_SLUG}}-{{STACK_FRAMEWORK}}{{STACK_FRAMEWORK_VERSION}}__",
+  "addon_globs": [
+    "**/__manifest__.py",
+    "**/models/**.py",
+    "**/controllers/**.py",
+    "**/wizards/**.py",
+    "**/views/**.xml",
+    "**/data/**.xml",
+    "**/security/**.xml"
+  ]
+}

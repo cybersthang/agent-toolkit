@@ -1,0 +1,10 @@
+- [User profile](user_profile.md) — Profile of the developer using this workspace.
+- [Project Python venv](feedback_python_venv.md) — Always use the project venv at `{{PYTHON_BIN}}`, never the system Python.
+- [Determinism contract](feedback_determinism.md) — Recurring "how do we do X" answers come from the canonical decisions registry, not re-derived per conversation.
+- [Module-agnostic rules](feedback_module_agnostic.md) — Invariant rules and skills must not hard-code module names; discover at runtime via the codebase MCP.
+- [Credentials policy](feedback_credentials.md) — Real credentials live only in `.codex/mcp.local.env` (gitignored); never paste them into committed files.
+- [No AI commit](feedback_no_ai_commit.md) — AGENT (any Claude model) MUST NOT run `git commit`/`push`/`add` unless DEV explicit authorization in the current turn. Cross-model drift incident — Sonnet variant committed despite Opus respecting the rule.
+- [MCP routing](project_mcp_routing.md) — MCP servers wired into this workspace and their primary tools.
+- [Workspace layout](project_workspace.md) — Root + addon roots + stack at a glance.
+- [Karpathy reference](reference_karpathy.md) — Upstream Karpathy guidelines we mirror locally.
+- [Exhaustive analysis](feedback_exhaustive_analysis.md) — Deep reviews must cover all audit dimensions in ONE pass; no drip-feeding new findings across sessions.

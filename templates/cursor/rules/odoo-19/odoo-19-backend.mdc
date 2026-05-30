@@ -1,0 +1,60 @@
+---
+description: Odoo 19 backend - ORM, views, mail framework v2, performance, security, manifest. Single source of truth for "how do I write Odoo 19 code in this project".
+globs: "{addons,custom_addons,enterprise,odoo/addons}/**/*"
+alwaysApply: false
+---
+
+## Odoo 19 vs 18 - what actually changed
+
+- **Mail framework v2 is the #1 caveat.** `mail.thread` and `mail.activity.mixin` were refactored: thread message storage and the follower model changed. If your task touches `message_post`, `_track_subtype`, `_message_compute_subject`, `_mail_thread_data`, custom follower logic, activity scheduling, or any subclass of these mixins — **read the actual Odoo 19 source for the relevant class before editing**. v18 patterns may compile but behave differently.
+- Other v18 patterns mostly carry over: OWL v2, `invisible="..."` Python-expr view syntax, `_compute_display_name`, `_check_company_auto`, `account.move` shape.
+- Python 3.10+ is the supported runtime; PostgreSQL >= 13.
+
+## ORM
+
+- Methods are **recordset by default**. `@api.multi` was removed in v13 and must not reappear.
+- `@api.model` for class-level methods that don't need a recordset.
+- `@api.model_create_multi` is required for `create()` overrides; a `@api.model` single-record `create()` silently breaks batch creates.
+- `_compute_display_name` is the standard hook for the display string (replaces the legacy `name_get`).
+- `@api.depends`, `@api.constrains`, `@api.onchange`, `@api.depends_context` as in v17/v18.
+- Call `ensure_one()` when a method assumes one record.
+- Use parameterized SQL only. Batch `write()` and `unlink()`.
+- Document every `sudo()` with a one-line reason in code.
+- Prefer ORM over SQL. When SQL writes are unavoidable, invalidate or refresh affected caches.
+
+## Performance
+
+- No `search()` / `browse(id)` inside loops.
+- `read_group(..., lazy=False)` for grouped counts and sums.
+- Push filtering into domains; do not filter in Python after a broad search.
+- `search_count()` over `len(search())`.
+- Batch with `mapped`, `filtered`, grouped domains, set operations.
+- Computed fields: complete `@api.depends`. Store only when searched, grouped, sorted, or repeatedly displayed at scale.
+
+## Views and models
+
+- Inheritance edits use `<xpath>` with `position="after|before|inside|replace|attributes"`.
+- Keep XML IDs stable across releases.
+- View attribute conditions use `invisible="..."`, `readonly="..."`, `required="..."` as Python expressions on the field. **Do not** introduce `attrs="{...}"` or `states="..."` — both have been removed since v17.
+- `_check_company_auto = True` on multi-company-sensitive models; keep `company_id` on relational targets consistent.
+- Keep model methods small and focused. Use `_sql_constraints` or `@api.constrains` for validation.
+
+## Frontend
+
+- OWL v2 (mature in v19). Components are JS modules under `static/src/`; templates use OWL XML with `t-*` directives.
+- No new jQuery selectors. Legacy v12-era widget classes are gone.
+
+## Security and style
+
+- Keep `ir.model.access.csv` and `ir.rule` aligned with new models.
+- Raise `UserError` for business rules, `ValidationError` for invalid data.
+- Use `_logger`, never `print()`.
+- Imports order: stdlib, third-party, `odoo`, local.
+- Respect multi-company and record rules unless the task explicitly requires privileged behaviour.
+
+## Verification
+
+- Module install/update: `{{PYTHON_BIN}} odoo-bin -u <module> --stop-after-init -d {{DEFAULT_DB}}`.
+- Module tests: `--test-enable --test-tags /<module> --stop-after-init`.
+- For algorithm correctness against real data, prefer `realdata_test.eval_orm_expression` and `consistency_check_eval` over UI-driven repro.
+- Before claiming a mail-thread change works, run the module test suite — the v2 refactor means lint/syntax checks alone are insufficient.

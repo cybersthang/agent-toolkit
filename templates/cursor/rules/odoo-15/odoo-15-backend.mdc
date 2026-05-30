@@ -1,0 +1,59 @@
+---
+description: Odoo 15 backend - ORM, views, performance, security, manifest. Single source of truth for "how do I write Odoo 15 code in this project".
+globs: "{{ADDON_GLOBS}}"
+alwaysApply: false
+---
+
+## ORM (Odoo 15 — diverges from 12/13)
+
+- Methods are **recordset by default**. `@api.multi` was removed in 13 and stays removed in 15 — do not import or apply it.
+- `@api.model` for class-level methods that don't need a recordset.
+- `@api.model_create_multi` to override `create()`. A single-record `@api.model` `create()` override silently breaks batch create.
+- `@api.depends`, `@api.constrains`, `@api.onchange`, `@api.depends_context` behave as in 14.
+- Call `ensure_one()` when a method assumes one record.
+- Parameterised SQL only. Batch `write()` and `unlink()`.
+- Document every `sudo()` with a one-line reason in code.
+- Prefer ORM over SQL. When SQL writes are unavoidable, invalidate or refresh affected caches.
+- `_check_company_auto` exists but is not the project default in 15 — only enable it when the model explicitly needs multi-company auto-check.
+
+## Performance
+
+- No `search()` / `browse(id)` inside loops.
+- Prefer `read_group(..., lazy=False)` for grouped counts and sums.
+- Push filtering into domains; do not filter in Python after a broad search.
+- Use `search_count()` instead of `len(search())`.
+- Batch recordset work with `mapped`, `filtered`, grouped domains, set operations.
+- Keep computed fields prefetch-friendly; declare a complete `@api.depends`.
+- Store computed fields only when they are searched, grouped, sorted, or repeatedly displayed at scale.
+
+## Views and models
+
+- Inheritance edits use `<xpath>` with `position="after|before|inside|replace|attributes"`.
+- View conditions in 15 use `attrs="{'invisible': [...]}"` / `states="..."`. Inline Python expression attributes (`invisible="<expr>"` / `readonly="<expr>"` / `required="<expr>"`) do **not** work in 15 — they replaced `attrs` / `states` only in **Odoo 17**. Keep `attrs` / `states` in 15; do not migrate to inline-expr unless the file is being moved to 17+.
+- New widget types available in 15: `widget="domain"`, `widget="json_editor"`, etc. Prefer them over hand-rolled inputs when present.
+- Keep XML IDs stable across releases.
+- Use `_sql_constraints` or `@api.constrains` for validation.
+
+## Frontend (the v15 pitfall)
+
+- **OWL v1 is the default for new components.** Web client is increasingly OWL but still ships QWeb/jQuery legacy in some places.
+- **Legacy kanban JS framework is still present in 15** (it was removed in 17). Old kanban widgets that depend on it keep working in 15, but plan migration to OWL before a 17 jump — do not delete them blindly, audit usages first.
+- Existing QWeb / jQuery widgets continue to work. Do **not** rewrite them wholesale unless the task explicitly asks.
+- New JS components go under `static/src/` as OWL modules with `t-*` directives.
+- Do not introduce new jQuery selectors for new code paths.
+
+## Security and style
+
+- Keep `ir.model.access.csv` and `ir.rule` aligned with new models.
+- Raise `UserError` for business rules, `ValidationError` for invalid data.
+- Use `_logger`, never `print()`.
+- Imports order: stdlib, third-party, `odoo`, local — in that order.
+- Respect multi-company and record rules unless the task explicitly requires privileged behaviour.
+- `mail` framework in 15 is still v1 — chatter inheritance and message_post APIs follow the pre-v2 contract.
+
+## Verification
+
+- Module install/update: `{{PYTHON_BIN}} odoo-bin -u <module> --stop-after-init -d {{DEFAULT_DB}}`.
+- Module tests: `--test-enable --test-tags /<module> --stop-after-init`.
+- For algorithm correctness against real data, prefer `realdata_test.eval_orm_expression` and `consistency_check_eval` over UI-driven repro.
+- PostgreSQL 12 is the recommended cluster for 15 (per Odoo's install docs); the 15 codebase still carries older-PG compatibility shims and does not hard-gate the version at registry boot.

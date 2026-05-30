@@ -1,0 +1,57 @@
+{
+  "description": "Odoo 12 stack — Python 3.5+ minimum, QWeb + jQuery, @api.multi. GENERIC preset — no project-specific defaults; user supplies addon_roots, db, etc. via setup.py prompts or agent-toolkit.config.json overrides.",
+  "stack_label": "Odoo 12",
+  "response_language": "English",
+  "stack": {
+    "language": "python",
+    "language_version": "3.5",
+    "framework": "odoo",
+    "framework_version": "12",
+    "frontend": "QWeb + jQuery",
+    "_doc": "Per-stack optional path overrides — used by realdata_test MCP. Leave empty to let user set <PREFIX>_ODOO_BIN / <PREFIX>_ODOO_CONF env vars at runtime.",
+    "odoo_bin_rel": "",
+    "odoo_conf_rel": "",
+    "smoke_test_rel": ""
+  },
+  "addon_roots": [],
+  "mcp_servers": [
+    "codebase",
+    "postgres",
+    "realdata_test"
+  ],
+  "external_mcp_servers": {
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest",
+        "--browser=chromium",
+        "--headless",
+        "--isolated"
+      ]
+    }
+  },
+  "db": {
+    "default_db": "",
+    "default_port": 5432,
+    "default_user": "odoo"
+  },
+  "rules": ["_common", "odoo-12"],
+  "skills": ["_common", "odoo"],
+  "memory_packs": ["odoo-12"],
+  "_overlay_doc": "Version-specific invariants merged on top of project invariants.json via `setup.py update --merge-invariants`. Same schema as .agent-toolkit/invariants.json. severity=warn (informational). Cite a confirmed Odoo release fact per entry.",
+  "invariants_overlay": [
+    {
+      "id": "odoo12-api-multi-required-on-write",
+      "description": "Odoo 12 methods that mutate multiple records via write() must keep the @api.multi decorator (or its implicit recordset-loop equivalent) — copy-pasting code from Odoo 16+ strips it because v16 removed @api.multi.",
+      "applies_to": ["**/models/**/*.py", "**/wizards/**/*.py"],
+      "rules": {"must_keep_regex": ["@api\\.multi|self\\.ensure_one\\(|for\\s+\\w+\\s+in\\s+self\\b"]},
+      "severity": "warn",
+      "rationale": "In Odoo 12, recordset semantics are NOT default — a method declared without @api.multi (and without iteration / ensure_one) runs on the FIRST record only, silently skipping the rest. Code copied from Odoo 16+ (where @api.multi was removed because recordset became default) will compile but only operate on rec[0]. Fix when violated: restore the @api.multi decorator OR explicit `for rec in self:` loop OR `self.ensure_one()` that the edit dropped.",
+      "added": "2026-05-28",
+      "added_by": "agent",
+      "_version": "12 only",
+      "_doc": "Added v0.26.0 — closes the audit gap where odoo-12 preset had 0 invariants_overlay while odoo-13..19 each had 1-3 version-specific guards."
+    }
+  ]
+}

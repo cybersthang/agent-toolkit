@@ -1,0 +1,29 @@
+{
+  "_doc": "Patterns for 'trigger N RPC' / 'fire M HTTP calls' style recipe phrases. Project-agnostic — emits generic fetch() loops; specific endpoint targeting added by stack-specific patterns.",
+  "patterns": [
+    {
+      "id": "trigger-n-rpc-generic",
+      "match_regex": "(?i)trigger\\s+(?P<count>\\d+)\\s+(?:RPC|HTTP\\s+calls?|requests?)",
+      "template": "        # Trigger {count} RPC calls (generic fetch loop).\n        for _i in range({count}):\n            page.evaluate('''async () => {{\n                await fetch('/web/dataset/call_kw', {{\n                    method: 'POST',\n                    headers: {{'Content-Type': 'application/json'}},\n                    credentials: 'same-origin',\n                    body: JSON.stringify({{jsonrpc: '2.0', method: 'call',\n                        params: {{model: 'res.partner', method: 'search_count',\n                                  args: [[]], kwargs: {{}}}}}})\n                }});\n            }}''')\n",
+      "vars": {"count": "from_match"}
+    },
+    {
+      "id": "trigger-longpoll",
+      "match_regex": "(?i)(?:trigger|fire)\\s+(?:a\\s+)?longpoll(?:ing)?(?:\\s+poll)?",
+      "template": "        # Trigger a longpolling request — recipe says this must be tagged ASYNC.\n        page.evaluate('''async () => fetch('/longpolling/poll', {{\n            method: 'POST',\n            headers: {{'Content-Type': 'application/json'}},\n            credentials: 'same-origin',\n            body: JSON.stringify({{jsonrpc:'2.0', params: {{channels: ['test'], last: 0}}}})\n        }}).catch(()=>{{}})''')\n",
+      "vars": {}
+    },
+    {
+      "id": "trigger-shadow-rpc",
+      "match_regex": "(?i)shadow\\s*[=:]\\s*true",
+      "template": "        # Arm the interceptor to tag the NEXT request as shadow=true (ASYNC).\n        page.evaluate('''() => {{\n            const m = odoo && odoo.__DEBUG__ && odoo.__DEBUG__.services\n                && odoo.__DEBUG__.services['<project_namespace>.RpcInterceptor'];\n            if (m && m._setPendingShadowForTest) m._setPendingShadowForTest(true);\n        }}''')\n",
+      "vars": {}
+    },
+    {
+      "id": "blockui-active-at-send",
+      "match_regex": "(?i)blockUI\\s+active",
+      "template": "        # Visually lock UI before the request → recipe says this must be tagged BLOCK.\n        page.evaluate('''() => {{\n            const f = odoo && odoo.__DEBUG__ && odoo.__DEBUG__.services\n                && odoo.__DEBUG__.services['web.framework'];\n            if (f && f.blockUI) f.blockUI();\n        }}''')\n",
+      "vars": {}
+    }
+  ]
+}

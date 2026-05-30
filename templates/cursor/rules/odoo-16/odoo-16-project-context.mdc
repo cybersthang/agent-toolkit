@@ -1,0 +1,25 @@
+---
+description: {{PROJECT_NAME}} Odoo 16 project context and agent rules - always apply
+alwaysApply: true
+---
+
+**Stack**: Odoo 16 ({{STACK_LANGUAGE}} {{STACK_LANGUAGE_VERSION}}, OWL v2 frontend, PostgreSQL >= 12)
+**Root**: `{{WORKSPACE_ROOT}}`
+**Database**: `{{DEFAULT_DB}}`
+**Python**: `{{PYTHON_BIN}}` (Odoo 16 requires Python 3.7+; 3.10 is the common Ubuntu 22.04 / Debian 11 baseline)
+**Run**: `{{PYTHON_BIN}} odoo-bin -d {{DEFAULT_DB}}` (cwd: `{{WORKSPACE_ROOT}}`)
+
+**Agent rules**:
+- Keep output concise and result-focused.
+- Reply in {{RESPONSE_LANGUAGE}} when the user writes in {{RESPONSE_LANGUAGE}}.
+- Read the target file before editing it.
+- Keep diffs small and stay inside scope.
+- Do not add features outside the request without asking first.
+- Prefer ORM helpers such as `mapped`, `filtered`, and `read_group`.
+- Avoid `search()` / `browse(id)` calls inside loops.
+- Do not introduce `@api.multi` — it was removed in Odoo 13 (long gone by 16). Recordset is the default.
+- When overriding `create()`, decorate with `@api.model_create_multi`.
+- For new company-scoped models, set `_check_company_auto = True` plus `check_company=True` on relational fields — let the ORM enforce multi-company integrity.
+- New OWL components use the **v2 class-based** syntax (`class X extends Component { … }`); legacy OWL v1 / `Widget` patterns are migration-only.
+- For new view conditions, write `invisible="…"`, `readonly="…"`, `required="…"` as Python expressions. `attrs="{...}"` and `states="…"` still work in 16 but are deprecated — leave existing ones, do not add new ones.
+- Use `flush_recordset()` / `env.flush_all()` (not ad-hoc cache invalidation) before SQL that must see pending writes.

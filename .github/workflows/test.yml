@@ -1,0 +1,79 @@
+name: tests
+
+on:
+  push:
+    # `main`, `master`, plus any release-line branch matching `N.M` (e.g. `1.0`).
+    # W7 fix: dev branches like `1.0` previously skipped CI silently.
+    branches:
+      - main
+      - master
+      - '[0-9]+.[0-9]+'
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ['3.8', '3.10', '3.12']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install dev deps
+        run: python -m pip install --upgrade pip pytest pytest-cov
+
+      - name: Run pytest suite
+        run: python -m pytest tests/ -v
+
+      - name: Smoke-test setup.py CLI
+        shell: bash
+        run: |
+          python setup.py --version
+          python setup.py list-presets
+
+      - name: Dry-run install into tmp project
+        shell: bash
+        run: |
+          mkdir -p /tmp/agent-toolkit-smoke
+          python setup.py init /tmp/agent-toolkit-smoke --preset generic --yes --dry-run
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip ruff
+      - run: ruff check setup.py lib/ tests/
+
+  coverage:
+    # F7 (CI fix): runs on Python 3.12 (latest matrix cell) with
+    # pytest-cov<7 so subprocess coverage from test_e2e.py setup.py
+    # invocations is captured. Without the pin, setup.py coverage drops
+    # to 17% on 3.10/3.12 and trips the 70% gate. See
+    # docs/AUDIT_HISTORY.md finding F7 for the full pytest-cov 7.x
+    # subprocess-tracking regression.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dev deps
+        run: python -m pip install --upgrade pip pytest 'pytest-cov<7'
+      - name: Run pytest with coverage gate
+        # COVERAGE_PROCESS_START activates pytest-cov 7.x subprocess
+        # tracking (see F7 in docs/AUDIT_HISTORY.md). Combined with
+        # parallel + multiprocessing in .coveragerc, this captures
+        # subprocess setup.py runs from test_e2e.py.
+        env:
+          COVERAGE_PROCESS_START: ${{ github.workspace }}/.coveragerc
+        run: python -m pytest tests/ --cov --cov-report=term-missing --cov-fail-under=70

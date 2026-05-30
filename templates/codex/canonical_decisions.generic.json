@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "updated_at": "{{TODAY_ISO_DATE}}",
+  "purpose": "Single source of truth for recurring project questions on this {{STACK_LABEL}} workspace. Agents MUST consult this registry before answering 'how do we do X in this project'. Adding/changing entries requires explicit user approval — this protects determinism.",
+  "decisions": [
+    {
+      "id": "stack",
+      "topic": "stack",
+      "aliases": ["technology stack", "tech stack"],
+      "question": "What is the project stack?",
+      "answer": "{{STACK_LABEL}} on Python {{STACK_LANGUAGE_VERSION}} (project venv at `{{PYTHON_BIN}}`). Workspace root: `{{WORKSPACE_ROOT}}`.",
+      "source": "agent-toolkit.config.json"
+    },
+    {
+      "id": "python-bin",
+      "topic": "python binary",
+      "aliases": ["python interpreter", "venv python", "which python", "project python"],
+      "question": "Which Python interpreter do we run for this project?",
+      "answer": "Always use the project venv: `{{PYTHON_BIN}}`. Never a system-PATH `python`. The venv path is exported as `{{ENV_PREFIX}}_PYTHON_BIN` in `.codex/mcp.local.env`.",
+      "source": ".codex/mcp.local.env"
+    },
+    {
+      "id": "addon-roots",
+      "topic": "addon roots",
+      "aliases": ["where is the code", "source root"],
+      "question": "Where does the project code live?",
+      "answer": "{{ADDON_ROOTS_CSV}}",
+      "source": "AGENTS.md"
+    },
+    {
+      "id": "verification-default",
+      "topic": "verification",
+      "aliases": ["how to test", "run tests", "smoke test"],
+      "question": "How do we verify changes in this project?",
+      "answer": "Run the project's test suite (`pytest`, `unittest`, framework runner) on the smallest unit affected. For real-data probes use the `codebase` MCP read-only tools first; only escalate to running code when search is insufficient.",
+      "source": ".cursor/rules/_common"
+    },
+    {
+      "id": "mcp-routing",
+      "topic": "mcp routing",
+      "aliases": ["which mcp", "tool selection"],
+      "question": "Which MCP do we use for which question?",
+      "answer": "Codebase discovery, file search, model graph → `codebase` MCP. Other servers are not installed in this preset. Never broad-read files before asking the codebase MCP first.",
+      "source": "AGENTS.md"
+    },
+    {
+      "id": "language-policy",
+      "topic": "response language",
+      "aliases": ["language", "reply language"],
+      "question": "Which language do we reply in?",
+      "answer": "Reply in {{RESPONSE_LANGUAGE}} unless the user explicitly asks otherwise. Code identifiers and comments stay in English so the codebase is searchable.",
+      "source": "AGENTS.md"
+    },
+    {
+      "id": "module-agnostic-rule",
+      "topic": "module agnostic",
+      "aliases": ["generic rule", "any module"],
+      "question": "Should rules and skills hard-code specific names?",
+      "answer": "No. Rules and skills must be generic and operate on any code in the workspace. Discover modules/files at runtime via the `codebase` MCP — never embed names into invariant rules.",
+      "source": ".cursor/rules/_common"
+    },
+    {
+      "id": "determinism-policy",
+      "topic": "determinism",
+      "aliases": ["consistency", "same answer", "registry lookup"],
+      "question": "How do we keep answers consistent across conversations?",
+      "answer": "Before answering recurring questions, call `lookup_canonical_decision` via the `codebase` MCP. If a match exists, return the registered answer verbatim and cite `registry_path` + `version`. If no match exists, propose adding a new entry instead of inventing a one-shot answer.",
+      "source": ".cursor/rules/decision-consistency.mdc"
+    },
+    {
+      "id": "audit-methodology",
+      "topic": "audit methodology",
+      "aliases": ["deep review", "exhaustive audit", "review methodology"],
+      "question": "How do we run a deep review/audit so the count is consistent across sessions?",
+      "answer": "Follow `.cursor/rules/audit-methodology.mdc`. Step 0: read `.codex/audit_findings_locked.md` FIRST and cite the recorded count verbatim. Step 1: cover all audit dimensions in ONE pass. Step 2: uniform severity (BLOCKER / MEDIUM / LOW) with PROOF lines. Drip-feed across sessions is forbidden.",
+      "source": ".cursor/rules/audit-methodology.mdc"
+    },
+    {
+      "id": "credentials-policy",
+      "topic": "credentials",
+      "aliases": ["passwords", "secrets", "env file"],
+      "question": "Where do real credentials live?",
+      "answer": "Real credentials live ONLY in `.codex/mcp.local.env` (gitignored). Committed files must contain placeholders or env-var names — never real passwords or hostnames. Env-var prefix for this project: `{{ENV_PREFIX}}`.",
+      "source": ".cursor/rules/_common/decision-consistency.mdc"
+    },
+    {
+      "id": "invariant-guard",
+      "topic": "invariant enforcement",
+      "aliases": ["invariant guard", "must keep pattern", "edit blocker"],
+      "question": "How are durable rules enforced on edits?",
+      "answer": "`.claude/hooks/invariant_guard.py` runs PreToolUse on Edit/Write/MultiEdit. It reads `.agent-toolkit/invariants.json` and DENIES any edit that strips a `must_keep_regex` pattern with severity `blocker`. Bypass once by adding `bypass-invariant: <id>` to the next user prompt. Permanent changes go through `/adr-add` → `/inv-add`.",
+      "source": ".agent-toolkit/README.md"
+    }
+  ]
+}

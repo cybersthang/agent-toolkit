@@ -1,0 +1,64 @@
+---
+description: Algorithmic complexity budget — keep Big-O cost visible and bounded.
+alwaysApply: true
+---
+
+# Algorithm Complexity Budget
+
+Pair with `karpathy-guidelines` §"Simplicity First" and the **complexity-sentinel** Stop hook (`.claude/hooks/complexity_sentinel.py`). This rule names the cost budget so reviewers and the hook agree on what counts as "too much".
+
+## Default budget (per function)
+
+| Metric | Soft limit | Hard limit | Action if exceeded |
+|---|---:|---:|---|
+| Loop nest depth | 2 | 3 | Comment the algorithmic trade-off above the loop. Extract inner body to a named helper if the work is reusable. |
+| Conditional nest depth (if/elif) | 3 | 4 | Replace with early-return guards, dispatch dict, or polymorphism. |
+| Function body | 40 LOC | 60 LOC | Split into named sub-functions whose names describe each step. |
+| Branch count (cyclomatic-ish) | 8 | 12 | Same as conditional nest. |
+
+Defaults match `complexity_sentinel.py`. Override per project in `.agent-toolkit/complexity_budget.json` — see `templates/agent_toolkit/`.
+
+## Big-O annotation rule
+
+Any function whose worst-case cost is **worse than O(n log n)** in input size MUST include a one-line comment above the definition stating:
+
+```
+# O(n²) — acceptable here because <n is bounded ≤ 50> / <one-shot migration> / <other concrete reason>.
+```
+
+No annotation = reviewer assumes O(1) or O(n) and rejects on Big-O grounds. The point is not to forbid quadratic code (sometimes correct), but to make the cost explicit and reviewable.
+
+## Reuse over rewrite
+
+Before adding a new pass over an existing data structure, ask:
+
+1. Is there already a function that iterates this structure? (Use the **Reuse Probe** hook / `reuse-first-then-write` skill.)
+2. Can the new work fold into that single pass?
+
+Two sequential O(n) passes are usually preferable to a fused O(n) pass that becomes unreadable — but three or more passes over the same data is a refactor signal (collect once, transform many).
+
+## Anti-patterns (each rejected at code review unless justified)
+
+| Anti-pattern | Better |
+|---|---|
+| Nested list comprehension `[x for a in A for b in a for c in b ...]` | Extract a generator function; name each level. |
+| `if cond1: if cond2: if cond3:` (3+ deep) | Guard clauses `if not cond1: return ...` |
+| Function > 60 LOC doing 4+ unrelated steps | Split into 4 named functions; the outer fn becomes a 4-line orchestrator. |
+| `for x in A: for y in B: if x == y: ...` (O(n·m) lookup) | Build a `set(B)` once; lookup is O(1) per x. |
+| Recursive call without `@lru_cache` on overlapping subproblems | Memoize, or convert to bottom-up iteration. |
+
+## When to override the budget
+
+Override is fine if you state WHY in a code comment that the reviewer (and future you) can grep:
+
+```python
+# Complexity-budget: loop-nest 4 OK — matrix is fixed 4×4×4×4 (RGBA cube).
+```
+
+The complexity-sentinel hook does not block; it surfaces. The rule above tells reviewers when "warned but shipped" is acceptable.
+
+## References
+
+- `karpathy-guidelines` §"Simplicity First" — philosophical anchor.
+- `complexity_sentinel.py` — Stop hook implementing the soft limits above.
+- `code-review` skill dimension 15 ("Concurrency / resource leaks") and dimension 17 ("Function duplication") — adjacent review checks.

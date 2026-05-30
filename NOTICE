@@ -1,0 +1,150 @@
+agent-toolkit
+Copyright (c) 2026 Thang Vo <ducthangict.dhtn@gmail.com>
+Licensed under the MIT License (see LICENSE).
+
+==============================================================================
+THIRD-PARTY NOTICES — upstream MIT-licensed work adopted in this toolkit
+==============================================================================
+
+This toolkit incorporates structural ideas + skill-body conventions from the
+following upstream projects. Each is MIT-licensed and the MIT license requires
+that the original copyright notice be preserved in redistributions.
+
+------------------------------------------------------------------------------
+1. mattpocock/skills — https://github.com/mattpocock/skills
+   License: MIT
+   Adopted in:
+     - templates/cursor/skills/_common/plan-feature/   (from skills/engineering/to-prd)
+     - templates/cursor/skills/_common/plan-feature/   (from skills/engineering/zoom-out)
+     - templates/cursor/skills/_common/clarify/        (from skills/productivity/grill-me)
+     - templates/cursor/skills/_common/clarify/        (from skills/engineering/grill-with-docs)
+     - templates/claude/hooks/git_guardrails.py        (from skills/misc/git-guardrails-claude-code)
+       — original bundled script `scripts/block-dangerous-git.sh`
+         ported to Python to match the toolkit's hook layer + extended
+         with `feedback_no_ai_commit` patterns (commit / push / add /
+         --no-verify) and a single-use bypass token.
+
+   Original notice:
+
+     MIT License
+
+     Copyright (c) Matt Pocock
+
+     Permission is hereby granted, free of charge, to any person obtaining a
+     copy of this software and associated documentation files (the
+     "Software"), to deal in the Software without restriction, including
+     without limitation the rights to use, copy, modify, merge, publish,
+     distribute, sublicense, and/or sell copies of the Software, and to
+     permit persons to whom the Software is furnished to do so, subject to
+     the following conditions:
+
+     The above copyright notice and this permission notice shall be included
+     in all copies or substantial portions of the Software.
+
+     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+     OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+     MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+     IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+     CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+     TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+     SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+------------------------------------------------------------------------------
+2. github/spec-kit — https://github.com/github/spec-kit
+   License: MIT
+   Adopted in:
+     - The 5-phase workflow naming (SPECIFY → CLARIFY → TASKS → ANALYZE → IMPLEMENT)
+       reflected in templates/claude/commands/*.md slash commands.
+     - templates/claude/commands/constitution.md       (from templates/commands/constitution.md)
+       — `/constitution` slash command pattern adapted to the toolkit's
+         two-tier model (constitution + ADR + invariants). Semver bumps
+         + spec-kit's `extensions.yml` hook system intentionally dropped
+         in favor of the existing ADR audit trail.
+     - templates/agent_toolkit/constitution.md         (concept from memory/constitution.md)
+       — "single slow-changing file with project principles" idea; agent-toolkit
+         pre-fills it at install time via setup.py template substitution
+         rather than spec-kit's interactive-fill model.
+
+   Original notice:
+
+     MIT License
+
+     Copyright (c) 2024 GitHub, Inc.
+
+     Permission is hereby granted, free of charge, to any person obtaining a
+     copy of this software and associated documentation files (the
+     "Software"), to deal in the Software without restriction, including
+     without limitation the rights to use, copy, modify, merge, publish,
+     distribute, sublicense, and/or sell copies of the Software, and to
+     permit persons to whom the Software is furnished to do so, subject to
+     the following conditions:
+
+     The above copyright notice and this permission notice shall be included
+     in all copies or substantial portions of the Software.
+
+     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+     OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+     MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+     IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+     CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+     TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+     SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+------------------------------------------------------------------------------
+3. affaan-m/everything-claude-code (ECC) — https://github.com/affaan-m/everything-claude-code
+   License: MIT
+   Adopted in:
+     - templates/claude/hooks/verification_loop.py        (from skills/verification-loop/SKILL.md)
+       — adapted the "lint/typecheck/syntax-check loop after every Edit"
+         pattern to a PostToolUse hook that nudges MCP probes per
+         `addon_globs` config. Toolkit-side additions: per-file 30s
+         dedupe, framework-overlay config split (verification.<fw>.json),
+         emit_fire_event integration.
+     - templates/claude/commands/eval-define.md           (from skills/eval-harness/SKILL.md
+                                                          + skills/agent-eval/SKILL.md)
+     - templates/claude/commands/eval-backfill.md         (from skills/eval-harness/SKILL.md)
+       — "concrete pass/fail criteria written into spec frontmatter
+         BEFORE /implement so /verify becomes mechanical" pattern.
+         Toolkit-side additions: integration with .agent-toolkit/
+         specs/<slug>.md frontmatter schema; acceptance_evals field
+         honored by verify_lint Stop hook.
+     - templates/claude/commands/bug-to-test.md           (from skills/ai-regression-testing/SKILL.md)
+       — "write tests for bugs found, not for code that works" rule.
+         Toolkit-side additions: auto-register an invariant in
+         invariants.json so future Edits cannot strip the test.
+
+   Original notice:
+
+     MIT License
+
+     Copyright (c) 2026 Affaan Mustafa
+
+     Permission is hereby granted, free of charge, to any person obtaining a
+     copy of this software and associated documentation files (the
+     "Software"), to deal in the Software without restriction, including
+     without limitation the rights to use, copy, modify, merge, publish,
+     distribute, sublicense, and/or sell copies of the Software, and to
+     permit persons to whom the Software is furnished to do so, subject to
+     the following conditions:
+
+     The above copyright notice and this permission notice shall be included
+     in all copies or substantial portions of the Software.
+
+     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+     OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+     MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+     IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+     CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+     TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+     SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+------------------------------------------------------------------------------
+4. forrestchang/andrej-karpathy-skills — https://github.com/forrestchang/andrej-karpathy-skills
+   License: MIT
+   Adopted in:
+     - templates/cursor/skills/_common/karpathy-guidelines/SKILL.md
+     - templates/memory/_common/reference_karpathy.md
+   Wording derived from Andrej Karpathy's public talks + tweets on LLM-assisted
+   coding discipline ("think before coding", "smallest change", "surgical
+   edits", "goal-driven verification"). Andrej Karpathy is the originator of
+   these principles; the linked repo is a community mirror.

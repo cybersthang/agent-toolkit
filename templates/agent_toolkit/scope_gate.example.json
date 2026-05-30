@@ -1,0 +1,9 @@
+{
+  "_doc": "v0.23.0 R9 — scope_completeness_gate config. Copy to .agent-toolkit/scope_gate.json. The Stop hook derives a scope manifest from a STRUCTURED artifact (tasks.md > acceptance_evals > TodoWrite>=min_items) and BLOCKs a done/full claim while any manifest item is still pending. NOT keyed off DEV prompt keywords. Enforce mode (block/warn/off) is read from enforce_mode.json per_hook.scope_completeness_gate (default block); this file only tunes activation.",
+  "_schema": {
+    "enabled": "bool — set false to fully disable the gate",
+    "min_items": "int >=1 — TodoWrite ad-hoc threshold; manifest auto-emits only when a session has >= this many todos and no tasks.md (default 3)"
+  },
+  "enabled": true,
+  "min_items": 3
+}

@@ -1,0 +1,55 @@
+---
+description: Odoo 17 backend - ORM, views, performance, security, manifest. Single source of truth for "how do I write Odoo 17 code in this project".
+globs: "{addons,custom_addons,enterprise,odoo/addons}/**/*"
+alwaysApply: false
+---
+
+## ORM (Odoo 17 — different from 12/13/14)
+
+- Methods are **recordset by default**. `@api.multi` is **removed**; do not import or apply it.
+- `@api.model` for class-level methods that don't need a recordset.
+- `@api.model_create_multi` to override `create()` so batch creates work properly. Single-record `@api.model` `create()` overrides will silently break batch create.
+- `@api.depends`, `@api.constrains`, `@api.onchange`, `@api.depends_context` as in earlier versions.
+- Call `ensure_one()` when a method assumes one record.
+- `_compute_display_name` replaces the legacy `name_get()` (deprecated in 17, removed in 18). Declare `@api.depends(...)` on the fields the display name reads. Overriding `name_get` is no longer the canonical path.
+- Use parameterized SQL only. Batch `write()` and `unlink()` operations.
+- Document every `sudo()` with a one-line reason in code.
+- Prefer ORM over SQL. When SQL writes are unavoidable, invalidate or refresh affected caches.
+
+## Performance
+
+- Avoid `search()` or `browse(id)` inside loops.
+- Prefer `read_group(..., lazy=False)` for grouped counts and sums.
+- Push filtering into domains; do not filter in Python after a broad search.
+- Use `search_count()` instead of `len(search())`.
+- Batch recordset work with `mapped`, `filtered`, grouped domains, and set operations.
+- Keep computed fields prefetch-friendly; declare a complete `@api.depends`.
+- Store computed fields only when they are searched, grouped, sorted, or repeatedly displayed at scale.
+
+## Views and models
+
+- Inheritance edits use `<xpath>` with `position="after|before|inside|replace|attributes"`.
+- Keep XML IDs stable across releases.
+- View attribute conditions use `invisible="…"`, `readonly="…"`, `required="…"` as Python expressions on the field. The Odoo 13-era `attrs="{...}"` and `states="…"` syntax is **deprecated and removed in 17**; do not introduce it.
+- Keep model methods small and focused.
+- Use `_sql_constraints` or `@api.constrains` for validation.
+
+## Frontend
+
+- OWL framework (no jQuery / QWeb-only). Components are JS modules under `static/src/`.
+- Templates use OWL XML with `t-*` directives; legacy widget classes from 12.x are gone.
+- Do not introduce new jQuery selectors.
+
+## Security and style
+
+- Keep `ir.model.access.csv` and `ir.rule` aligned with new models.
+- Raise `UserError` for business rules, `ValidationError` for invalid data.
+- Use `_logger`, never `print()`.
+- Imports order: stdlib, third-party, `odoo`, local — in that order.
+- Respect multi-company and record rules unless the task explicitly requires privileged behaviour.
+
+## Verification
+
+- Module install/update: `odoo-bin -u <module> --stop-after-init -d <db>` against the dev DB.
+- Module tests: `--test-enable --test-tags /<module> --stop-after-init`.
+- For algorithm correctness against real data, prefer `realdata_test.eval_orm_expression` and `consistency_check_eval` over UI-driven repro.

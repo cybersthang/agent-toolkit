@@ -1,0 +1,64 @@
+{
+  "_comment": "Odoo 16 differentiation from odoo-17 base: Python 3.7 minimum, OWL 2.x rewrite mainstream, account.move refactor (account.invoice → account.move unification completed), @api.multi removed. Reuses odoo-17 rule pack as it's closer to modern era than legacy odoo-12. TODO: add templates/cursor/rules/odoo-16/ when v16-specific .mdc content is authored.",
+  "description": "Odoo 16 Community / Enterprise — Python 3.7+, OWL 2.x rewrite mainstream, @api.multi REMOVED, account.move refactor. Modern era; reuses odoo-17 rule pack.",
+  "stack_label": "Odoo 16",
+  "response_language": "Vietnamese",
+  "stack": {
+    "language": "python",
+    "language_version": "3.7",
+    "framework": "odoo",
+    "framework_version": "16",
+    "frontend": "OWL 2.x",
+    "_doc": "Per-stack optional path overrides — used by realdata_test MCP. Leave empty to let user set <PREFIX>_ODOO_BIN / <PREFIX>_ODOO_CONF env vars at runtime.",
+    "odoo_bin_rel": "",
+    "odoo_conf_rel": "",
+    "smoke_test_rel": ""
+  },
+  "addon_roots": ["addons", "custom_addons", "enterprise"],
+  "mcp_servers": ["codebase", "postgres", "realdata_test"],
+  "external_mcp_servers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--browser=chromium", "--headless", "--isolated"]
+    }
+  },
+  "db": {
+    "default_db": "odoo16_dev",
+    "default_port": 5432,
+    "default_user": "odoo"
+  },
+  "rules": ["_common", "odoo-16"],
+  "_rules_comment": "TODO: differentiate from odoo-17 base when templates/cursor/rules/odoo-16/ is authored. v16 is the first major OWL2 release — patterns very close to v17.",
+  "skills": ["_common", "odoo"],
+  "memory_packs": ["odoo-16"],
+  "_overlay_doc": "Version-specific invariants merged on top of project invariants.json by a FUTURE installer step (setup.py --merge-invariants, not yet wired — Wave C). Same schema as .agent-toolkit/invariants.json entries. severity=warn (informational). Cite a confirmed Odoo release fact per entry.",
+  "invariants_overlay": [
+    {
+      "id": "odoo16-no-api-multi",
+      "description": "Odoo 16 removed @api.multi — recordset is the default. Methods iterating self need no decorator; @api.multi import/usage is dead.",
+      "applies_to": ["**/models/**/*.py", "**/wizards/**/*.py"],
+      "rules": {"must_keep_regex": ["@api\\.depends|@api\\.constrains|@api\\.onchange|@api\\.model|for\\s+\\w+\\s+in\\s+self\\b"]},
+      "severity": "warn",
+      "rationale": "@api.multi was removed by Odoo 16 (recordset became the default in the v15→v16 modernization). Code ported from v12 must drop @api.multi and rely on the recordset default; the looping/decorator structure must remain intentional. Fix when violated: restore the @api.* decorator or `for rec in self` loop the edit dropped.",
+      "_version": "16+"
+    },
+    {
+      "id": "odoo16-owl2-component-header",
+      "description": "Odoo 16 mainstreamed OWL 2.x — JS components must carry the `/** @odoo-module **/` header and extend Component from @odoo/owl; jQuery/web.Widget is removed for new code.",
+      "applies_to": ["**/static/src/**/*.js"],
+      "rules": {"must_keep_regex": ["@odoo-module"]},
+      "severity": "warn",
+      "rationale": "OWL 2.x is the default frontend framework from v16. New JS must declare `/** @odoo-module **/` so the asset loader treats it as an ESM OWL component; legacy `odoo.define`/jQuery widgets are gone for new code. Fix when violated: restore the `/** @odoo-module **/` header the edit dropped.",
+      "_version": "16+"
+    },
+    {
+      "id": "odoo16-account-move-not-invoice",
+      "description": "Odoo 16 completed the account.invoice → account.move unification — invoices/bills are account.move records (move_type), not the removed account.invoice model.",
+      "applies_to": ["**/models/**/*.py", "**/wizards/**/*.py"],
+      "rules": {"must_keep_regex": ["account\\.move|move_type"]},
+      "severity": "warn",
+      "rationale": "The `account.invoice` model was unified into `account.move` (distinguished by `move_type`) during the account refactor finalized by v16. Code referencing `account.invoice` will fail to resolve the model. Fix when violated: restore the `account.move` reference / `move_type` filter the edit dropped.",
+      "_version": "16+"
+    }
+  ]
+}

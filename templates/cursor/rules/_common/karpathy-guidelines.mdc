@@ -1,0 +1,80 @@
+---
+description: Karpathy-inspired behavioral guidelines for coding agents
+alwaysApply: true
+---
+
+# Karpathy Behavioral Guidelines
+
+Use these rules for writing, reviewing, and refactoring code in this project.
+
+## Think Before Coding
+
+- State important assumptions before implementation.
+- If multiple interpretations affect behavior, ask or present the tradeoff.
+- Push back when a simpler approach better fits the goal.
+- Stop and clarify when confusion would create risky code.
+
+## Simplicity First
+
+- Implement the smallest solution that satisfies the request.
+- Do not add speculative features, configurability, or abstractions.
+- Avoid single-use abstractions unless they remove real complexity.
+- If a solution is much larger than the problem, simplify it before finishing.
+
+## Grep Before Write
+
+Before writing a new function, helper, or utility:
+
+1. Grep the workspace for the identifier (or close variants).
+2. If a hit exists, cite `path:line` in your response and decide: **reuse**, **extend**, or **rewrite** (with reason).
+3. If no hit, state in one line *"Searched: <pattern> → no existing implementation"* before adding.
+
+Goal: prevent silent duplication. Two implementations of the same logic under different names is the single most common AI-coding bloat pattern. The rule applies to functions, classes, type aliases, and constants — anything a `grep -E "^(def|class|TYPE_ALIAS|CONSTANT_NAME)"` would catch.
+
+This rule pairs with `reuse-first-then-write` skill (3-step probe workflow) and the `reuse_targets` frontmatter field in `.agent-toolkit/specs/*.md` (declarative reuse intent).
+
+## Surgical Changes
+
+- Touch only files and lines tied to the user request.
+- Do not refactor adjacent code just because it is nearby.
+- Match existing local style even when another style is preferable.
+- Remove only unused code introduced by the current change.
+- Mention unrelated dead code or risks instead of deleting them.
+
+## Goal-Driven Execution
+
+- Turn non-trivial tasks into explicit success criteria.
+- Prefer tests or narrow verification that proves the requested behavior.
+- Loop until the success criteria are met or a concrete blocker is found.
+- Keep summaries concise and focused on what changed and how it was verified.
+
+## No Hardcoding — Dynamic by Default
+
+**Rule:** never embed project-specific values in code logic, skills,
+rules, hooks, or tests. Reach for one of these dynamic sources instead:
+
+| Hardcoded thing | Dynamic replacement |
+|---|---|
+| Project module name (e.g. `<your_custom_module>`) | Discover at runtime via `codebase.discover_modules` / `search_xml_ids`. In templates use `<module>` placeholder. |
+| Odoo model name (e.g. `<account.model>` / `<res.model>`) | Discover via `codebase.search_model_definitions`. In docs use `<model>` placeholder. |
+| Stack / framework / version (e.g. `<framework>` / `<major>` / `<python_version>`) | Use toolkit placeholders `<STACK>` / `<STACK_MAJOR>` / `<PYTHON_VERSION>` — rendered per preset at install time. |
+| Path constants (e.g. `<C:/Users/...>` / `<workspace_root>`) | Use `<PYTHON_BIN>` / `<WORKSPACE_ROOT>` placeholders; per-machine values come from `agent-toolkit.config.json`. |
+| Database / credentials | Always read from `.codex/mcp.local.env` (gitignored); never embed in committed code. |
+| Magic thresholds (e.g. `<N> minutes`, `<M> workers`, port `<NNNN>`) | Make configurable via `ir.config_parameter` / settings file / preset JSON. State the default explicitly + cite where it can be overridden. |
+| Field names (e.g. `<schema_specific_field>`) tied to one project's schema | Quote them as examples only; in reusable logic use parameters or `_fields` introspection. |
+
+**Self-check before committing code:** scan the diff for any string
+literal that names a specific module, model, version, path, or
+threshold. For each hit, ask: *would this still be correct on a
+sibling project / another Odoo version / a different machine?* If no
+→ replace with placeholder, parameter, or discovery call.
+
+**Self-check before writing a skill/rule:** worked examples and
+checklists MUST use `<module>` / `<view>` / `<model>` style
+placeholders, not real project names. Real names belong in
+`canonical_decisions.json` (project-scoped) or in MCP-discovered
+runtime data, never in the methodology files themselves.
+
+This rule is enforced by `feedback_module_agnostic` memory and by
+explicit user feedback (2026-05-13): *"không được fix cứng bất cứ cái
+gì hết luôn hướng tới giải pháp Dynamic để nó áp dụng được tổng thể"*.

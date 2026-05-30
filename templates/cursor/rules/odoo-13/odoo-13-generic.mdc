@@ -1,0 +1,70 @@
+---
+description: Generic, module-agnostic Odoo 13 rules. Hard-coded module names are forbidden in invariant rules; everything is discovered at runtime.
+alwaysApply: true
+---
+
+# Odoo 13 — Generic Rules (Module-Agnostic)
+
+This file applies to **any** addon under any addon root. Never embed a specific module name into an invariant rule. When you need a concrete module, discover it at runtime via the `codebase` MCP.
+
+## Discovery (always before edits)
+
+1. `workspace_status` -> confirm addon roots.
+2. `discover_modules({ root_hint })` -> narrow to one module.
+3. `read_manifest({ module_path })` -> understand depends and data load order.
+4. `find_inheritance_chain({ model })` -> see every place a model is extended.
+5. `list_test_targets({ module_path })` -> learn the test entry points.
+
+## Invariants (Odoo 13)
+
+- **Python**: 3.6+ only. Python 2 support was dropped in 13.0 — no `__future__` imports, no `unicode_literals`, no `super(Cls, self)` if `super()` works.
+- **Models**: `_name` for new model, `_inherit` for extension, `_inherits` for delegation. Never declare both `_name` and `_inherit` to the same string in one class.
+- **API**: `@api.multi` and `@api.one` were **removed in 13** (raise AttributeError; present only ≤12) — never introduce them, and replace any leftover. Recordsets are default. `@api.returns` **still exists in 13** — it was not removed. Use `@api.model` for class-level methods and `@api.model_create_multi` for `create()` overrides.
+- **`ensure_one()`**: required when a method assumes a single record.
+- **Loops**: no `search()`, `browse(id)`, `write()`, or `unlink()` inside loops. Push filtering into domains, batch with `mapped` / `filtered` / `read_group`.
+- **Counts**: `search_count(domain)` over `len(search(domain))`.
+- **Computed fields**: declare a complete `@api.depends` (13 evaluates dependencies more strictly than 12). Store only when searched / grouped / sorted at scale.
+- **SQL**: prefer ORM. If SQL is unavoidable, use parameters and invalidate or refresh affected caches when writing.
+- **`sudo()`**: avoided unless clearly required; document the reason in a one-line comment.
+- **Errors**: `UserError` for business rules, `ValidationError` for invalid data.
+- **Logging**: use `_logger`, never `print`.
+- **Imports**: stdlib, third-party, `odoo`, local — in that order.
+
+## Manifest hygiene (any module)
+
+- `data` order: `security/` first, then `data/`, then `views/`, then menus.
+- `depends` lists exactly what the module imports / inherits.
+- `version` follows the existing project pattern (e.g. `13.0.x.y.z`).
+- `installable: True`, `application` only when the module is a top-level app.
+
+## XML / view hygiene
+
+- Inheritance edits use `xpath` with `position="after|before|inside|replace|attributes"`.
+- `attrs="{...}"` and `states="..."` are **valid in 13** — keep them for conditional UI. (Only removed in 17; do not pre-migrate.)
+- XML IDs are stable across releases. Never rename a published XML ID without a migration step.
+- Views referenced by `act_window` / `menuitem` must already exist by the time the data file loads.
+
+## Security / ACL
+
+- Every new model has at least one `ir.model.access.csv` row.
+- Record rules align with the model's `_inherit` chain — check the parent's rules before adding new ones.
+- `_check_company_auto` **is** part of 13 (in `models.py`) but is opt-in (defaults to `False`, active only with `check_company=True` fields) — guard multi-company crossings explicitly where it is not enabled.
+
+## Frontend (Odoo 13)
+
+- jQuery + legacy QWeb only. **OWL is not available** (introduced in 14.0). Do not write OWL components.
+- JS uses `odoo.define(..., function (require) { ... })` AMD modules under `static/src/js/`.
+
+## Verification recipes (narrowest first)
+
+1. `{{PYTHON_BIN}} odoo-bin -u <module> --stop-after-init -d {{DEFAULT_DB}}` against the dev DB.
+2. `--test-enable --test-tags /<module> --stop-after-init` for module tests.
+3. For algorithm correctness: `eval_orm_expression` + `consistency_check_eval`.
+
+## What this rule **does not** mention by design
+
+- Specific module names.
+- Specific menu / model paths.
+- Specific JIRA project keys.
+
+If you need any of those, look them up via the `codebase` MCP or the canonical decisions registry — do not hard-code them here.

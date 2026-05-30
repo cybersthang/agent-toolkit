@@ -1,0 +1,15 @@
+{
+  "_doc": "Config for gap_fix_cycle engine. Copy to .agent-toolkit/gap_fix.json and customize. The engine ships sensible defaults so the file is optional. ADR-002 hard-stops always apply — `respect_hard_stops` here is documentation only.",
+  "max_iter": 3,
+  "timeout_per_iter_s": 300,
+  "decision_log_append": true,
+  "respect_hard_stops": [
+    "prod_db_write",
+    "git_push_force",
+    "credentials_write",
+    "git_push_main_branch"
+  ],
+  "diagnose_strategies_dir": ".codex/gap_fix_diagnose",
+  "skip_strategies": [],
+  "_skip_strategies_doc": "Add strategy module filenames (without .py) here to bypass them. Useful when a strategy is too aggressive for the project."
+}

@@ -1,0 +1,216 @@
+{
+  "_doc": "Project-scoped Claude Code settings managed by agent-toolkit. Edit `.claude/settings.local.json` for per-developer overrides (gitignored). Re-run `setup.py update` to refresh.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/session_brief.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/intent_router.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/invariant_guard.py",
+            "timeout": 5
+          },
+          {
+            "_comment": "v0.25.0 parallel-subagent-guard: DENY when an Edit/Write targets a file owned by a different sub-agent in the active wave (file-disjoint enforcement). Manifest from `tools/parallel_wave.py emit`; silent allow when no manifest / wave_done / TTL expired / outside any zone. Identity from envelope `agent_id` (sub-agents only — Claude Code docs hooks.md). Default `block`; bypass once via `bypass-parallel-guard:` in prompt.",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/parallel_conflict_guard.py",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/analyze_halt_gate.py",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/spec_first_guard.py",
+            "timeout": 5
+          },
+          {
+            "_comment": "v0.12.0 reuse-probe: soft-warn when new def/class collides with existing workspace symbol. Runs BEFORE implement_snapshot_hook (which must remain last per Stop-chain integration test).",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/reuse_probe.py",
+            "timeout": 6
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/implement_snapshot_hook.py",
+            "timeout": 8
+          }
+        ]
+      },
+      {
+        "_comment": "Bash guardrails — block destructive git ops the AGENT is not authorized to run (commit/push/add/reset --hard/etc.). DEV-only gate per feedback_no_ai_commit. Bypass once via `.agent-toolkit/.skip_git_guard_next.json`. Lives in a separate matcher group after Edit/Write so the chain-order test (which reads PreToolUse[0]) still sees invariant_guard first.",
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/git_guardrails.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/probe_autostub.py",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/tdd_runner.py",
+            "timeout": 35
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/verification_loop.py",
+            "timeout": 8
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/verify_nudge.py",
+            "timeout": 5
+          },
+          {
+            "_comment": "P5 v0.8.0: timeout reduced 600→120 to prevent 10-minute blocks on hanging MCP",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/auto_test_runner.py",
+            "timeout": 150
+          },
+          {
+            "_comment": "P5 v0.8.0: timeout reduced 300→90",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/auto_run_probes.py",
+            "timeout": 120
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/daemon_manager.py",
+            "timeout": 90
+          },
+          {
+            "_comment": "v0.12.0 loc-delta-tracker: track LOC growth per turn (observability, soft warn at threshold)",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/loc_delta_tracker.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "_comment": "P1 v0.8.0: orchestrator moved to position 1 so audit fires before blocking hooks (closes F1 cascade)",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/implement_orchestrator.py",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/evidence_audit.py",
+            "timeout": 8
+          },
+          {
+            "_comment": "v0.13.0 clarification-gate-enforcer: enforce 4-marker response shape (UNDERSTANDING/ASSUMPTIONS/QUESTIONS/Searched:) when intent_router suggested clarification-gate. Runs AFTER evidence_audit (evidence checks claim-vs-proof; this checks response shape contract) and BEFORE debug_sentry (final layer). Default mode: block (D8).",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/clarification_gate_enforcer.py",
+            "timeout": 5
+          },
+          {
+            "_comment": "v0.19.0 gap-completeness-gate: track open gaps across turns, BLOCK done-claim while gaps unresolved. Resolution markers: gap-defer / gap-cant-fix (in response) + bypass-gap-gate (in prompt). Default mode: block (matches feedback_exhaustive_analysis). Skips when autonomy active (auto-chain mid-fix).",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/gap_completeness_gate.py",
+            "timeout": 5
+          },
+          {
+            "_comment": "v0.23.0 R9 scope-completeness-gate: BLOCK done/full-claim while scope manifest (derived from tasks.md / acceptance_evals / TodoWrite≥3, NOT DEV prompt keywords) still has pending items. Resolution markers: scope-done / scope-defer / scope-cant (in response) + bypass-scope-gate (in prompt). Default mode: block (D2). Silent when no manifest (zero friction). Sibling of gap_completeness_gate (gap=mid-work discovery; scope=upfront coverage). Runs AFTER gap gate, BEFORE verify_lint_scope final gate.",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/scope_completeness_gate.py",
+            "timeout": 8
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/verify_lint.py",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/independent_review_gate.py",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/post_edit_verify_gate.py",
+            "timeout": 6
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/debug_sentry.py",
+            "timeout": 8
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/spec_drift_advisory.py",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/implement_notes_gate.py",
+            "timeout": 5
+          },
+          {
+            "_comment": "v0.12.0 complexity-sentinel: AST-scan .py edits for loop nest / function LOC / branch count overflow (warn only). Runs BEFORE verify_lint_scope (Layer 5 final gate).",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/complexity_sentinel.py",
+            "timeout": 8
+          },
+          {
+            "_comment": "v0.23 R7 probe-coverage-gate: BLOCK done-claim if feature-scope probe coverage < min_coverage_pct (default 60%, warn-only until enforce_mode promotes). Opt-in via .agent-toolkit/probe_coverage.json. Skips silently if config absent.",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/probe_coverage_gate.py",
+            "timeout": 10
+          },
+          {
+            "_comment": "v0.23 R1 bypass-rate-alarm: surface hooks with bypass-rate > threshold (default 5% rolling 7d) so DEV reviews before bypass becomes routine (security-theatre guard). Warn-only; reads .hook_fire_log.json. Opt-in via .agent-toolkit/bypass_alarm.json.",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/bypass_rate_alarm.py",
+            "timeout": 5
+          },
+          {
+            "_comment": "Layer 5 FINAL gate — must remain last (test_stop_chain_interactions asserts this).",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/verify_lint_scope.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

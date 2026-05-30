@@ -1,0 +1,24 @@
+---
+description: {{PROJECT_NAME}} Odoo 18 project context and agent rules - always apply
+alwaysApply: true
+---
+
+**Stack**: Odoo 18 ({{STACK_LANGUAGE}} {{STACK_LANGUAGE_VERSION}}, OWL frontend, PostgreSQL ≥ 12 / 14 preferred)
+**Root**: `{{WORKSPACE_ROOT}}`
+**Database**: `{{DEFAULT_DB}}`
+**Python**: `{{PYTHON_BIN}}` (Python 3.10+; 3.12 supported)
+**Run**: `{{PYTHON_BIN}} odoo-bin -d {{DEFAULT_DB}}` (cwd: `{{WORKSPACE_ROOT}}`)
+
+**Agent rules**:
+- Keep output concise and result-focused.
+- Reply in {{RESPONSE_LANGUAGE}} when the user writes in {{RESPONSE_LANGUAGE}}.
+- Read the target file before editing it.
+- Keep diffs small and stay inside scope.
+- Do not add features outside the request without asking first.
+- Prefer ORM helpers such as `mapped`, `filtered`, and `read_group`.
+- Avoid `search()` / `browse(id)` calls inside loops.
+- Do not introduce `@api.multi` — removed since 13. Recordset is the default.
+- Do not introduce `attrs="{...}"` or `states="…"` in views — both removed in 17 and stay removed in 18.
+- Do not define `name_get()` — deprecated in 17, removed in 18. Override `_compute_display_name` with `@api.depends`.
+- Use `@api.model_create_multi` for any `create()` override.
+- Treat v18 as "v17 + refinements": most v17 patterns work unchanged, but the OWL component surface and audit checks are tighter — verify against the live `web` addon before assuming a helper still exists.

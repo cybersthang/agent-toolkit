@@ -1,0 +1,17 @@
+{
+  "_doc": "Stack-agnostic verification-loop config. Read by `.claude/hooks/verification_loop.py` (PostToolUse). After every Edit/Write/MultiEdit on a file matching `addon_globs`, the hook nudges the agent to run MCP probes (`python_syntax_check`, `python_import_check`) BEFORE claiming the change is done. Disable: set `enabled: false`. Customize `addon_globs` per project for narrower scope; default globs match common Python project layouts.",
+  "_doc_default_enabled": "Defaults to `enabled: true` — installer policy: enforcement value > onboarding noise. If first-install floods nudges on a dirty project, set `enabled: false` here. Per-file dedupe (NUDGE_TTL_SECONDS=30) prevents same-file spam.",
+  "_upstream": {
+    "repo": "https://github.com/affaan-m/everything-claude-code",
+    "author": "@affaan-m",
+    "skill": "skills/verification-loop/SKILL.md",
+    "url": "https://github.com/affaan-m/everything-claude-code/blob/main/skills/verification-loop/SKILL.md",
+    "adopted": "2026-05-17",
+    "note": "Stack-agnostic variant — generic Python lint/syntax probes only. Framework-specific probes (e.g. Odoo manifest validate, Django model check) live in `verification.<framework>.json` overlays."
+  },
+  "enabled": true,
+  "mcp_prefix": "mcp__{{PROJECT_NAME_SLUG}}__",
+  "addon_globs": [
+    "**/*.py"
+  ]
+}

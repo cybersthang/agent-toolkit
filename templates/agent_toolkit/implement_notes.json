@@ -1,0 +1,16 @@
+{
+  "_doc": "implement-notes config — read by `/implement` Phase 5.5 auto-emit + `implement_notes_gate.py` Stop hook validator. Ships defaults; project can override per-field. Schema v0.18+.",
+
+  "auto_emit": true,
+  "_doc_auto_emit": "When true, `/implement <slug>` auto-fires `/implement-notes` after `/verify` completes (Phase 5.5). When false, sidecar emit is fully manual via slash command. Default true.",
+
+  "output_format": "both",
+  "_doc_output_format": "One of `md` | `html` | `both`. `md` = legacy machine-parseable only. `html` = DEV browser-readable only. `both` = ship both files (default, recommended).",
+
+  "enforce": "warn",
+  "_doc_enforce": "Stop-hook severity when sidecar missing on done-claim. `warn` (default) = additionalContext nudge. `block` = exit 2 hard-block. Override via `.agent-toolkit/enforce_mode.json` per_hook.implement_notes_gate.",
+
+  "_skill_reference": "templates/cursor/skills/_common/implement-notes/SKILL.md",
+  "_template_reference_md": "templates/agent_toolkit/implement-noted.example.md",
+  "_template_reference_html": "templates/agent_toolkit/implement-noted.example.html"
+}

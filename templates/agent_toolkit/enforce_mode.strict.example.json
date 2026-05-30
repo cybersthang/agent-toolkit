@@ -1,0 +1,21 @@
+{
+  "_doc": "Strict-profile enforce mode (v0.27+). Restores pre-v0.27 hard blocking for ALL Stop gates. Use when ADR-006 / ADR-007 / feedback_exhaustive_analysis must be mechanically enforced (CI, audited runs). For day-to-day work prefer enforce_mode.example.json (warn-default) so the model isn't paralyzed by stacked Stop hooks. AGENT_TOOLKIT_STRICT=1 env var has the same effect as this file.",
+  "default": "block",
+  "per_hook": {
+    "spec_first_guard": "warn",
+    "implement_notes_gate": "warn",
+    "spec_drift_advisory": "warn",
+    "implement_orchestrator": "warn",
+    "verify_lint_scope": "block",
+    "clarification_gate_enforcer": "block",
+    "gap_completeness_gate": "block",
+    "scope_completeness_gate": "block",
+    "post_edit_verify_gate": "block",
+    "invariant_guard": "block",
+    "evidence_audit": "block",
+    "verify_lint": "block",
+    "independent_review_gate": "block",
+    "git_guardrails": "block",
+    "parallel_conflict_guard": "block"
+  }
+}

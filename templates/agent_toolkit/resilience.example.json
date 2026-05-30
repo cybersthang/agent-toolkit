@@ -1,0 +1,17 @@
+{
+  "_doc": "v0.24.0 agent-resilience-supervisor config. Copy to .agent-toolkit/resilience.json. Drives tools/agent_supervisor.py (external watcher) + the session_brief resume-brief. The watcher is READ-ONLY by default (detect stall → notify); pass --relaunch (CLI-only) for auto-relaunch. SMTP/webhook credentials are NEVER put here — they live in .codex/mcp.local.env (gitignored): SMTP_HOST/PORT/USER/PASSWORD/FROM/TO, WEBHOOK_URL.",
+  "_schema": {
+    "stall_seconds": "int — transcript idle beyond this (and autonomy active) → notify (default 180; generous because notify-only)",
+    "notify_cooldown": "int — min seconds between repeat notifications for the same stall (default 300)",
+    "relaunch_cap": "int — CLI --relaunch only: max auto-relaunch attempts before giving up + notifying (default 10)",
+    "backoff_base": "int — CLI --relaunch only: exponential backoff base seconds (2 → 2,4,8,16,...)",
+    "cpu_idle_pct": "float — reserved: CPU% under which a silent process is considered idle",
+    "notify.channels": "list — any of log|toast|smtp|webhook; 'log' is always added"
+  },
+  "stall_seconds": 180,
+  "notify_cooldown": 300,
+  "relaunch_cap": 10,
+  "backoff_base": 2,
+  "cpu_idle_pct": 2.0,
+  "notify": { "channels": ["log", "toast"] }
+}

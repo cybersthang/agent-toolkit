@@ -1,0 +1,123 @@
+{
+  "_doc": "Project invariants enforced by .claude/hooks/invariant_guard.py (PreToolUse). Add an entry when the user gives a durable rule that future edits must respect (e.g. 'list views must always sort by type'). The hook reads this file on every Edit/Write/MultiEdit and BLOCKS the tool call if a `blocker` severity invariant is being violated. The 5 defaults shipped v0.22+ are conservative (severity=warn → informational only) and meant as demo/seed value out-of-box; DEV adds project-specific rules via /inv-add and may promote any default to `blocker` per project policy.",
+  "_schema": {
+    "id": "kebab-case unique slug",
+    "description": "one-line human summary",
+    "applies_to": "list of glob patterns (workspace-relative). Empty = applies everywhere.",
+    "rules": {
+      "must_keep_regex": "list of regex patterns; if old_string matched, new_string must too",
+      "must_keep_call": "list of bare function/attribute names; matches `name(` and `.name(`"
+    },
+    "severity": "blocker (deny edit) or warn (allow + inject reminder)",
+    "rationale": "why this rule exists — surface in the block message",
+    "added": "YYYY-MM-DD",
+    "added_by": "user|agent|<email>",
+    "related_adr": "optional ADR-NNN reference in decision-log.md"
+  },
+  "_workflow": [
+    "1. User states a durable rule: 'sort theo type cố định'.",
+    "2. Run /adr-add to capture the WHY in decision-log.md.",
+    "3. Run /inv-add to translate the rule into must_keep_regex / must_keep_call patterns.",
+    "4. Verify with /inv-list before committing.",
+    "5. The hook now BLOCKS any edit that strips the pattern."
+  ],
+  "version": 2,
+  "invariants": [
+    {
+      "id": "no-bare-python-shebang",
+      "description": "Helper scripts must invoke Python via env / venv / sys.executable — never a bare `python` shebang.",
+      "applies_to": [
+        "scripts/**/*.py",
+        "tools/**/*.py",
+        ".codex/**/*.py"
+      ],
+      "rules": {
+        "must_keep_regex": [
+          "#!/usr/bin/env python|python\\.exe|sys\\.executable"
+        ]
+      },
+      "severity": "blocker",
+      "rationale": "A bare `python` shebang resolves to whatever Python is first on PATH (often system Python missing the project's deps). Helper scripts must pin to `#!/usr/bin/env python3`, the venv's `python.exe`, or call through `sys.executable`. Fix when violated: restore the explicit interpreter reference that the edit dropped.",
+      "added": "2026-05-26",
+      "added_by": "agent",
+      "_doc": "Default shipped v0.22+. Promoted warn → blocker in v0.26.0 (audit follow-up): bare-shebang is unambiguously broken, no false-positive risk, matches every Odoo consumer's `feedback_python_venv` rule."
+    },
+    {
+      "id": "credentials-via-mcp-local-env",
+      "description": "Auth/credential flow docs and configs must reference the gitignored `.codex/mcp.local.env` channel or the `credential_guard` precommit, not inline secrets.",
+      "applies_to": [
+        ".codex/**/*.md",
+        ".codex/**/*.json",
+        "**/AUTH*.md",
+        "**/CREDENTIALS*.md",
+        "**/mcp*.example.*"
+      ],
+      "rules": {
+        "must_keep_regex": [
+          "credential_guard|mcp\\.local\\.env"
+        ]
+      },
+      "severity": "blocker",
+      "rationale": "Credentials policy (feedback_credentials): real creds live ONLY in `.codex/mcp.local.env` (gitignored), surfaced by the `credential_guard` precommit hook. If an edit strips both references from an auth-flow file, the doc no longer points to the safe channel and DEV may inline secrets. Fix when violated: restore the `.codex/mcp.local.env` or `credential_guard` reference.",
+      "added": "2026-05-26",
+      "added_by": "agent",
+      "_doc": "Default shipped v0.22+. Promoted warn → blocker in v0.26.0 (audit follow-up): inline secret risk is high-severity + this regex is positive-match (false-positive impossible). Note: `must_keep_regex` cannot express must-NOT-match, so this invariant guards the POSITIVE reference. Use a separate precommit / secret-scanner for the negative (no-inline-passwords) check."
+    },
+    {
+      "id": "odoo-multi-company-with-company-on-create",
+      "description": "Creates / writes on company-scoped Odoo models must thread the company context through `with_company()` (v14+) or `with_context(force_company=)` / `allowed_company_ids` (v12-13).",
+      "applies_to": [
+        "**/models/**/*.py",
+        "**/wizards/**/*.py"
+      ],
+      "rules": {
+        "must_keep_regex": [
+          "\\.with_company\\([^)]+\\)\\.create\\(|\\.with_company\\([^)]+\\)\\.write\\(|with_context\\([^)]*(?:force_company|allowed_company_ids)[^)]*\\)"
+        ]
+      },
+      "severity": "blocker",
+      "rationale": "Without an explicit company context, `create()` silently falls back to `self.env.company` (the user's *current* switcher selection), cross-pollinating data between companies. See `odoo-multi-company` skill §1. Fix when violated: restore the `.with_company(rec.company_id)` chain (v17) or `.with_context(force_company=rec.company_id.id)` (v12) that the edit dropped.",
+      "added": "2026-05-26",
+      "added_by": "agent",
+      "_doc": "Default shipped v0.22+. Promoted warn → blocker in v0.27.0 (P2 audit 2026-05-28): regex is highly specific (`.with_company(X).create/write` OR `with_context(force_company/allowed_company_ids)`), no false-positive candidate found in a 198-module production addon scan. Sourced from `templates/cursor/skills/odoo/odoo-multi-company/SKILL.md` §1 (Agent G's invariant suggestion). Version-aware regex covers both v12 (force_company) and v14+ (with_company) idioms."
+    },
+    {
+      "id": "odoo-tests-need-test-base-class",
+      "description": "Odoo test files must use a proper Odoo test base class (`TransactionCase` / `SavepointCase` / `HttpCase` / `TestRendering`) or pytest fixture / `@tagged` decorator — bare `def test_*()` functions don't get DB setup.",
+      "applies_to": [
+        "**/tests/**/*.py",
+        "**/test_*.py"
+      ],
+      "rules": {
+        "must_keep_regex": [
+          "@tagged\\(|@pytest\\.fixture|class\\s+\\w+\\s*\\(\\s*(?:common\\.)?(?:TransactionCase|SavepointCase|HttpCase|TestRendering|SingleTransactionCase)"
+        ]
+      },
+      "severity": "blocker",
+      "rationale": "Bare `def test_foo()` functions in Odoo addons silently skip — `odoo-bin -i <mod> --test-enable` only picks up classes inheriting an Odoo test base (or pytest-collected fixtures). Removing the base-class declaration / `@tagged` decorator silently disables the whole test file. Fix when violated: restore the test base class or `@tagged(...)` decorator that the edit dropped.",
+      "added": "2026-05-26",
+      "added_by": "agent",
+      "_doc": "Default shipped v0.22+. Promoted warn → blocker in v0.27.0 (P2 audit 2026-05-28): regex covers all 5 standard Odoo test bases + pytest fixtures + @tagged decorator; a production codebase scan found 0 custom `XxxTestCase` extending non-standard parents (all real tests use TransactionCase / SavepointCase / @tagged). Aligned with `odoo-12-backend.mdc` testing guidance + Odoo upstream test-discovery semantics."
+    },
+    {
+      "id": "odoo-sudo-must-have-comment",
+      "description": "Every `.sudo()` call must carry an adjacent comment justifying why the access-rule bypass is safe.",
+      "applies_to": [
+        "**/models/**/*.py",
+        "**/wizards/**/*.py",
+        "**/controllers/**/*.py"
+      ],
+      "rules": {
+        "must_keep_regex": [
+          "\\.sudo\\(\\)[^\\n]*#|\\.sudo\\(\\)\\s*\\n\\s*#|#[^\\n]*sudo|\"\"\"[^\"]*sudo[^\"]*\"\"\""
+        ]
+      },
+      "severity": "warn",
+      "rationale": "`sudo()` bypasses `ir.rule` + `ir.model.access` — the most common Odoo security finding in code review is an undocumented sudo whose intent is forgotten by the next maintainer. Toolkit rule `odoo-12-backend.mdc`: 'Document every sudo() with a short reason.' Fix when violated: restore the `# sudo: <reason>` comment that the edit dropped, or remove the sudo entirely if the rationale no longer applies.",
+      "added": "2026-05-26",
+      "added_by": "agent",
+      "_doc": "Default shipped v0.22+. Confidence M — regex catches the common 'sudo() # reason' / 'sudo()\\n# reason' / docstring patterns but a sudo on its own line with the comment 5 lines away would slip; project may promote to blocker with a stricter sibling check via /probe-add.",
+      "_audit_2026_05_28": "REVIEWED P2: KEEP at warn. Real-codebase scan (a 198-module production deployment) found 1037 `.sudo()` calls in models/wizards/controllers, the vast majority WITHOUT adjacent comment — meaning if any edit happens in those files, the `must_keep_regex` won't match old_string (no sudo+comment context to preserve), so promotion to blocker would have no effect on existing files. Worse, the broad `#[^\\n]*sudo` OR-branch matches ANY comment containing the word 'sudo' (e.g., 'sudo apt install' in shell-snippet docstrings), creating false-positive risk. To make this invariant effective, redesign regex to require `.sudo()` adjacency (within ±3 lines of the comment) — track as follow-up."
+    }
+  ]
+}

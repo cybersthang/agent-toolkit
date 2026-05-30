@@ -1,0 +1,341 @@
+#!/usr/bin/env python
+"""Legacy bootstrap script — NOT the primary install path.
+
+The recommended install path is `setup.py init` at the toolkit root.
+This script remains for one-off porting work where the toolkit's
+opinionated preset machinery is too heavy.
+
+Usage (example for a non-Odoo stack — toolkit's primary path is Odoo):
+  python agent_toolkit_init.py --target /path/to/your/project \
+                               --stack odoo-12 \
+                               --stack-bare odoo \
+                               --venv /path/to/venv/python
+
+Idempotent: re-running on a target that already has agent-toolkit
+re-writes only files that don't exist (asks before overwriting).
+
+Creates:
+  .agent-toolkit/
+    invariants.json           (empty: {"version":2,"invariants":[]})
+    acceptance-probes.json    (empty + _defaults pre-filled)
+    intent_map.json           (stack-specific skeleton)
+    coverage_config.json      (defaults)
+    decision-log.md           (empty ADR log header)
+  .claude/
+    hooks/                    (copied from source)
+    commands/                 (copied from source)
+    settings.json             (auto-generated pointing at hooks)
+  .codex/
+    tests/hooks/              (copied)
+    precommit_hooks/          (copied)
+    tools/                    (copied: falsify.py)
+  .pre-commit-config.yaml     (template)
+  QUICKSTART.md               (5-minute setup)
+
+After bootstrap, prints next steps.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import shutil
+import sys
+from pathlib import Path
+
+
+SOURCE_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _copy_dir(src: Path, dst: Path, overwrite: bool) -> int:
+    if not src.exists():
+        return 0
+    count = 0
+    for s in src.rglob("*"):
+        if s.is_dir():
+            continue
+        rel = s.relative_to(src)
+        d = dst / rel
+        d.parent.mkdir(parents=True, exist_ok=True)
+        if d.exists() and not overwrite:
+            continue
+        shutil.copy2(s, d)
+        count += 1
+    return count
+
+
+def _write_if_absent(path: Path, content: str, overwrite: bool) -> bool:
+    if path.exists() and not overwrite:
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    return True
+
+
+def _starter_invariants() -> str:
+    return json.dumps({
+        "_doc": "Project invariants enforced by .claude/hooks/invariant_guard.py (PreToolUse).",
+        "version": 2,
+        "invariants": []
+    }, ensure_ascii=False, indent=2) + "\n"
+
+
+def _starter_probes(stack_bare: str) -> str:
+    return json.dumps({
+        "_doc": "Acceptance probes — empirical checks required before PASS claim.",
+        "version": 2,
+        "_defaults": {
+            "pass_claim_regex": r"\b(passed|verified|done|works\s*correctly|hoàn\s*thành)\b",
+            "required_tool_prefixes": [f"mcp__{stack_bare}_test__", "mcp__postgres__"],
+            "pass_exempt_markers": ["[meta-review]", "[meta]"],
+            "exempt_when_response_contains": ["[probe-skip:", "[assumption]"],
+            "disabled_progress_checks": []
+        },
+        "probes": []
+    }, ensure_ascii=False, indent=2) + "\n"
+
+
+def _starter_intent_map(stack: str, stack_bare: str) -> str:
+    return json.dumps({
+        "_doc": "Intent → skill routing. Edit `entries` to match your stack's skills.",
+        "stack": stack,
+        "stack_bare": stack_bare,
+        "entries": [
+            {
+                "pattern": r"\b(review|audit|find\s*bug|check\s*code)\b",
+                "skills": ["code-review", f"{stack_bare}-code-review", "doubt-driven-review"]
+            },
+            {
+                "pattern": r"\b(implement|build|fix|refactor|add|remove|delete|update|change|modify)\b",
+                "skills": ["clarification-gate"]
+            },
+            {
+                "pattern": r"\b(verify.*real|live\s*data|real\s*db|prod\s*data)\b",
+                "skills": [f"{stack}-data-verification"]
+            }
+        ]
+    }, ensure_ascii=False, indent=2) + "\n"
+
+
+def _starter_coverage_config() -> str:
+    return json.dumps({
+        "_doc": "Project-specific coverage gate config. Adjust feature_globs to match your stack.",
+        "feature_globs": [
+            "**/controllers/**.py",
+            "**/models/**.py",
+            "**/api/**.py",
+            "**/handlers/**.py",
+            "**/services/**.py"
+        ],
+        "exempt_globs": [
+            "**/__init__.py",
+            "**/tests/**.py",
+            "**/test_*.py",
+            "**/migrations/**.py"
+        ]
+    }, ensure_ascii=False, indent=2) + "\n"
+
+
+def _starter_decision_log() -> str:
+    return """# Decision Log
+
+Append-only ADR-style log. Last 3 entries surface in SessionStart brief.
+
+References:
+- Michael Nygard, "Documenting Architecture Decisions" (2011).
+- Invariant registry: `.agent-toolkit/invariants.json`
+- Hook enforcement: `.claude/hooks/invariant_guard.py`
+
+---
+
+<!--
+  Add new ADRs BELOW this line. The session_brief hook surfaces the
+  last 3 entries; older ADRs stay searchable in this file.
+-->
+"""
+
+
+def _starter_settings(venv_python: str) -> str:
+    return json.dumps({
+        "_doc": "Auto-generated by agent_toolkit_init.py.",
+        "hooks": {
+            "SessionStart": [{"hooks": [{"type": "command",
+                "command": f"{venv_python} ${{CLAUDE_PROJECT_DIR}}/.claude/hooks/session_brief.py",
+                "timeout": 5}]}],
+            "UserPromptSubmit": [{"hooks": [{"type": "command",
+                "command": f"{venv_python} ${{CLAUDE_PROJECT_DIR}}/.claude/hooks/intent_router.py",
+                "timeout": 5}]}],
+            "PreToolUse": [{"matcher": "Edit|Write|MultiEdit|NotebookEdit",
+                "hooks": [{"type": "command",
+                "command": f"{venv_python} ${{CLAUDE_PROJECT_DIR}}/.claude/hooks/invariant_guard.py",
+                "timeout": 5}]}],
+            "Stop": [{"hooks": [{"type": "command",
+                "command": f"{venv_python} ${{CLAUDE_PROJECT_DIR}}/.claude/hooks/evidence_audit.py",
+                "timeout": 8}]}]
+        }
+    }, ensure_ascii=False, indent=2) + "\n"
+
+
+def _starter_pre_commit() -> str:
+    return """# Auto-generated by agent_toolkit_init.py
+repos:
+  - repo: local
+    hooks:
+      - id: invariant-guard
+        name: agent-toolkit invariant guard
+        entry: python .codex/precommit_hooks/invariant_guard_precommit.py
+        language: system
+        pass_filenames: true
+        stages: [pre-commit]
+      - id: probe-coverage
+        name: agent-toolkit probe-coverage gate
+        entry: python .codex/precommit_hooks/probe_coverage.py
+        language: system
+        pass_filenames: true
+        stages: [pre-commit]
+      - id: probe-suggest
+        name: agent-toolkit probe-suggest (info)
+        entry: python .codex/precommit_hooks/feature_probe_suggest.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+        verbose: true
+      - id: no-real-credentials
+        name: agent-toolkit credential guard
+        entry: python .codex/precommit_hooks/credential_guard.py
+        language: system
+        pass_filenames: true
+        files: '^.*\\.(py|toml|json|md|yaml|yml|env\\.example|sh|ps1)$'
+        stages: [pre-commit]
+"""
+
+
+QUICKSTART_TEMPLATE = """# Agent-Toolkit — 5-minute Quickstart
+
+You just bootstrapped this project with **agent-toolkit**: a layer of
+mechanical enforcement that catches "agent reports pass but bugs exist"
+failures before they reach review.
+
+## What just got installed
+
+1. **4 Claude Code hooks** (SessionStart, UserPromptSubmit, PreToolUse, Stop)
+   that block edits violating invariants, claims without MCP evidence,
+   and PASS claims without real-data verification.
+2. **4 pre-commit hooks** that mirror enforcement at commit time
+   (so dev edits in IDE don't bypass).
+3. **6 slash commands** (`/inv-add`, `/probe-add`, `/probe-coverage`,
+   `/review`, `/adr-add`, `/inv-list`).
+4. **Falsifier CLI** at `.codex/tools/falsify.py` — runs your
+   `falsification.runner` recipes against the live service.
+
+## First 5 minutes
+
+```bash
+# 1. Verify hooks load
+python -m unittest discover -s .codex/tests/hooks -p "test_*.py"
+
+# 2. Open Claude Code → it auto-loads .claude/settings.json hooks.
+#    First session shows: "3 invariant · 1 probe loaded"
+#    (Yours will say "0 invariant · 0 probe" until you register some.)
+
+# 3. Register your first invariant via slash command in Claude:
+/inv-add no-bare-python
+
+# 4. Register your first probe:
+/probe-add my-api-endpoint
+
+# 5. Verify enforcement is active:
+/probe-coverage
+```
+
+## When the toolkit blocks you
+
+You'll see one of three classes of block message:
+
+| Block type | Why | Fix |
+|---|---|---|
+| `[invariant-guard]` | Your Edit removes a `must_keep_regex` pattern | Restore the pattern OR `bypass-invariant: <id>` in next prompt |
+| `[evidence-audit] PASS/DONE/VERIFIED claim detected` | You claimed PASS without MCP call | Run `mcp__{stack}_test__*`, OR `probe-skip: <id> <reason>` |
+| `[evidence-audit] Hallucinated-progress detected` | Past-tense claim without matching Edit/Bash | Remove claim OR `progress-skip: <category> <reason>` |
+
+Every bypass leaves an audit trail in your response — visible to PR
+reviewers.
+
+## Stack-agnostic by design
+
+This toolkit ships with empty registries. You build per-feature
+contracts as you go via `/probe-add`. The schema is stack-agnostic:
+swap `mcp__realdata_test__*` for `mcp__<your_test_server>__*` etc.
+
+## Next steps
+
+- Read `.agent-toolkit/PORTING.md` for the full porting guide.
+- Read `.agent-toolkit/README.md` for the architecture.
+- Run `/review <module>` for an exhaustive code audit using the
+  3 review skills.
+- Run `python .codex/tools/falsify.py --probe <id> --dry-run` to
+  preview a falsification probe before executing live.
+
+Project bootstrapped {stack_label}. Welcome.
+"""
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Bootstrap agent-toolkit in a new project")
+    parser.add_argument("--target", required=True, help="Target project root path")
+    parser.add_argument("--stack", default="odoo-12", help="Stack identifier (e.g. odoo-12, odoo-17)")
+    parser.add_argument("--stack-bare", default="odoo", help="Bare stack name (e.g. odoo, django)")
+    parser.add_argument("--venv", default=sys.executable,
+                        help="Path to Python interpreter for hooks (default: current)")
+    parser.add_argument("--overwrite", action="store_true",
+                        help="Overwrite existing toolkit files (default: skip)")
+    args = parser.parse_args()
+
+    target = Path(args.target).resolve()
+    target.mkdir(parents=True, exist_ok=True)
+
+    print(f"[init] bootstrapping {target} (stack={args.stack}/{args.stack_bare})")
+
+    copied = 0
+    copied += _copy_dir(SOURCE_ROOT / ".claude" / "hooks",
+                         target / ".claude" / "hooks", args.overwrite)
+    copied += _copy_dir(SOURCE_ROOT / ".claude" / "commands",
+                         target / ".claude" / "commands", args.overwrite)
+    copied += _copy_dir(SOURCE_ROOT / ".codex" / "precommit_hooks",
+                         target / ".codex" / "precommit_hooks", args.overwrite)
+    copied += _copy_dir(SOURCE_ROOT / ".codex" / "tools",
+                         target / ".codex" / "tools", args.overwrite)
+    copied += _copy_dir(SOURCE_ROOT / ".codex" / "tests" / "hooks",
+                         target / ".codex" / "tests" / "hooks", args.overwrite)
+    print(f"[init] copied {copied} files")
+
+    written = []
+    files_to_write = [
+        (target / ".agent-toolkit" / "invariants.json", _starter_invariants()),
+        (target / ".agent-toolkit" / "acceptance-probes.json", _starter_probes(args.stack_bare)),
+        (target / ".agent-toolkit" / "intent_map.json", _starter_intent_map(args.stack, args.stack_bare)),
+        (target / ".agent-toolkit" / "coverage_config.json", _starter_coverage_config()),
+        (target / ".agent-toolkit" / "decision-log.md", _starter_decision_log()),
+        (target / ".claude" / "settings.json", _starter_settings(args.venv)),
+        (target / ".pre-commit-config.yaml", _starter_pre_commit()),
+        (target / "QUICKSTART.md", QUICKSTART_TEMPLATE.format(
+            stack=args.stack, stack_bare=args.stack_bare,
+            stack_label=f"for stack: {args.stack}",
+        )),
+    ]
+    for path, content in files_to_write:
+        if _write_if_absent(path, content, args.overwrite):
+            written.append(path.name)
+    print(f"[init] wrote starter files: {', '.join(written) or '(all existed)'}")
+
+    print("\n[init] DONE. Next:")
+    print(f"  1. cd {target}")
+    print(f"  2. Read QUICKSTART.md")
+    print(f"  3. Run tests:  {args.venv} -m unittest discover -s .codex/tests/hooks -p \"test_*.py\"")
+    print(f"  4. Open Claude Code → hooks auto-load from .claude/settings.json")
+    print(f"  5. Register first probe via slash command in Claude: /probe-add my-feature\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

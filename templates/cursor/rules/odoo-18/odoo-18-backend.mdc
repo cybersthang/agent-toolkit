@@ -1,0 +1,57 @@
+---
+description: Odoo 18 backend - ORM, views, performance, security, manifest. Single source of truth for "how do I write Odoo 18 code in this project".
+globs: "{addons,custom_addons,enterprise,odoo/addons}/**/*"
+alwaysApply: false
+---
+
+## ORM (Odoo 18 — refinements over 17)
+
+- Methods are **recordset by default**. `@api.multi` has been removed since 13 and stays gone; never reintroduce it.
+- `@api.model` for class-level methods that do not need a recordset.
+- `@api.model_create_multi` is **mandatory** when overriding `create()`. A single-record `@api.model` `create()` override silently breaks batch creates and is rejected in review.
+- `@api.depends`, `@api.constrains`, `@api.onchange`, `@api.depends_context` behave as in 17.
+- `name_get()` is gone (deprecated in 17, removed in 18). Override `_compute_display_name` instead and declare `@api.depends` on the fields it reads.
+- Call `ensure_one()` when a method assumes a single record.
+- Use parameterized SQL only. Batch `write()` and `unlink()` operations.
+- Document every `sudo()` with a one-line reason in code.
+- Prefer ORM over SQL. When SQL writes are unavoidable, invalidate or refresh affected caches.
+- `_check_company_auto = True` is the recommended default on company-scoped models with `company_id` relations — Odoo 18 will auto-call `_check_company()` for you.
+
+## Performance
+
+- Avoid `search()` or `browse(id)` inside loops.
+- Prefer `read_group(..., lazy=False)` for grouped counts and sums; the v18 domain evaluator is stricter, so keep domains canonical.
+- Push filtering into domains; do not filter in Python after a broad search.
+- Use `search_count()` instead of `len(search())`.
+- Batch recordset work with `mapped`, `filtered`, grouped domains, and set operations.
+- Keep computed fields prefetch-friendly; declare a complete `@api.depends`.
+- Store computed fields only when they are searched, grouped, sorted, or repeatedly displayed at scale.
+
+## Views and models
+
+- Inheritance edits use `<xpath>` with `position="after|before|inside|replace|attributes"`.
+- Keep XML IDs stable across releases.
+- View attribute conditions use `invisible="…"`, `readonly="…"`, `required="…"` as Python expressions on the field. The legacy `attrs="{...}"` and `states="…"` syntax was **removed in 17 and remains removed in 18**; do not introduce it.
+- Keep model methods small and focused.
+- Use `_sql_constraints` or `@api.constrains` for validation.
+
+## Frontend (OWL)
+
+- OWL is the only supported frontend framework (the v17 refactor continues in 18 with new component APIs and lifecycle helpers). Components live as JS modules under `static/src/`.
+- Templates use OWL XML with `t-*` directives; legacy widget classes from 12.x are gone.
+- Do not introduce new jQuery selectors or QWeb-only patches.
+- Check the v18 `web` addon for the current OWL hook surface before assuming a v17 helper still exists — some have been renamed or relocated.
+
+## Security and style
+
+- Keep `ir.model.access.csv` and `ir.rule` aligned with new models — v18 audit checks are tighter and refuse models with no ACL row.
+- Raise `UserError` for business rules, `ValidationError` for invalid data.
+- Use `_logger`, never `print()`.
+- Imports order: stdlib, third-party, `odoo`, local — in that order.
+- Respect multi-company and record rules unless the task explicitly requires privileged behaviour.
+
+## Verification
+
+- Module install/update: `odoo-bin -u <module> --stop-after-init -d <db>` against the dev DB.
+- Module tests: `--test-enable --test-tags /<module> --stop-after-init`.
+- For algorithm correctness against real data, prefer `realdata_test.eval_orm_expression` and `consistency_check_eval` over UI-driven repro.

@@ -36,13 +36,15 @@ import re
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
     wrap_utf8_stdio, read_jsonl_transcript, find_workspace_root, run_main_safe,
-    get_enforce_mode)
+    get_enforce_mode, converge_or_degrade, converge_reset, spec_is_feature_scope,
+    spec_has_acceptance_evals)
 from _patterns import (  # noqa: E402
     VERIFY_REPORT_HEADER_RE as _VERIFY_REPORT_HEADER_RE,
     SLUG_PATTERNS as _SLUG_PATTERNS,
@@ -58,6 +60,49 @@ def _exit_allow() -> None:
 def _emit_block(reason: str) -> None:
     print(json.dumps({"decision": "block", "reason": reason}, ensure_ascii=False))
     sys.exit(0)
+
+
+_VERIFY_BYPASS_REL = ".agent-toolkit/.skip_verify_lint_next.json"
+_VERIFY_BYPASS_TTL = 600  # seconds — mirrors git_guardrails one-shot token
+
+
+def _consume_verify_bypass(workspace: Path) -> tuple:
+    """T3b — single-shot override token at `.agent-toolkit/.skip_verify_lint_next.json`
+    (any JSON content) that lets ONE verify-report stop through, whatever trigger
+    fired. Consumed (deleted) on read; honored only within TTL.
+
+    TRUST MODEL (review round-1 HIGH — claim corrected): this is the SAME
+    DEV-convention escape as git_guardrails' `.skip_git_guard_next.json`, enforced
+    by the CLAUDE.md "agent must not author its own bypass" rule, NOT mechanically —
+    an agent with the Write tool *could* author this file today (no deny-glob guards
+    `.skip_*` yet; that is Phase-4 T8b's `deny_write_glob` rule-type, which should
+    cover this path). The genuinely un-forgeable anchor is the RESULT-INSPECTION
+    (`_TEST_RAN_RE` over the harness-written tool_result) — that this token exists
+    does NOT weaken it; the token only changes the *block/allow* decision, never the
+    proof itself. `has_bypass=True` for this gate means the escape is reachable, so
+    R5.1 "escalate-and-HOLD" can't deadlock. Returns (ok, reason). Never raises."""
+    tok = workspace / _VERIFY_BYPASS_REL
+    try:
+        if not tok.is_file():
+            return (False, "")
+        age = time.time() - tok.stat().st_mtime
+        try:
+            raw = tok.read_text(encoding="utf-8")
+            data = json.loads(raw) if raw.strip() else {}
+        except (OSError, ValueError):
+            data = {}
+        reason = str(data.get("reason") or "").strip() if isinstance(data, dict) else ""
+        try:
+            tok.unlink()  # single-shot: consume even if invalid (cleanup)
+        except OSError:
+            pass
+        # review round-1 MED: a future mtime (clock skew / `touch -d +1d`) makes age
+        # negative — reject it so the TTL can't be sidestepped by a future stamp.
+        if age < 0 or age > _VERIFY_BYPASS_TTL:
+            return (False, "")
+        return (True, reason)
+    except OSError:
+        return (False, "")
 
 
 _read_transcript = read_jsonl_transcript
@@ -348,9 +393,15 @@ def main() -> int:
         _exit_allow()
 
     python_bin = sys.executable
-    # v0.33 (Q2a): NEW strictness only under enforce_mode block / AGENT_TOOLKIT_STRICT.
-    # The existing rc==1 (coverage) / rc==4 (classifier) blocks stay ALWAYS-on.
+    spec_path = matches[0]
+    # v0.33 (Q2a) + v0.34 T3 (F1.1): the no-evals / PASS-without-probe blocks fire
+    # only under enforce_mode block (strict) AND only for FEATURE-SCOPE specs
+    # (R5.5 blast-radius limit). The pre-existing rc==1 (coverage) / rc==4
+    # (classifier) blocks stay always-on. All four route through ONE decision point
+    # so each honors the single-shot DEV bypass token (T3b) + the convergence-cap
+    # (T2 / R5.1, per-trigger key) — no verify_lint block can deadlock.
     strict = get_enforce_mode(workspace, "verify_lint", default="warn") == "block"
+    feature_scope = spec_is_feature_scope(spec_path)
     cmd = [python_bin, str(lint_script), slug, "--workspace", str(workspace)]
     if strict:
         cmd.append("--strict")
@@ -361,47 +412,102 @@ def main() -> int:
         )
     except (subprocess.TimeoutExpired, OSError):
         _exit_allow()
+    rc = result.returncode
+    detail = result.stderr or "<no detail>"
 
-    if result.returncode == 1:
-        _emit_block(
-            f"[verify-lint] Verify Report cho `{slug}` thiếu coverage:\n\n"
-            + (result.stderr or "<no detail>")
-            + "\n\nFix: re-emit Verify Report cite các eval id thiếu (mỗi id trong "
-            "1 row của bảng `| <eid> | <result> | ...`). Hoặc nếu eval không "
-            "còn applicable, sửa spec frontmatter để remove entry đó trước."
+    # Decide whether this stop blocks, and on which trigger (per-trigger streak key).
+    block_key: Optional[str] = None
+    message = ""
+    if rc == 1:
+        block_key = "coverage"
+        message = (
+            f"[verify-lint] Verify Report cho `{slug}` thiếu coverage:\n\n{detail}\n\n"
+            "Fix: re-emit Verify Report cite các eval id thiếu (mỗi id trong 1 row "
+            "của bảng `| <eid> | <result> | ...`). Hoặc nếu eval không còn applicable, "
+            "sửa spec frontmatter để remove entry đó trước."
         )
-    if result.returncode == 4:
-        _emit_block(
-            f"[verify-lint] Spec `{slug}` có `feature_kind: classification` "
-            f"nhưng Verify Report thiếu section bắt buộc `Real-Data Proof`.\n\n"
-            + (result.stderr or "<no detail>")
-            + "\n\nFix: re-emit Verify Report kèm `## Real-Data Proof` "
-            "section đầy đủ 4 mục (Data source / Distribution / Falsification / "
-            "Revert checklist) — xem `real-data-proof/SKILL.md` Step 4 + "
-            "worked example `references/block-async-worked-example.md`. "
-            "Mỗi tag distinct phải có ≥1 perturb-test row trong bảng "
-            "Falsification."
+    elif rc == 4:
+        block_key = "classification"
+        message = (
+            f"[verify-lint] Spec `{slug}` có `feature_kind: classification` nhưng "
+            f"Verify Report thiếu section bắt buộc `Real-Data Proof`.\n\n{detail}\n\n"
+            "Fix: re-emit Verify Report kèm `## Real-Data Proof` section đầy đủ 4 mục "
+            "(Data source / Distribution / Falsification / Revert checklist) — xem "
+            "`real-data-proof/SKILL.md` Step 4 + worked example "
+            "`references/block-async-worked-example.md`. Mỗi tag distinct phải có ≥1 "
+            "perturb-test row trong bảng Falsification."
         )
-    # v0.33 F1.1 (strict): no acceptance_evals → /verify proves nothing → block.
-    if result.returncode == 3 and strict:
-        _emit_block(
+    # v0.33 F1.1 + v0.34 T3 (strict + feature-scope): no acceptance_evals → /verify
+    # proves nothing → block. Non-feature spec → warn-only (allow). Review round-1
+    # HIGH: lint rc==3 means no *frontmatter* evals — re-check LOCATION-AGNOSTICALLY
+    # so a spec with body-placed evals (this repo's v0.33/v0.34 specs) isn't FP-blocked.
+    elif (rc == 3 and strict and feature_scope
+          and not spec_has_acceptance_evals(spec_path)):
+        block_key = "noevals"
+        message = (
             f"[verify-lint] Spec `{slug}` không có `acceptance_evals` → `/verify` "
             f"không chứng minh được gì (strict). Định nghĩa ≥1 eval "
             f"(`/eval-define {slug}`) rồi re-verify, hoặc tắt strict nếu feature "
             f"thật sự không cần real-data proof."
         )
-    # exit_code 0 = lint passed → P11 v0.8.0 auto-cleanup snapshot
-    if result.returncode == 0:
-        # v0.33 F1.2-B (strict): a PASS claim must have a real-data probe this turn.
-        if strict and _claims_pass(text) and not _has_realdata_tooluse(messages):
-            _emit_block(
-                f"[verify-lint] Verify Report cho `{slug}` claim PASS nhưng turn "
-                f"này KHÔNG có real-data probe (mcp__* / Bash pytest|make — ADR-002). "
-                f"Chạy probe thật rồi report kết quả raw (số/fingerprint) trước khi chốt PASS."
+    # v0.33 F1.2-B + v0.34 T3 (strict + feature-scope): a PASS claim must have a
+    # real-data probe this turn (the un-forgeable result-inspection anchor).
+    elif (rc == 0 and strict and feature_scope
+          and _claims_pass(text) and not _has_realdata_tooluse(messages)):
+        block_key = "passprobe"
+        message = (
+            f"[verify-lint] Verify Report cho `{slug}` claim PASS nhưng turn này "
+            f"KHÔNG có real-data probe (mcp__* / Bash pytest|make — ADR-002). Chạy "
+            f"probe thật rồi report kết quả raw (số/fingerprint) trước khi chốt PASS."
+        )
+
+    if block_key is None:
+        # Satisfied — or non-strict / non-feature-scope (warn-only). Clear streaks + allow.
+        for k in ("coverage", "classification", "noevals", "passprobe"):
+            converge_reset(workspace, "verify_lint", f"{k}:{slug}")
+        if rc == 3 and strict and not feature_scope:
+            print(
+                f"[verify-lint] (warn) spec `{slug}` không có acceptance_evals nhưng "
+                f"đánh dấu non-feature (`feature_scope: false` / `feature_kind: meta…`) "
+                f"→ chỉ cảnh báo, không chặn.",
+                file=sys.stderr,
             )
-        _trigger_snapshot_cleanup(workspace, slug)
-    # exit_code 0, 2, 3 (non-strict), or other → allow
-    _exit_allow()
+        if rc == 0:
+            _trigger_snapshot_cleanup(workspace, slug)
+        _exit_allow()
+
+    # would-block → DEV single-shot override wins (T3b); else convergence decides.
+    ok, reason = _consume_verify_bypass(workspace)
+    if ok:
+        suffix = f" (lý do: {reason})" if reason else ""
+        print(
+            f"[verify-lint] DEV bypass token tiêu thụ — cho `{slug}` qua 1 lần{suffix}.",
+            file=sys.stderr,
+        )
+        _exit_allow()
+
+    action = converge_or_degrade(
+        workspace, "verify_lint", f"{block_key}:{slug}",
+        cap=3, crisp=True, has_bypass=True,
+    )
+    if action == "degrade":
+        # Defensive fallback: with crisp=True + has_bypass=True converge_or_degrade
+        # only ever returns "block"/"hold" (review round-1 confirmed "degrade" is
+        # unreachable here) — kept so a future arg change can't deadlock: degrade =
+        # warn-allow, self-terminating.
+        print(
+            f"[verify-lint] (warn) convergence degrade cho `{slug}` ({block_key}).",
+            file=sys.stderr,
+        )
+        _exit_allow()
+    if action == "hold":
+        message += (
+            "\n\n⚠️ Gate đã block liên tiếp cho trigger này. Nếu đây là chặn SAI, "
+            "DEV override 1-lần: tạo `.agent-toolkit/.skip_verify_lint_next.json` "
+            "(bất kỳ nội dung JSON; hết hạn 600s) rồi /verify lại — hoặc set "
+            "enforce_mode `verify_lint: warn`."
+        )
+    _emit_block(message)
 
 
 def _trigger_snapshot_cleanup(workspace: Path, slug: str) -> None:

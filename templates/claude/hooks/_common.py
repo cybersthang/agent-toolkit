@@ -32,6 +32,7 @@ import fnmatch
 import io
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -132,6 +133,67 @@ def converge_or_degrade(workspace: Path, gate: str, key: str, *,
         return "hold" if (crisp and has_bypass) else "degrade"
     except Exception:  # noqa: BLE001 — convergence must never break a gate
         return "block"
+
+
+# Non-runtime spec kinds exempt from the feature-scope default-blocks. `maintenance`
+# is included (chore-like, review round-1); `integration` is intentionally NOT — an
+# integration spec usually wires real behavior that warrants evals (DEV opts out with
+# `feature_scope: false` if not). Flip-readiness telemetry (T10) catches over-broad
+# classification before any block-default flip.
+_NON_FEATURE_KINDS = {
+    "meta", "docs", "doc", "non-feature", "nonfeature",
+    "refactor", "chore", "research", "spike", "maintenance",
+}
+_SPEC_FM_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+
+
+def spec_is_feature_scope(spec_path: Path) -> bool:
+    """v0.34 F1.1 / R5.5 blast-radius limit (shared by verify_lint + analyze_halt_gate):
+    the feature-scope default-blocks fire only for FEATURE-SCOPE specs. A spec is
+    NON-feature when its frontmatter sets `feature_scope: false` (also no/0) OR
+    `feature_kind:` to a non-runtime kind (see `_NON_FEATURE_KINDS`). Default =
+    feature (a real feature that simply forgot its evals SHOULD block under strict);
+    note this is safe-by-default, so under strict an unmarked spec IS treated as
+    feature — telemetry (T10) gates the block-default flip on FP≈0. Scans the YAML
+    frontmatter block (review round-1 LOW: not a byte-truncated head, so a marker in
+    a large frontmatter isn't missed). Fail SAFE: read error → True (enforce)."""
+    try:
+        text = spec_path.read_text(encoding="utf-8")
+    except OSError:
+        return True
+    m = _SPEC_FM_RE.match(text)
+    fm = m.group(1) if m else text[:4000]
+    if re.search(r"^\s*feature_scope\s*:\s*(?:false|no|0)\s*$",
+                 fm, re.IGNORECASE | re.MULTILINE):
+        return False
+    k = re.search(r"^\s*feature_kind\s*:\s*[\"']?([A-Za-z0-9_-]+)[\"']?\s*$",
+                  fm, re.MULTILINE)
+    if k and k.group(1).strip().lower() in _NON_FEATURE_KINDS:
+        return False
+    return True
+
+
+def spec_has_acceptance_evals(spec_path: Path) -> bool:
+    """True if the spec declares ≥1 `acceptance_evals:` entry — checked
+    LOCATION-AGNOSTICALLY (frontmatter OR a body `## acceptance_evals` section /
+    ```yaml fence). Review round-1 HIGH: this repo's specs legitimately place the
+    block in the BODY (not only the frontmatter `/eval-define` writes), so a
+    frontmatter-only check FALSE-flagged real specs (incl. the v0.33/v0.34 specs
+    themselves) as 0-eval. Used by the C8 pre-implement gate (F1.2) AND to gate
+    verify_lint's no-evals block, so the two agree on "has evals". Fail SAFE toward
+    "has evals" (return True) on read error. Only a spec with NO `acceptance_evals:`
+    block ANYWHERE → False (the genuine trigger). NB: the lint script's coverage
+    check still reads frontmatter only — body-placed evals aren't coverage-linted
+    (pre-existing limit); this helper only governs the *block* decision."""
+    try:
+        text = spec_path.read_text(encoding="utf-8")
+    except OSError:
+        return True
+    idx = text.find("acceptance_evals:")
+    if idx == -1:
+        return False
+    after = text[idx + len("acceptance_evals:"):]
+    return bool(re.search(r"^\s*-\s*id\s*:", after, re.MULTILINE))
 
 
 def match_glob(

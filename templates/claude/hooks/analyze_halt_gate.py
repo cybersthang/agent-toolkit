@@ -48,7 +48,10 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import wrap_utf8_stdio, find_workspace_root, run_main_safe  # noqa: E402
+from _common import (  # noqa: E402
+    wrap_utf8_stdio, find_workspace_root, run_main_safe,
+    get_enforce_mode, spec_is_feature_scope, spec_has_acceptance_evals,
+    parse_expires_at)
 
 wrap_utf8_stdio()
 
@@ -168,6 +171,51 @@ def _extract_blockers(text: str, limit: int = 5) -> List[str]:
     return out
 
 
+def _zero_eval_feature_spec(workspace: Path) -> Optional[Tuple[str, str]]:
+    """v0.34 T4 / F1.2 / C8 — mechanically detect the spec under active /implement
+    that is FEATURE-SCOPE with ZERO `acceptance_evals` (frontmatter). Such a spec
+    can't be proved by /verify, so source edits for it must HALT until the DEV runs
+    `/eval-define`. This does NOT rely on the agent having authored a C8 verdict in
+    the report (the N2 "agent-authored-state" weakness v0.34 targets): it reads the
+    slug from `.agent-toolkit/.autonomy_active.json` and inspects the spec frontmatter
+    directly. Returns (slug, spec_rel_posix) when it should HALT, else None. Never
+    raises — any error → None (fail-open, don't block on infra)."""
+    try:
+        auto_raw = (workspace / ".agent-toolkit" / ".autonomy_active.json").read_text(
+            encoding="utf-8")
+        auto = json.loads(auto_raw)
+    except (OSError, ValueError):
+        return None
+    slug = (auto.get("spec") or "").strip() if isinstance(auto, dict) else ""
+    if not slug:
+        return None
+    # review round-1 MED: honor expires_at — a lapsed-but-lingering autonomy file
+    # (only /stop-autonomy deletes it) must NOT keep firing C8 on unrelated edits.
+    exp = parse_expires_at(auto.get("expires_at") or "")
+    if exp is not None:
+        from datetime import datetime
+        now = datetime.now(exp.tzinfo) if exp.tzinfo else datetime.now()
+        if now >= exp:
+            return None   # autonomy expired → C8 dormant
+    specs_dir = workspace / ".agent-toolkit" / "specs"
+    matches = sorted(
+        specs_dir.rglob(f"{slug}.md"),
+        key=lambda p: p.stat().st_mtime, reverse=True,
+    ) if specs_dir.is_dir() else []
+    if not matches:
+        return None
+    spec_path = matches[0]
+    if not spec_is_feature_scope(spec_path):
+        return None
+    if spec_has_acceptance_evals(spec_path):
+        return None
+    try:
+        rel = spec_path.relative_to(workspace).as_posix()
+    except ValueError:
+        rel = str(spec_path)
+    return (slug, rel)
+
+
 def main() -> int:
     # Kill-switch: env var disables all enforcement (emergency).
     if os.environ.get("AGENT_TOOLKIT_DISABLE") == "1":
@@ -198,23 +246,53 @@ def main() -> int:
         _exit_allow()
 
     halts = _find_active_halts(workspace)
-    if not halts:
+    # v0.34 T4 (F1.2 / C8): mechanical zero-eval-feature-spec HALT — block-CAPABLE
+    # @ WARN (default warn; flips to block per enforce_mode after FP≈0). Independent
+    # of any agent-authored verdict — reads the spec frontmatter directly.
+    c8 = _zero_eval_feature_spec(workspace)
+    c8_block = get_enforce_mode(workspace, "analyze_halt_gate", default="warn") == "block"
+    if not halts and not c8:
         _exit_allow()
 
-    # Emergency bypass marker — persistent; emits stderr diagnostic each
-    # Edit until DEV deletes the marker file (no auto-delete on purpose).
+    # Emergency bypass marker — persistent; escapes BOTH report-HALT and C8.
     bypass = workspace / ".agent-toolkit" / _BYPASS_MARKER
     if bypass.exists():
-        # Print to stderr so DEV sees the diagnostic but the tool runs.
-        slugs = ", ".join(slug for _, slug in halts)
+        descr = ", ".join(s for _, s in halts) or (c8[0] if c8 else "?")
         sys.stderr.write(
-            f"[analyze-halt-gate] BYPASS active — {len(halts)} HALT report(s) "
-            f"for slug(s): {slugs}. Delete .agent-toolkit/.analyze-bypass "
-            f"when done.\n"
+            f"[analyze-halt-gate] BYPASS active — HALT/C8 for slug(s): {descr}. "
+            f"Delete .agent-toolkit/.analyze-bypass when done.\n"
         )
         _exit_allow()
 
-    # Compose block reason.
+    # C8 warn-only (block-capable): diagnostic + fall through (block only if a
+    # report-HALT is also active; else allow).
+    if c8 and not c8_block:
+        sys.stderr.write(
+            f"[analyze-halt-gate] (warn) spec `{c8[0]}` đang /implement là feature-scope "
+            f"nhưng 0 acceptance_evals (không khai báo ở frontmatter lẫn body) → /verify "
+            f"không chứng minh được gì. Chạy `/eval-define {c8[0]}` (set enforce_mode "
+            f"analyze_halt_gate=block để bắt buộc).\n"
+        )
+        c8 = None
+        if not halts:
+            _exit_allow()
+
+    # C8 block takes precedence — it's the /implement-blocking trigger ev1c targets.
+    if c8:
+        c8_slug, c8_rel = c8
+        _emit_block(
+            f"[analyze-halt-gate] Spec `{c8_slug}` đang /implement là feature-scope "
+            f"nhưng có 0 `acceptance_evals` (không khai báo ở frontmatter lẫn body) → "
+            f"/verify sẽ không chứng minh được gì (F1.2 / C8). Edit source bị chặn.\n\n"
+            f"Fix:\n"
+            f"  1) `/eval-define {c8_slug}` — định nghĩa ≥1 acceptance_eval vào "
+            f"frontmatter rồi /implement lại.\n"
+            f"  2) Spec thật sự non-feature → thêm `feature_scope: false` vào frontmatter.\n"
+            f"  3) DEV emergency: `touch .agent-toolkit/.analyze-bypass` (xóa sau khi dùng).\n\n"
+            f"Spec: {c8_rel}"
+        )
+
+    # Compose block reason (existing report-HALT path).
     primary = halts[0]
     report_path, slug = primary
     blockers = _extract_blockers(report_path.read_text(encoding="utf-8"))

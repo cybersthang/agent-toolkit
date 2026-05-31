@@ -16,6 +16,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -26,13 +27,14 @@ LINT = TOOLKIT_ROOT / "templates" / "codex" / "lint_verify_report.py"
 PYTHON = sys.executable
 
 
-def _mk_ws(tmp: Path, slug: str = "feat", evals=("us1-flag",)) -> Path:
+def _mk_ws(tmp: Path, slug: str = "feat", evals=("us1-flag",), extra_fm=()) -> Path:
     ws = tmp / "proj"
     spec_dir = ws / ".agent-toolkit" / "specs" / "main" / slug
     spec_dir.mkdir(parents=True, exist_ok=True)
     (ws / ".codex").mkdir(parents=True, exist_ok=True)
     shutil.copy(LINT, ws / ".codex" / "lint_verify_report.py")
     lines = ["---", f"slug: {slug}"]
+    lines += list(extra_fm)               # T3: e.g. "feature_scope: false"
     if evals:
         lines.append("acceptance_evals:")
         for e in evals:
@@ -190,3 +192,75 @@ def test_default_mode_noevals_allows(tmp_path):
     tp = _transcript(tmp_path, "## Verify Report — feat\n\nLooks good ✅ PASS.")
     rc, out = _run_hook(ws, tp, strict=False)
     assert '"decision"' not in out, out
+
+
+# --- v0.34 T3 (F1.1 feature-scope) + T3b (bypass token) -------------------
+
+def test_noevals_non_feature_spec_warns_not_blocks_strict(tmp_path):
+    # T3 / R5.5: a spec explicitly marked non-feature (`feature_scope: false`) with
+    # 0 evals must only WARN under strict, never block (blast-radius limit).
+    ws = _mk_ws(tmp_path, evals=(), extra_fm=("feature_scope: false",))
+    tp = _transcript(tmp_path, "## Verify Report — feat\n\nLooks good ✅ PASS.")
+    rc, out = _run_hook(ws, tp, strict=True)
+    assert '"decision"' not in out, out          # allowed (warn-only)
+
+
+def test_noevals_feature_kind_meta_warns_strict(tmp_path):
+    # T3: `feature_kind: meta` is a non-runtime kind → warn-only too.
+    ws = _mk_ws(tmp_path, evals=(), extra_fm=("feature_kind: meta",))
+    tp = _transcript(tmp_path, "## Verify Report — feat\n\nLooks good ✅ PASS.")
+    rc, out = _run_hook(ws, tp, strict=True)
+    assert '"decision"' not in out, out
+
+
+def test_bypass_token_overrides_noevals_block_strict(tmp_path):
+    # T3b: a DEV-authored single-shot token lets ONE blocking verify-report through.
+    ws = _mk_ws(tmp_path, evals=())               # feature-scope, 0 evals → would block
+    (ws / ".agent-toolkit" / ".skip_verify_lint_next.json").write_text(
+        '{"reason": "DEV override for test"}', encoding="utf-8")
+    tp = _transcript(tmp_path, "## Verify Report — feat\n\nLooks good ✅ PASS.")
+    rc, out = _run_hook(ws, tp, strict=True)
+    assert '"decision"' not in out, out           # token consumed → allowed
+    # single-shot: token file was deleted on consume
+    assert not (ws / ".agent-toolkit" / ".skip_verify_lint_next.json").exists()
+
+
+def test_convergence_hold_appends_escape_hint_strict(tmp_path):
+    # T2/R5.1 wiring: after cap (=3) consecutive blocks on the SAME trigger, the
+    # gate still blocks (crisp+has_bypass → HOLD, never auto-allow) but the message
+    # now carries the one-shot-token escape hint → provably no deadlock.
+    ws = _mk_ws(tmp_path, evals=())               # feature-scope, 0 evals → blocks
+    tp = _transcript(tmp_path, "## Verify Report — feat\n\nLooks good ✅ PASS.")
+    outs = [_run_hook(ws, tp, strict=True)[1] for _ in range(3)]
+    assert '"decision": "block"' in outs[0]
+    assert "skip_verify_lint_next.json" not in outs[0]   # streak 1: plain block
+    assert '"decision": "block"' in outs[2]              # streak 3: still blocks (HOLD)
+    assert "skip_verify_lint_next.json" in outs[2]       # ...with the escape hint
+
+
+def test_body_placed_evals_not_flagged_noevals_strict(tmp_path):
+    # review round-1 HIGH fix: a spec whose acceptance_evals live in the BODY
+    # (## section / ```yaml fence), not frontmatter, must NOT be FP-blocked as 0-eval.
+    ws = _mk_ws(tmp_path, evals=())               # no frontmatter evals → lint rc==3
+    spec = ws / ".agent-toolkit" / "specs" / "main" / "feat" / "feat.md"
+    spec.write_text(
+        "---\nslug: feat\neval_status: defined\n---\n\n"
+        "## 6. acceptance_evals\n\n```yaml\nacceptance_evals:\n"
+        "  - id: us1-x\n    story: x\n    grader: data\n```\n",
+        encoding="utf-8")
+    tp = _transcript(tmp_path, "## Verify Report — feat\n\nLooks good ✅ PASS.")
+    rc, out = _run_hook(ws, tp, strict=True)
+    assert '"decision"' not in out, out           # body evals detected → no block
+
+
+def test_bypass_token_future_mtime_rejected_strict(tmp_path):
+    # review round-1 MED fix: a future-stamped token (negative age) must NOT bypass.
+    ws = _mk_ws(tmp_path, evals=())               # feature-scope, 0 evals → would block
+    tok = ws / ".agent-toolkit" / ".skip_verify_lint_next.json"
+    tok.write_text('{"reason": "future"}', encoding="utf-8")
+    future = time.time() + 86400
+    os.utime(tok, (future, future))
+    tp = _transcript(tmp_path, "## Verify Report — feat\n\nLooks good ✅ PASS.")
+    rc, out = _run_hook(ws, tp, strict=True)
+    assert '"decision": "block"' in out, out       # token rejected → still blocks
+    assert not tok.exists()                        # but still consumed (single-shot)

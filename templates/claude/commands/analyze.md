@@ -33,7 +33,7 @@ Argument: `$ARGUMENTS` = `<spec-slug>`.
    - `.agent-toolkit/invariants.json`.
    - `.codex/canonical_decisions.json`.
 
-4. **Run 7 checks** (C1-C7 trong `analyze-artifacts` SKILL.md):
+4. **Run 8 checks** (C1-C8 trong `analyze-artifacts` SKILL.md):
 
    | # | Check | Mục đích |
    |---|---|---|
@@ -44,6 +44,7 @@ Argument: `$ARGUMENTS` = `<spec-slug>`.
    | C5 | Constitution compat | Task không vi phạm principle |
    | C6 | Path realism | Path tồn tại hoặc có marker `(new)` |
    | C7 | Verification concreteness | Verification line là mechanical |
+   | C8 | Eval existence (F1.2) | Feature-scope spec có ≥1 `acceptance_evals` (frontmatter) — 0 eval ⇒ 🔴 BLOCK, remedy `/eval-define <slug>`; spec non-feature thì set `feature_scope: false`. Cũng được `analyze_halt_gate` chặn cơ học khi /implement. |
 
    Mỗi check → ✅ PASS / 🟡 WARN / 🔴 BLOCK.
 

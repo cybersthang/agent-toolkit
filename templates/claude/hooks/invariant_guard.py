@@ -308,10 +308,31 @@ def _collect_violations(
     is_python_file = file_path.lower().endswith(".py")
 
     for inv in invariants:
+        rules = inv.get("rules") or {}
+        # T8b (v0.34 F4.1): path-DENY rule-type. Deny ANY edit whose target matches a
+        # `deny_write_glob`, independent of must_keep content patterns — this is the
+        # mechanism `no-subagents-forge` uses to stop the agent forging a sub-agent
+        # review transcript. Fires even though the invariant has no must_keep_* rule
+        # (which the old loop skipped at the `not patterns` guard below).
+        deny_globs = rules.get("deny_write_glob") or []
+        if deny_globs and match_glob(file_path, deny_globs, workspace,
+                                     empty_returns=False):
+            source_path = inv.get("_source_path") or INVARIANTS_REL
+            entry = {
+                "invariant_id": inv.get("id") or "<no-id>",
+                "description": inv.get("description") or "",
+                "rationale": inv.get("rationale") or "",
+                "removed_patterns": [f"write-denied path: {file_path}"],
+                "source": f"{source_path}#{inv.get('id', '?')}",
+            }
+            if (inv.get("severity") or "warn").lower() == "blocker":
+                blockers.append(entry)
+            else:
+                warns.append(entry)
+            continue
         applies = inv.get("applies_to") or []
         if not _matches_path(file_path, applies, workspace):
             continue
-        rules = inv.get("rules") or {}
         patterns = _compile_patterns(rules)
         ast_call_names = rules.get("must_keep_call_ast") or []
         if not patterns and not ast_call_names:

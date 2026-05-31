@@ -237,6 +237,66 @@ def _verdict_for(ws: Path, sha: str) -> str:
     return rec.get("verdict", "open")
 
 
+# F4.2 (T9): the reviewer states its OWN verdict in its (harness-written,
+# no-subagents-forge-protected) transcript as `REVIEW-VERDICT: <packet_sha> PASS|FAIL`.
+# sha floor 8 (review round-1 LOW): a 6-hex prefix collides too cheaply.
+_REVIEW_VERDICT_RE = re.compile(
+    r"REVIEW-VERDICT\s*:\s*([0-9a-f]{8,64})\s+(PASS|FAIL)\b", re.IGNORECASE)
+
+
+def _reviewer_verdict_from_transcript(ws: Path, envelope: Dict[str, Any], sha: str,
+                                      cfg: Dict[str, Any]) -> Optional[str]:
+    """F4.2 (T9, downscoped to consumption-required): read the verdict FROM the
+    reviewer's own pure sub-agent transcript (`REVIEW-VERDICT: <sha> PASS|FAIL`),
+    NOT the main-agent-writable `.independent_review.json`. Returns 'fail' if ANY
+    matching reviewer emitted FAIL for this sha (review round-1 HIGH-2: FAIL-
+    PRECEDENCE — scan ALL session sub-agents so a second 'PASS' echo-bot can't
+    shadow a genuine reviewer FAIL), else 'pass' if ≥1 PASS, else None.
+
+    KNOWN RESIDUAL (review round-1 HIGH-1, = the spec's v0.35 crypto gap): the
+    packet-sha is NOT secret (the main agent derives it from the in-repo CLI), so a
+    cooperative-but-lazy agent can still manufacture a clean PASS by spawning a
+    throwaway echo sub-agent that prints `REVIEW-VERDICT: <sha> PASS`. consumption-
+    required only proves *a* sub-agent saw the sha, not that it reviewed. Closing
+    this needs a per-Stop nonce the gate injects OR a crypto-signed verdict — v0.35.
+    What F4.2 DOES close: a main agent that writes `pass` over a REAL reviewer's FAIL
+    (FAIL-precedence above) — the meaningful forged-verdict case."""
+    tp = envelope.get("transcript_path")
+    if not tp:
+        return None
+    enc = re.sub(r"[^A-Za-z0-9]", "-", str(ws.resolve()))
+    sub_dir = Path.home() / ".claude" / "projects" / enc / Path(tp).stem / "subagents"
+    if not sub_dir.is_dir():
+        return None
+    max_prompt = int(cfg.get("reviewer_prompt_max_bytes", 4096))
+    found_pass = False
+    for sub in sub_dir.glob("*.jsonl"):
+        msgs = read_jsonl_transcript(sub)
+        if not msgs:
+            continue
+        # purity (same anchor as _reviewer_consumed_sha): a small spawn prompt
+        if len(_first_user_text(msgs).encode("utf-8")) > max_prompt:
+            continue
+        for m in msgs:
+            mm = m.get("message") if isinstance(m.get("message"), dict) else m
+            if (mm.get("role") or m.get("type")) != "assistant":
+                continue
+            c = mm.get("content")
+            txt = c if isinstance(c, str) else (
+                " ".join(b.get("text", "") for b in c
+                         if isinstance(b, dict) and b.get("type") == "text")
+                if isinstance(c, list) else "")
+            for vm in _REVIEW_VERDICT_RE.finditer(txt):
+                token_sha = vm.group(1).lower()
+                # tie the verdict to THIS packet — token sha must be a prefix of
+                # (or equal to) the current sha, so a stale verdict can't be replayed.
+                if sha.lower().startswith(token_sha) or token_sha == sha.lower():
+                    if vm.group(2).upper() == "FAIL":
+                        return "fail"          # FAIL-precedence — any FAIL wins
+                    found_pass = True
+    return "pass" if found_pass else None
+
+
 def main() -> int:
     wrap_utf8_stdio()
     if os.environ.get("AGENT_TOOLKIT_DISABLE") == "1":
@@ -283,25 +343,39 @@ def main() -> int:
     # verdict. A 'pass' verdict is honored ONLY with that consumption evidence —
     # one self-written `{"<sha>":{"verdict":"pass"}}` line no longer skips the gate.
     consumed = _reviewer_consumed_sha(ws, envelope, sha, cfg)
-    if verdict == "pass" and consumed:        # sha-cache: reviewed & clean
+    # F4.2 (T9): a cached 'pass' is honored UNLESS the reviewer's OWN transcript says
+    # FAIL. rv=='pass' (reviewer-confirmed) or rv is None (no token → consumption-only
+    # warn-capable fallback; the throwaway-echo residual = v0.35, see the helper).
+    rv = _reviewer_verdict_from_transcript(ws, envelope, sha, cfg) if consumed else None
+    if verdict == "pass" and consumed and rv != "fail":
         emit_fire_event(HOOK, "cached")
         return 0
     rec = state.get(sha) or {"round": 0, "non_progress": 0, "block_streak": 0}
-    if not consumed:
+    # `forged` = artifact says 'pass' but the reviewer transcript says FAIL. It shares
+    # the not-consumed jam-escape path (review round-1 MED-1) so a forged verdict can
+    # never loop forever — block_streak escalates exactly like a missing reviewer.
+    forged = (verdict == "pass" and consumed and rv == "fail")
+    if not consumed or forged:
         rec["block_streak"] = int(rec.get("block_streak", 0)) + 1
         state[sha] = rec
         _save_state(ws, state)
-        # ID-17 jam-escape: too many blocks w/o a valid reviewer → degrade+escalate
+        # ID-17 jam-escape: too many blocks w/o progress → degrade+escalate (terminal).
         if rec["block_streak"] >= int(cfg.get("block_streak_before_escalate", 3)):
             emit_fire_event(HOOK, "escalate")
             emit_stop_context(
-                f"[independent-review] escalate: reviewer chưa chạy được sau "
+                f"[independent-review] escalate: "
+                f"{'verdict bị ghi đè' if forged else 'reviewer chưa chạy được'} sau "
                 f"{rec['block_streak']} lần cho spec '{slug}'. Đề nghị DEV: "
-                f"`gap-cant-fix: independent-review reviewer-unavailable`.")
-        msg = (f"[independent-review] done-claim trên spec '{slug}' (verified) "
-               f"cần review độc lập. Chạy skill `independent-review` / "
-               f"`/review-independent {slug}` (spawn reviewer sub-agent với packet "
-               f"sha {sha[:8]}), rồi mới chốt done.")
+                f"`gap-cant-fix: independent-review "
+                f"{'forged-verdict' if forged else 'reviewer-unavailable'}`.")
+        msg = ((f"[independent-review] artifact verdict='pass' cho '{slug}' NHƯNG "
+                f"transcript reviewer (sha {sha[:8]}) ghi `REVIEW-VERDICT: FAIL` — "
+                f"verdict bị main-agent ghi đè. Sửa BLOCKER reviewer nêu rồi re-review; "
+                f"KHÔNG tự ghi 'pass' vào .independent_review.json.") if forged else
+               (f"[independent-review] done-claim trên spec '{slug}' (verified) cần "
+                f"review độc lập. Chạy skill `independent-review` / "
+                f"`/review-independent {slug}` (spawn reviewer sub-agent với packet "
+                f"sha {sha[:8]}), rồi mới chốt done."))
         emit_fire_event(HOOK, "block" if mode == "block" else "warn")
         emit_stop_block(msg) if mode == "block" else emit_stop_context(msg)
         return 0

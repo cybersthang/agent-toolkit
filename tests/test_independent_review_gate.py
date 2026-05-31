@@ -238,7 +238,7 @@ def test_escalate_writes_terminal_verdict(tmp_path):
     assert rc == 0 and '"decision"' not in out  # terminal → allow, no re-block
 
 
-def _seed_subagent(home, ws, sess, fname, prompt_text):
+def _seed_subagent(home, ws, sess, fname, prompt_text, verdict=None):
     import re
     enc = re.sub(r"[^A-Za-z0-9]", "-", str(ws.resolve()))
     proj = home / ".claude" / "projects" / enc
@@ -253,14 +253,93 @@ def _seed_subagent(home, ws, sess, fname, prompt_text):
     sub = proj / sess / "subagents" / fname
     sub.parent.mkdir(parents=True, exist_ok=True)
     sha_echo = prompt_text.split("packet_sha ")[-1].split()[0] if "packet_sha " in prompt_text else ""
+    asst_text = f"packet_sha {sha_echo} — reviewing."
+    if verdict:                                     # F4.2: reviewer-authored verdict
+        clean_sha = re.sub(r"[^0-9a-fA-F]", "", sha_echo)   # drop the prompt's "."
+        asst_text += f"\nREVIEW-VERDICT: {clean_sha} {verdict}"
     sub.write_text("\n".join(json.dumps(m) for m in [
         {"type": "user", "message": {"role": "user",
          "content": [{"type": "text", "text": prompt_text}]}},
         # reviewer ECHOES the sha in an assistant turn (ID-12 consumption proof)
         {"type": "assistant", "message": {"role": "assistant",
-         "content": [{"type": "text", "text": f"packet_sha {sha_echo} — reviewing."}]}},
+         "content": [{"type": "text", "text": asst_text}]}},
     ]), encoding="utf-8")
     return main_tp
+
+
+def test_f42_forged_pass_caught_when_reviewer_says_fail_strict(tmp_path):
+    # F4.2: artifact verdict='pass' + a real reviewer consumed the sha, BUT the
+    # reviewer's own transcript says REVIEW-VERDICT FAIL → forged → block (strict).
+    ws = _mk_repo(tmp_path)
+    sha = gate._review_sha(ws, "feat")
+    (ws / ".agent-toolkit" / ".independent_review.json").write_text(
+        json.dumps({sha: {"verdict": "pass"}}), encoding="utf-8")
+    home = tmp_path / "home"
+    main_tp = _seed_subagent(home, ws, "sessF", "agent-1.jsonl",
+                             f"Read packet. packet_sha {sha}. Review only from packet.",
+                             verdict="FAIL")
+    rc, out = _run(ws, _env(ws, transcript_path=str(main_tp)), strict=True, home=home)
+    assert '"decision": "block"' in out, out
+    assert "REVIEW-VERDICT" in out or "ghi đè" in out
+
+
+def test_f42_reviewer_pass_verdict_honored(tmp_path):
+    # reviewer transcript confirms PASS → cached/allow.
+    ws = _mk_repo(tmp_path)
+    sha = gate._review_sha(ws, "feat")
+    (ws / ".agent-toolkit" / ".independent_review.json").write_text(
+        json.dumps({sha: {"verdict": "pass"}}), encoding="utf-8")
+    home = tmp_path / "home"
+    main_tp = _seed_subagent(home, ws, "sessP", "agent-1.jsonl",
+                             f"Read packet. packet_sha {sha}. Review only from packet.",
+                             verdict="PASS")
+    rc, out = _run(ws, _env(ws, transcript_path=str(main_tp)), strict=True, home=home)
+    assert rc == 0 and '"decision"' not in out, out
+
+
+def test_f42_no_verdict_token_falls_back_to_consumption(tmp_path):
+    # Legacy reviewer that didn't emit REVIEW-VERDICT → fall back to consumption-only
+    # (warn-capable, no regression): cached pass still honored.
+    ws = _mk_repo(tmp_path)
+    sha = gate._review_sha(ws, "feat")
+    (ws / ".agent-toolkit" / ".independent_review.json").write_text(
+        json.dumps({sha: {"verdict": "pass"}}), encoding="utf-8")
+    home = tmp_path / "home"
+    main_tp = _seed_subagent(home, ws, "sessN", "agent-1.jsonl",
+                             f"Read packet. packet_sha {sha}. Review only from packet.")
+    rc, out = _run(ws, _env(ws, transcript_path=str(main_tp)), strict=True, home=home)
+    assert rc == 0 and '"decision"' not in out, out
+
+
+def test_f42_forged_no_jam_escalates_strict(tmp_path):
+    # review round-1 MED-1: the forged-FAIL block shares the jam-escape machinery —
+    # it can't loop forever. After block_streak hits the cap it escalates to DEV.
+    ws = _mk_repo(tmp_path)
+    sha = gate._review_sha(ws, "feat")
+    (ws / ".agent-toolkit" / ".independent_review.json").write_text(
+        json.dumps({sha: {"verdict": "pass"}}), encoding="utf-8")
+    home = tmp_path / "home"
+    main_tp = _seed_subagent(home, ws, "sessJ", "agent-1.jsonl",
+                             f"Read packet. packet_sha {sha}. Review only from packet.",
+                             verdict="FAIL")
+    outs = [_run(ws, _env(ws, transcript_path=str(main_tp)), strict=True, home=home)[1]
+            for _ in range(3)]
+    assert '"decision": "block"' in outs[0]            # first stop blocks
+    assert "escalate" in outs[2] or "gap-cant-fix" in outs[2]   # cap → escalate, no jam
+
+
+def test_f42_forged_pass_reviewer_fail_warns_default(tmp_path):
+    # default (warn) mode → surfaces the contradiction but does NOT block.
+    ws = _mk_repo(tmp_path)
+    sha = gate._review_sha(ws, "feat")
+    (ws / ".agent-toolkit" / ".independent_review.json").write_text(
+        json.dumps({sha: {"verdict": "pass"}}), encoding="utf-8")
+    home = tmp_path / "home"
+    main_tp = _seed_subagent(home, ws, "sessW", "agent-1.jsonl",
+                             f"Read packet. packet_sha {sha}. Review only from packet.",
+                             verdict="FAIL")
+    rc, out = _run(ws, _env(ws, transcript_path=str(main_tp)), strict=False, home=home)
+    assert '"decision": "block"' not in out, out
 
 
 def test_reviewer_evidence_positive_purity_and_session_scope(tmp_path, monkeypatch):

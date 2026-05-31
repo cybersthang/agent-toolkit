@@ -6,7 +6,8 @@
     "applies_to": "list of glob patterns (workspace-relative). Empty = applies everywhere.",
     "rules": {
       "must_keep_regex": "list of regex patterns; if old_string matched, new_string must too",
-      "must_keep_call": "list of bare function/attribute names; matches `name(` and `.name(`"
+      "must_keep_call": "list of bare function/attribute names; matches `name(` and `.name(`",
+      "deny_write_glob": "list of globs (v0.34) — DENY any Edit/Write whose TARGET PATH matches, regardless of content. For files only the harness / DEV may author (e.g. sub-agent transcripts). Fires independently of must_keep_* rules."
     },
     "severity": "blocker (deny edit) or warn (allow + inject reminder)",
     "rationale": "why this rule exists — surface in the block message",
@@ -118,6 +119,25 @@
       "added_by": "agent",
       "_doc": "Default shipped v0.22+. Confidence M — regex catches the common 'sudo() # reason' / 'sudo()\\n# reason' / docstring patterns but a sudo on its own line with the comment 5 lines away would slip; project may promote to blocker with a stricter sibling check via /probe-add.",
       "_audit_2026_05_28": "REVIEWED P2: KEEP at warn. Real-codebase scan (a 198-module production deployment) found 1037 `.sudo()` calls in models/wizards/controllers, the vast majority WITHOUT adjacent comment — meaning if any edit happens in those files, the `must_keep_regex` won't match old_string (no sudo+comment context to preserve), so promotion to blocker would have no effect on existing files. Worse, the broad `#[^\\n]*sudo` OR-branch matches ANY comment containing the word 'sudo' (e.g., 'sudo apt install' in shell-snippet docstrings), creating false-positive risk. To make this invariant effective, redesign regex to require `.sudo()` adjacency (within ±3 lines of the comment) — track as follow-up."
+    },
+    {
+      "id": "no-subagents-forge",
+      "description": "The agent must never WRITE a sub-agent transcript — `**/.claude/projects/**/subagents/*.jsonl` files are HARNESS-authored and are the un-forgeable evidence the independent-review gate consumes; writing one forges a reviewer.",
+      "applies_to": [
+        "**/.claude/projects/**/subagents/**"
+      ],
+      "rules": {
+        "deny_write_glob": [
+          "**/.claude/projects/**/subagents/**",
+          "**/subagents/**"
+        ]
+      },
+      "severity": "blocker",
+      "rationale": "independent_review_gate (v0.31) trusts sub-agent transcripts at <proj>/<session>/subagents/*.jsonl as proof a fresh-context reviewer ran. The harness writes them on a real Task spawn (confirmed empirically v0.34 T8a) — the agent never needs to Write there. Denying agent Write closes the forge-a-reviewer hole (F4.1) AND protects the reviewer-authored verdict: F4.2 reads the reviewer's `REVIEW-VERDICT: <sha> PASS|FAIL` line FROM this same harness-written transcript, so denying agent Write here is exactly what makes that verdict un-forgeable (no separate verdict file exists — the verdict travels in the transcript). The broad `**/subagents/**` is a review round-1 add so a RELATIVE `.claude/...subagents/...` path (which the strict glob's leading-slash assumption can miss) is still denied.",
+      "added": "2026-05-31",
+      "added_by": "agent",
+      "related_adr": "ADR-003",
+      "_doc": "v0.34 F4.1+F4.2 (T8/T9), uses the deny_write_glob rule-type added to invariant_guard in T8b. Ships block-default (severity blocker) — invariant_guard is itself a PreToolUse DENY hook, and there is NO legitimate reason for the agent to Write a subagents/*.jsonl file, so false-positive risk is ~0 (the only v0.34 trigger that ships enforcing rather than warn-capable). One-shot DEV override remains `bypass-invariant: no-subagents-forge`. NB: the throwaway-echo-bot forge (a sub-agent that merely echoes the public packet-sha + a PASS line without reviewing) is NOT closed by this — that residual needs a per-Stop nonce / crypto-signed verdict, deferred to v0.35."
     }
   ]
 }

@@ -25,9 +25,13 @@ description: Spawn a FRESH-CONTEXT reviewer sub-agent at the done-boundary to ca
    - Prompt = ONLY: "Read `<packet_path>`. Review ONLY from this packet.
      **Default-skeptic — try to REFUTE each diff hunk; do NOT assume the
      implementer was right (ID-15).** Emit findings in the schema below.
-     The packet_sha is `<packet_sha>` — echo it in your first line."
+     The packet_sha is `<packet_sha>` — echo it in your first line. As your
+     FINAL line emit exactly `REVIEW-VERDICT: <packet_sha> PASS` (if 0 confirmed
+     BLOCKERs) or `REVIEW-VERDICT: <packet_sha> FAIL` (if ≥1)."
    - Do NOT include your implementation reasoning. The packet_sha echo is how
-     the gate proves the sub-agent consumed the packet (ID-12).
+     the gate proves the sub-agent consumed the packet (ID-12); the
+     `REVIEW-VERDICT` line is how the gate reads the verdict from the REVIEWER
+     (F4.2) instead of trusting a main-agent-written artifact.
    - Reviewer may Read at most `max_reads_per_round` (config) extra files; over
      cap → conclude with note `context-limited` (ID-19).
 3. **Finding schema** (reviewer returns):
@@ -45,7 +49,10 @@ description: Spawn a FRESH-CONTEXT reviewer sub-agent at the done-boundary to ca
 5. **Feed confirmed BLOCKERs (ID-6) →** append to `.agent-toolkit/.open_gaps.json`
    (status open) so `gap_completeness_gate` forces fix-or-defer. Write verdict +
    round + blocker_fingerprints to `.agent-toolkit/.independent_review.json`
-   keyed by review_sha.
+   keyed by review_sha. **(F4.2: this artifact is the main agent's record — the
+   gate now ALSO reads the reviewer's own `REVIEW-VERDICT` line; if the artifact
+   says `pass` but the reviewer transcript says `FAIL`, the gate treats it as a
+   forged verdict and blocks. Do NOT write `pass` over a reviewer FAIL.)**
 6. **Fix → re-review (incremental, ID-5):** fix BLOCKERs; re-run emit-context
    (new review-sha) and re-review ONLY the fix-diff + re-test prior BLOCKERs.
 

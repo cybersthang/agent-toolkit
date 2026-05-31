@@ -161,6 +161,12 @@
             "timeout": 15
           },
           {
+            "_comment": "v0.34 F3.1 review-proof-gate: on a /review count-table, verify each `**Proof**: path:line` cite was touched by a tool THIS turn (tool_use input / harness tool_result) OR exists on disk; a proof that is neither is fabricated → warn (default) / block (enforce_mode review_proof_gate=block) via shared convergence-cap (HOLDS after cap, never deadlocks). Single-shot bypass: `review-proof: skip <reason>` in the response.",
+            "type": "command",
+            "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/review_proof_gate.py",
+            "timeout": 10
+          },
+          {
             "type": "command",
             "command": "{{PYTHON_BIN}} {{WORKSPACE_ROOT}}/.claude/hooks/independent_review_gate.py",
             "timeout": 15

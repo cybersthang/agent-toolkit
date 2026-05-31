@@ -23,6 +23,6 @@ alwaysApply: true
 - Use `@api.model_create_multi` for any `create()` override.
 
 **Odoo 19 caveat — read before editing mail code**:
-- `mail.thread` and `mail.activity.mixin` were refactored (mail framework v2). Thread message storage and the follower model changed.
+- `mail.thread` / `mail.activity.mixin`: the OWL/store rewrite ("mail v2") landed at v16→17; treat any v19 mail delta as unverified and check the installed source.
 - Before touching `message_post`, `_track_subtype`, follower logic, activity scheduling, or any subclass of these mixins, open the actual installed Odoo 19 source under the addon root and verify the current API. v18 patterns may compile but behave differently.
 - Run module tests (`--test-tags /<module>`) before claiming a mail-related change works.

@@ -1,13 +1,13 @@
 ---
-description: Odoo 19 backend - ORM, views, mail framework v2, performance, security, manifest. Single source of truth for "how do I write Odoo 19 code in this project".
+description: Odoo 19 backend - ORM, views, mail framework (verify v19 deltas vs source), performance, security, manifest. Single source of truth for "how do I write Odoo 19 code in this project".
 globs: "{addons,custom_addons,enterprise,odoo/addons}/**/*"
 alwaysApply: false
 ---
 
 ## Odoo 19 vs 18 - what actually changed
 
-- **Mail framework v2 is the #1 caveat.** `mail.thread` and `mail.activity.mixin` were refactored: thread message storage and the follower model changed. If your task touches `message_post`, `_track_subtype`, `_message_compute_subject`, `_mail_thread_data`, custom follower logic, activity scheduling, or any subclass of these mixins — **read the actual Odoo 19 source for the relevant class before editing**. v18 patterns may compile but behave differently.
-- Other v18 patterns mostly carry over: OWL v2, `invisible="..."` Python-expr view syntax, `_compute_display_name`, `_check_company_auto`, `account.move` shape.
+- **Mail is the #1 caveat — verify against source.** The mail/Discuss OWL store rewrite ("mail v2") landed at **v16→17**; the triad (`mail.thread` / `mail.activity.mixin`) is largely stable v17→v19, so treat any v19 mail delta as **unverified**. If your task touches `message_post`, `_track_subtype`, `_message_compute_subject`, `_mail_thread_data`, custom follower logic, activity scheduling, or any subclass of these mixins — **read the actual Odoo 19 source for the relevant class before editing**. v18 patterns may compile but could behave differently.
+- Other v18 patterns carry over: OWL, `invisible="..."` Python-expr view syntax, `_compute_display_name`, `_check_company_auto`, `account.move` shape.
 - Python 3.10+ is the supported runtime; PostgreSQL >= 13.
 
 ## ORM
@@ -57,4 +57,4 @@ alwaysApply: false
 - Module install/update: `{{PYTHON_BIN}} odoo-bin -u <module> --stop-after-init -d {{DEFAULT_DB}}`.
 - Module tests: `--test-enable --test-tags /<module> --stop-after-init`.
 - For algorithm correctness against real data, prefer `realdata_test.eval_orm_expression` and `consistency_check_eval` over UI-driven repro.
-- Before claiming a mail-thread change works, run the module test suite — the v2 refactor means lint/syntax checks alone are insufficient.
+- Before claiming a mail-thread change works, run the module test suite — mail internals are version-sensitive, so lint/syntax checks alone are insufficient.

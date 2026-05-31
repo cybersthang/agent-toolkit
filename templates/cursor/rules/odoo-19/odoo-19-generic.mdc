@@ -9,7 +9,7 @@ This file applies to **any** addon under any addon root. Never embed a specific 
 
 ## Version caveat (top of mind)
 
-Odoo 19.0 is recent (released ~late 2025 / early 2026). The **mail framework was refactored to v2**: `mail.thread` and `mail.activity.mixin` changed thread message storage and the follower model. **Do not assume v18 mail patterns carry over** — read the actual installed Odoo 19 source under the addon root before editing any mail-related code (`message_post`, follower handling, activity scheduling, `_track_*` hooks, mixin subclasses). Other v18 patterns (OWL v2, `invisible="..."` view syntax, `_compute_display_name`, `_check_company_auto`) generally do carry.
+Odoo 19.0 is recent (released ~late 2025 / early 2026). The mail/Discuss **OWL store rewrite ("mail v2") landed at the v16→17 boundary**, and the mail triad (`mail.thread` / `mail.activity.mixin` / `mail.message`) is **largely stable v17→v19** — so **treat any v19 mail-specific delta as UNVERIFIED**: read the actual installed Odoo 19 source under the addon root before editing mail-related code (`message_post`, follower handling, activity scheduling, `_track_*` hooks, mixin subclasses). Other v18 patterns (OWL, `invisible="..."` view syntax, `_compute_display_name`, `_check_company_auto`) carry over.
 
 ## Discovery (always before edits)
 
@@ -49,7 +49,7 @@ Odoo 19.0 is recent (released ~late 2025 / early 2026). The **mail framework was
 
 ## Mail / activity (Odoo 19 specifics)
 
-Before editing any subclass of `mail.thread` or `mail.activity.mixin`, open the v19 source for the mixin and run `find_inheritance_chain({ model: "mail.thread" })`. The v2 refactor changed internal storage; v18 field names and helper signatures may differ.
+Before editing any subclass of `mail.thread` or `mail.activity.mixin`, open the v19 source for the mixin and run `find_inheritance_chain({ model: "mail.thread" })`. The v16→17 OWL/store rewrite changed mail internals; verify v19 field names and helper signatures against installed source rather than assuming.
 
 ## Security / ACL
 

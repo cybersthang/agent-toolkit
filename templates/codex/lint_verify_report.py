@@ -195,12 +195,56 @@ def _scan_report_for_ids(report_text: str, eval_ids: list[str]) -> dict:
     return result
 
 
+# v0.33 F1.2 (strict): a verdict marker an eval row must carry to count as
+# adjudicated (not merely mentioned). PASS/FAIL/GAP/BLOCKER/WRONG/CORRECT/N/A
+# as words, or the ✅/❌/⚠️/❓ status glyphs.
+_VERDICT_RE = re.compile(r"(?i)\b(?:pass|fail|gap|blocker|wrong|correct|n/?a)\b|[✅❌⚠❓]")
+
+
+def _id_row_has_verdict(report_text: str, eid: str, all_ids: list) -> bool:
+    """True iff `eid` (token) sits in a SINGLE-eval table cell whose own or the
+    NEXT cell carries a verdict. Round-2 MED fix: reject a cell that ALSO holds
+    another eval id (ambiguous), and look only at the id's own + next cell (not
+    the previous) — so `| us1 | ✅ | us2 |` adjudicates only us1, and
+    `| us1 us2 | ✅ |` adjudicates neither. Non-table lines: a verdict within
+    ~40 chars AFTER the id."""
+    pattern = re.compile(r"(?<![A-Za-z0-9_-])" + re.escape(eid) + r"(?![A-Za-z0-9_-])")
+    others = [re.compile(r"(?<![A-Za-z0-9_-])" + re.escape(o) + r"(?![A-Za-z0-9_-])")
+              for o in all_ids if o != eid]
+    for line in report_text.splitlines():
+        if not pattern.search(line):
+            continue
+        if "|" in line:
+            cells = [c.strip() for c in line.split("|")]
+            for i, cell in enumerate(cells):
+                if not pattern.search(cell):
+                    continue
+                if any(op.search(cell) for op in others):
+                    continue                      # multi-id cell → ambiguous, skip
+                # Strip the id token from its OWN cell so a verdict-word baked
+                # INTO the id (e.g. `us1-login-pass`) can't self-adjudicate; a
+                # real verdict in the own cell (after the id) or the next cell counts.
+                own = pattern.sub(" ", cell)
+                nxt = cells[i + 1] if i + 1 < len(cells) else ""
+                if _VERDICT_RE.search(own + " " + nxt):
+                    return True
+        else:
+            m = pattern.search(line)
+            if m and _VERDICT_RE.search(line[m.end():m.end() + 40]):
+                return True
+    return False
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("spec_slug", help="Spec slug (filename in .agent-toolkit/specs/ without .md)")
     ap.add_argument("--report", help="Path to verify report markdown (default: stdin)")
     ap.add_argument("--workspace", help="Workspace root (default: auto-detect from cwd)")
+    ap.add_argument("--strict", action="store_true",
+                    help="v0.33 F1.2: an eval is 'covered' only if its row also "
+                         "carries an adjudication verdict (PASS/FAIL/GAP/BLOCKER/✅/❌) "
+                         "— a bare ID mention no longer counts. Off by default.")
     args = ap.parse_args()
 
     workspace = Path(args.workspace).resolve() if args.workspace else _find_workspace_root(Path.cwd())
@@ -221,6 +265,14 @@ def main() -> int:
         report_text = sys.stdin.read()
 
     coverage = _scan_report_for_ids(report_text, eval_ids)
+    # v0.33 F1.2 (strict): an eval mentioned without an adjudication verdict on
+    # its row no longer counts as covered — closes "name the ID to pass" gaming.
+    no_verdict: list[str] = []
+    if args.strict:
+        for eid in list(coverage):
+            if coverage[eid] and not _id_row_has_verdict(report_text, eid, eval_ids):
+                coverage[eid] = False
+                no_verdict.append(eid)
     missing = [eid for eid, found in coverage.items() if not found]
     covered = [eid for eid, found in coverage.items() if found]
 
@@ -229,6 +281,11 @@ def main() -> int:
               file=sys.stderr)
         for eid in missing:
             print(f"  - {eid}", file=sys.stderr)
+        if no_verdict:
+            print("\nMentioned but NOT adjudicated (strict — each needs a "
+                  "PASS/FAIL/GAP/BLOCKER verdict in its row):", file=sys.stderr)
+            for eid in no_verdict:
+                print(f"  - {eid}", file=sys.stderr)
         print(f"\nCovered: {len(covered)}/{len(eval_ids)}", file=sys.stderr)
         return 1
 

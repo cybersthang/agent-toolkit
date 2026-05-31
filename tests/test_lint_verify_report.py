@@ -46,7 +46,7 @@ def _seed_spec(workspace: Path, slug: str, evals: list = None,
     return spec_path
 
 
-def _run_lint(workspace: Path, slug: str, report_text: str):
+def _run_lint(workspace: Path, slug: str, report_text: str, strict: bool = False):
     """Spawn lint_verify_report.py, pipe report on stdin (UTF-8 bytes).
 
     Pipe as bytes — Windows default cp1252 encoder mangles `✅` / Vietnamese
@@ -54,8 +54,11 @@ def _run_lint(workspace: Path, slug: str, report_text: str):
     captured output back as UTF-8 to keep the test cross-platform.
     """
     env = dict(os.environ, PYTHONIOENCODING='utf-8')
+    cmd = [PYTHON, str(LINT_SCRIPT), slug, '--workspace', str(workspace)]
+    if strict:
+        cmd.append('--strict')
     proc = subprocess.run(
-        [PYTHON, str(LINT_SCRIPT), slug, '--workspace', str(workspace)],
+        cmd,
         input=report_text.encode('utf-8'),
         capture_output=True, timeout=10, env=env,
     )
@@ -216,3 +219,65 @@ class TestRealDataProofEnforcement:
             f'Eval-coverage check should fire before Real-Data Proof check; '
             f'got exit {result.returncode}'
         )
+
+
+# ============================================================
+# v0.33 F1.2-A: --strict requires an adjudication verdict per eval row
+# ============================================================
+class TestStrictVerdictRequirement:
+    """Under --strict, an eval id merely MENTIONED (no PASS/GAP/✅ verdict on
+    its row) no longer counts as covered — closes the 'name the ID to pass'
+    gaming. Default (no --strict) keeps the lenient mention-only behavior."""
+
+    def test_mention_without_verdict_fails_strict(self, tmp_path):
+        _seed_spec(tmp_path, 'sv1', evals=['us1-flag'])
+        report = '## Verify Report — sv1\nWe looked at us1-flag in passing.\n'
+        r = _run_lint(tmp_path, 'sv1', report, strict=True)
+        assert r.returncode == 1, (r.stdout, r.stderr)
+        assert 'us1-flag' in r.stderr and 'adjudicat' in r.stderr.lower()
+
+    def test_mention_without_verdict_passes_default(self, tmp_path):
+        # Regression: default mode must NOT change (mention-only still passes).
+        _seed_spec(tmp_path, 'sv2', evals=['us1-flag'])
+        report = '## Verify Report — sv2\nWe looked at us1-flag in passing.\n'
+        r = _run_lint(tmp_path, 'sv2', report, strict=False)
+        assert r.returncode == 0, (r.stdout, r.stderr)
+
+    def test_verdict_row_passes_strict(self, tmp_path):
+        _seed_spec(tmp_path, 'sv3', evals=['us1-flag'])
+        report = '## Verify Report — sv3\n| us1-flag | ✅ PASS |\n'
+        r = _run_lint(tmp_path, 'sv3', report, strict=True)
+        assert r.returncode == 0, (r.stdout, r.stderr)
+
+    def test_gap_verdict_also_counts_strict(self, tmp_path):
+        # A GAP/BLOCKER row is still an adjudication — coverage, not silence.
+        _seed_spec(tmp_path, 'sv4', evals=['us1-flag'])
+        report = '## Verify Report — sv4\n| us1-flag | ❌ GAP — not implemented |\n'
+        r = _run_lint(tmp_path, 'sv4', report, strict=True)
+        assert r.returncode == 0, (r.stdout, r.stderr)
+
+    def test_multi_id_one_verdict_not_all_adjudicated_strict(self, tmp_path):
+        # post-review MED fix: one ✅ packed in a row with several ids must NOT
+        # adjudicate the non-adjacent ones. us1-flag's neighbor cell is us2-count
+        # (no verdict) → us1-flag stays uncovered → exit 1.
+        _seed_spec(tmp_path, 'sv5', evals=['us1-flag', 'us2-count'])
+        report = '## Verify Report — sv5\n| us1-flag | us2-count | ✅ |\n'
+        r = _run_lint(tmp_path, 'sv5', report, strict=True)
+        assert r.returncode == 1, (r.stdout, r.stderr)
+        assert 'us1-flag' in r.stderr
+
+    def test_interleaved_verdict_only_adjudicates_preceding_strict(self, tmp_path):
+        # round-2: `| us1 | ✅ | us2 |` — own+next window means the ✅ covers only
+        # us1-flag; us2-count's next cell is empty → us2-count stays uncovered.
+        _seed_spec(tmp_path, 'sv6', evals=['us1-flag', 'us2-count'])
+        report = '## Verify Report — sv6\n| us1-flag | ✅ | us2-count |\n'
+        r = _run_lint(tmp_path, 'sv6', report, strict=True)
+        assert r.returncode == 1, (r.stdout, r.stderr)
+        assert 'us2-count' in r.stderr
+
+    def test_multi_id_in_one_cell_adjudicates_none_strict(self, tmp_path):
+        # round-2: two ids packed in ONE cell is ambiguous → neither counts.
+        _seed_spec(tmp_path, 'sv7', evals=['us1-flag', 'us2-count'])
+        report = '## Verify Report — sv7\n| us1-flag us2-count | ✅ |\n'
+        r = _run_lint(tmp_path, 'sv7', report, strict=True)
+        assert r.returncode == 1, (r.stdout, r.stderr)

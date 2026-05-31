@@ -32,6 +32,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -39,7 +41,8 @@ from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
-    wrap_utf8_stdio, read_jsonl_transcript, find_workspace_root, run_main_safe)
+    wrap_utf8_stdio, read_jsonl_transcript, find_workspace_root, run_main_safe,
+    get_enforce_mode)
 from _patterns import (  # noqa: E402
     VERIFY_REPORT_HEADER_RE as _VERIFY_REPORT_HEADER_RE,
     SLUG_PATTERNS as _SLUG_PATTERNS,
@@ -109,6 +112,149 @@ def _extract_spec_slug(text: str, workspace: Optional[Path] = None) -> Optional[
 
 _find_workspace_root = find_workspace_root
 
+# v0.33 F1.2-B (strict): a /verify PASS claim must be backed by a real-data
+# probe THIS turn — an mcp__* tool or a Bash run (pytest/make per ADR-002).
+_PASS_CLAIM_RE = re.compile(
+    r"(?i)(?:\bpass(?:ed|es)?\b|\bcorrect\b|\bverified\b|\bno gaps?\b"
+    r"|\ball (?:user )?stories\b|✅)")
+
+# v0.33 (round-2 HIGH fix): a Bash tool_use counts as a real-data probe ONLY if
+# the PROGRAM being executed is a test runner — anchored to argv[0] of each
+# sub-command (split on ; && || |), NOT a substring match. So `echo pytest`,
+# `cat pytest.ini`, `# pytest`, `grep pytest` do NOT count; `pytest`, `make test`,
+# `python -m pytest`, `odoo-bin --test-enable`, `cd x && pytest` DO.
+_TEST_PROGRAMS = {"pytest", "py.test", "tox", "nose2", "nose",
+                  "odoo-bin", "odoo", "psql", "manage.py"}
+
+
+def _runs_tests(cmd: str) -> bool:
+    if not cmd:
+        return False
+    for sub in re.split(r"(?:&&|\|\||[;&|\n])+", cmd):
+        sub = sub.strip()
+        if not sub:
+            continue
+        try:
+            tokens = shlex.split(sub)
+        except ValueError:
+            tokens = sub.split()
+        idx = 0                                  # skip leading VAR=val env assignments
+        while idx < len(tokens) and re.match(r"^[A-Za-z_]\w*=", tokens[idx]):
+            idx += 1
+        if idx >= len(tokens):
+            continue
+        prog = os.path.basename(tokens[idx])
+        rest = tokens[idx + 1:]
+        if prog in _TEST_PROGRAMS:
+            return True
+        if prog == "make":            # only a test-ish target counts (not `make clean`)
+            return any(t in {"test", "tests", "rebuild", "coverage", "check",
+                             "ci", "verify"} for t in rest)
+        if prog in ("python", "python3"):
+            if "-m" in rest:
+                mi = rest.index("-m")
+                if mi + 1 < len(rest) and rest[mi + 1] in ("pytest", "unittest"):
+                    return True
+            if "test" in rest or any(
+                    re.search(r"(?:^|/)(?:test_.*|.*_test)\.py$", t) for t in rest):
+                return True
+    return False
+
+
+def _claims_pass(text: str) -> bool:
+    return bool(_PASS_CLAIM_RE.search(text))
+
+
+# v0.33 (round-3 HIGH fix): inspecting the COMMAND is whack-a-mole (`pytest
+# --version` runs the runner but zero tests). The un-forgeable signal is the
+# tool RESULT — written by Claude Code, not the agent. A Bash test command only
+# counts if its result shows ACTUAL test execution (`N passed`/`Ran N tests`/
+# OK/FAILED), not a version string / `--collect-only` / "no tests ran".
+# Require a NON-ZERO test count on a genuine SUMMARY line — round-5 fix: a bare
+# `[1-9]\d* passed` matched anywhere let a zero-test runner whose captured output
+# merely contained a "1 passed-through…" substring slip through. Anchor to a
+# pytest summary banner (`==== N passed ====`), a `N passed … in <t>s` summary,
+# a unittest `Ran N tests` line, or `make rebuild`'s `REBUILD GREEN`.
+_TEST_RAN_RE = re.compile(
+    r"(?im)^(?:"
+    r".*={3,}.*\b[1-9]\d*\s+(?:passed|failed|error(?:s|ed)?)\b"          # ==== N passed ====
+    r"|.*\b[1-9]\d*\s+(?:passed|failed|error(?:s|ed)?)\b.*\bin\s+[\d.]+\s*s"  # N passed … in 0.3s
+    r"|\s*Ran\s+[1-9]\d*\s+tests?\b"                                     # unittest: Ran N tests
+    r"|\s*REBUILD GREEN"
+    r")")
+# mcp tools that constitute a real-data probe (not any read-only mcp call).
+_REALDATA_MCP_RE = re.compile(
+    r"(?i)(?:realdata|postgres|psql|sql|eval|consistency|orm|query|run_module"
+    r"|run_python_tests|probe)")
+
+
+def _tool_results_by_id(messages: List[Dict[str, Any]]) -> Dict[str, str]:
+    out: Dict[str, str] = {}
+    for rec in messages:
+        msg = rec.get("message") if isinstance(rec.get("message"), dict) else rec
+        # LOW hardening: Claude Code writes tool_result records as USER-role; a
+        # tool_result inside an assistant message is malformed/forged → ignore it.
+        if (msg.get("role") or rec.get("type")) != "user":
+            continue
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+        for blk in content:
+            if isinstance(blk, dict) and blk.get("type") == "tool_result":
+                tid = blk.get("tool_use_id")
+                c = blk.get("content")
+                txt = c if isinstance(c, str) else (
+                    " ".join(b.get("text", "") for b in c
+                             if isinstance(b, dict) and b.get("type") == "text")
+                    if isinstance(c, list) else "")
+                if tid:
+                    out[tid] = txt or ""
+    return out
+
+
+def _turn_records(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Records since the last REAL user prompt (text content). A tool_result is a
+    user-role message but NOT a turn boundary, so a `Bash`→tool_result→report
+    sequence stays in one turn (plain split-on-user-message would drop the tool_use)."""
+    start = 0
+    for i, rec in enumerate(messages):
+        msg = rec.get("message") if isinstance(rec.get("message"), dict) else rec
+        if (msg.get("role") or rec.get("type")) != "user":
+            continue
+        content = msg.get("content")
+        has_text = isinstance(content, str) or (
+            isinstance(content, list)
+            and any(isinstance(b, dict) and b.get("type") == "text" for b in content))
+        if has_text:
+            start = i
+    return messages[start:]
+
+
+def _has_realdata_tooluse(messages: List[Dict[str, Any]]) -> bool:
+    """True iff the CURRENT turn ran ≥1 real-data probe whose RESULT proves it
+    executed: a `mcp__*` real-data probe that returned data, or a Bash test
+    runner whose output shows tests actually ran (`N passed`/`Ran N`/OK/FAILED).
+    A no-op like `pytest --version` or an empty/`list`-type mcp call does NOT —
+    the tool_result is harness-written, so the agent can't forge the evidence."""
+    results = _tool_results_by_id(messages)
+    for rec in _turn_records(messages):
+        msg = rec.get("message") if isinstance(rec.get("message"), dict) else rec
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+        for blk in content:
+            if not (isinstance(blk, dict) and blk.get("type") == "tool_use"):
+                continue
+            name = blk.get("name") or ""
+            res = results.get(blk.get("id") or "", "")
+            if name.startswith("mcp__"):
+                if _REALDATA_MCP_RE.search(name) and res.strip():
+                    return True
+            elif name == "Bash" and _runs_tests((blk.get("input") or {}).get("command") or ""):
+                if _TEST_RAN_RE.search(res):
+                    return True
+    return False
+
 
 def main() -> int:
     # Kill-switch: env var disables all enforcement (emergency).
@@ -166,13 +312,16 @@ def main() -> int:
         _exit_allow()
 
     python_bin = sys.executable
+    # v0.33 (Q2a): NEW strictness only under enforce_mode block / AGENT_TOOLKIT_STRICT.
+    # The existing rc==1 (coverage) / rc==4 (classifier) blocks stay ALWAYS-on.
+    strict = get_enforce_mode(workspace, "verify_lint", default="warn") == "block"
+    cmd = [python_bin, str(lint_script), slug, "--workspace", str(workspace)]
+    if strict:
+        cmd.append("--strict")
     try:
         result = subprocess.run(
-            [python_bin, str(lint_script), slug, "--workspace", str(workspace)],
-            input=text,
-            capture_output=True,
-            text=True,
-            timeout=10,
+            cmd, input=text, capture_output=True, text=True,
+            encoding="utf-8", timeout=10,
         )
     except (subprocess.TimeoutExpired, OSError):
         _exit_allow()
@@ -197,10 +346,25 @@ def main() -> int:
             "Mỗi tag distinct phải có ≥1 perturb-test row trong bảng "
             "Falsification."
         )
+    # v0.33 F1.1 (strict): no acceptance_evals → /verify proves nothing → block.
+    if result.returncode == 3 and strict:
+        _emit_block(
+            f"[verify-lint] Spec `{slug}` không có `acceptance_evals` → `/verify` "
+            f"không chứng minh được gì (strict). Định nghĩa ≥1 eval "
+            f"(`/eval-define {slug}`) rồi re-verify, hoặc tắt strict nếu feature "
+            f"thật sự không cần real-data proof."
+        )
     # exit_code 0 = lint passed → P11 v0.8.0 auto-cleanup snapshot
     if result.returncode == 0:
+        # v0.33 F1.2-B (strict): a PASS claim must have a real-data probe this turn.
+        if strict and _claims_pass(text) and not _has_realdata_tooluse(messages):
+            _emit_block(
+                f"[verify-lint] Verify Report cho `{slug}` claim PASS nhưng turn "
+                f"này KHÔNG có real-data probe (mcp__* / Bash pytest|make — ADR-002). "
+                f"Chạy probe thật rồi report kết quả raw (số/fingerprint) trước khi chốt PASS."
+            )
         _trigger_snapshot_cleanup(workspace, slug)
-    # exit_code 0, 2, 3, or other → allow
+    # exit_code 0, 2, 3 (non-strict), or other → allow
     _exit_allow()
 
 

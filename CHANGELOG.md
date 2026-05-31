@@ -3,6 +3,51 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
+## [0.33.0] — 2026-05-31 — Enforcement hardening Phase 1 (spec-flow + Odoo v19 accuracy)
+
+Implements `specs/v0.33.0-enforcement-hardening.md` ① + ⑤ (Q1b phasing; ②③④ → v0.34).
+All NEW blocks are **strict-only** (`enforce_mode` block / `AGENT_TOOLKIT_STRICT=1`) —
+the default WARN posture is unchanged (Q2a), so this cannot jam a default install.
+Source: adversarial 5-agent deep-dive 2026-05-31 (spec-flow scored 2.0 — agent graded
+its own homework because `/verify` proved nothing without evals).
+
+### ① Spec-implement flow — `/verify` becomes a mechanical check (strict)
+- **F1.1** `verify_lint` now BLOCKS (strict) when a spec has **no `acceptance_evals`**
+  (lint exit 3) — previously `/verify` fail-opened and proved nothing.
+- **F1.2-A** `lint_verify_report.py --strict`: an eval counts as covered only if it
+  sits in a **single-eval** table cell whose own or **next** cell carries a verdict
+  (PASS/FAIL/GAP/BLOCKER/✅). A bare ID mention, a multi-eval cell, or one ✅ shared
+  across a packed row all fail — so a verdict can't be "borrowed" for an eval that
+  wasn't actually graded.
+- **F1.2-B** `verify_lint` blocks a PASS claim with **no real-data probe this turn**.
+  A `Bash` probe counts only if **both**: (a) its executed program (argv[0] of each
+  sub-command — NOT a substring, so `echo pytest`/`cat`/`grep`/`# pytest` are out) is a
+  real test runner; **and** (b) its **harness-written `tool_result`** shows tests
+  actually ran (`N passed`/`Ran N tests`/`REBUILD GREEN`; `--version`/`--collect-only`/
+  `0 passed`/all-skipped do **not**). An `mcp__*` real-data probe with a non-empty
+  result also counts. The result is read from the harness record, never agent text —
+  so the PASS claim is **un-forgeable**: the agent must actually run a real, passing
+  test (ADR-002 pytest/make genuinely enforced). Hardened across 4 independent
+  fresh-context review rounds that successively closed `echo pytest`, `pytest --version`,
+  and the `0 passed`/all-skipped bypasses.
+- **F1.3** (config, pre-existing) `enforce_mode.strict` already pinned
+  gap/scope/post_edit/verify_lint → block since v0.31 — v0.33 adds no new code here.
+
+### ⑤ Odoo 19 mail-framework accuracy
+- Corrected the overstated **"mail framework refactored to v2 in v19"** across
+  `odoo-19-generic/backend/project-context.mdc` → the OWL mail/Discuss **store rewrite
+  landed at v16→17**; the triad is stable v17→v19; treat v19 mail deltas as unverified
+  (read installed source). Aligns the rules with the `odoo-mail-v2-migration` skill.
+
+### Tests
+- +32 regression (full suite 1018 → **1050**): `lint --strict` verdict scoping
+  incl. row/adjacency/multi-id/interleave/verdict-in-id; verify_lint strict hook
+  (subprocess, UTF-8, no import side-effects) — no-evals block, non-probe Bash
+  (echo/cat/grep/`# pytest`/`make clean`), real-probe allow (pytest/make/odoo-bin/
+  `cd && pytest`), result-inspection (`pytest --version`/`0 passed`/all-skipped block,
+  mcp realdata allow / no-op block); odoo-19 mail-claim guard. Each round added the
+  regression the prior independent review surfaced.
+
 ## [0.32.0] — 2026-05-30 — Public-release hardening: privacy scrub + enforcement soundness
 
 ### Security / privacy (public-release gate)

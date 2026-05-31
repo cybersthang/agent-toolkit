@@ -104,6 +104,7 @@ _PASS_REPORT = "## Verify Report — feat\n\n| eval | result |\n| us1-flag | ✅
     "grep -r pytest .",
     'sleep 0; echo "make test ok"',
     "make clean",                   # a non-test make target must NOT count
+    "poetry run black .",           # F1.5: launcher + NON-test → unwrap → not a runner
 ])
 def test_non_probe_bash_does_not_count_strict(tmp_path, cmd):
     # round-2 HIGH fix: probe detection is anchored to the executed program,
@@ -121,6 +122,11 @@ def test_non_probe_bash_does_not_count_strict(tmp_path, cmd):
     "make test",
     "cd /repo && pytest -x",        # program after && is a real runner
     "odoo-bin -i mod --test-enable --stop-after-init",
+    "poetry run pytest tests/",       # F1.5: launcher-wrapped real run counts
+    "uv run pytest",
+    "xvfb-run pytest tests/",
+    "timeout 60 pytest tests/",
+    "env PYTHONPATH=. pytest tests/",
 ])
 def test_real_probe_bash_counts_strict(tmp_path, cmd):
     ws = _mk_ws(tmp_path, evals=("us1-flag",))

@@ -80,6 +80,60 @@ def atomic_write_json(path: Path, data: Any) -> bool:
         return False
 
 
+# ── v0.34 T2 — shared convergence-cap (R5.1, trigger-class-aware) ─────────────
+# A block-default gate calls converge_or_degrade() each time it WOULD block, with a
+# stable key (e.g. spec-slug + trigger). When the streak hits `cap` the action
+# depends on the trigger class:
+#   crisp=True  (cheaply-satisfiable: 0-byte / no-evals / fake-proof) → "hold"
+#       (escalate + still block, but require a bypass token to proceed — a streak on
+#        a trivial fix is REFUSAL, not a deadlock; do NOT auto-allow).
+#   crisp=False (legitimately-unsatisfiable: reviewer-unavailable)    → "degrade"
+#       (degrade to warn + escalate — the proven independent_review_gate jam-escape).
+# Either way the block→reprompt loop TERMINATES. State lives in
+# .agent-toolkit/.converge_state.json as { "<gate>::<key>": <streak> }.
+_CONVERGE_REL = ".agent-toolkit/.converge_state.json"
+
+
+def _converge_load(workspace: Path) -> Dict[str, Any]:
+    try:
+        return json.loads((workspace / _CONVERGE_REL).read_text(encoding="utf-8")) or {}
+    except (OSError, ValueError):
+        return {}
+
+
+def converge_reset(workspace: Path, gate: str, key: str) -> None:
+    """Clear the streak for (gate, key) — call when the gate observes the trigger
+    SATISFIED, so the next unrelated block starts fresh."""
+    state = _converge_load(workspace)
+    if state.pop(f"{gate}::{key}", None) is not None:
+        atomic_write_json(workspace / _CONVERGE_REL, state)
+
+
+def converge_or_degrade(workspace: Path, gate: str, key: str, *,
+                        cap: int = 3, crisp: bool = True,
+                        has_bypass: bool = False) -> str:
+    """Bump the block-streak for (gate, key); return the action for THIS block:
+       "block"   — streak < cap → keep blocking (normal case).
+       "hold"    — streak ≥ cap, crisp, AND the gate registered a usable bypass token
+                   (`has_bypass=True`) → escalate + block; agent proceeds via the token.
+       "degrade" — streak ≥ cap and (NOT crisp OR no bypass) → degrade to warn + escalate.
+    No-deadlock is UNCONDITIONAL (T1+T2 review fix): a crisp streak with NO registered
+    bypass DEGRADES (self-terminating) rather than holds — so a gate can never deadlock
+    by wiring "hold" before its bypass token exists (verify_lint←T3b, review_proof←T7).
+    Never raises — on IO error returns "block" (the safe enforcing default)."""
+    try:
+        state = _converge_load(workspace)
+        sk = f"{gate}::{key}"
+        streak = int(state.get(sk, 0)) + 1
+        state[sk] = streak
+        atomic_write_json(workspace / _CONVERGE_REL, state)
+        if streak < max(1, cap):
+            return "block"
+        return "hold" if (crisp and has_bypass) else "degrade"
+    except Exception:  # noqa: BLE001 — convergence must never break a gate
+        return "block"
+
+
 def match_glob(
     file_path: str,
     globs: Iterable[str],

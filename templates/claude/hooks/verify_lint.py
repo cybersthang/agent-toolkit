@@ -125,6 +125,46 @@ _PASS_CLAIM_RE = re.compile(
 # `python -m pytest`, `odoo-bin --test-enable`, `cd x && pytest` DO.
 _TEST_PROGRAMS = {"pytest", "py.test", "tox", "nose2", "nose",
                   "odoo-bin", "odoo", "psql", "manage.py"}
+# F1.5 (v0.34): launchers to unwrap so a REAL run still counts as a probe.
+_RUN_LAUNCHERS = {"poetry", "uv", "pdm", "hatch", "pipenv"}       # `<x> run <cmd>`
+_PREFIX_LAUNCHERS = {"env", "nice", "ionice", "stdbuf", "xvfb-run", "timeout", "chrt"}
+_VALUE_FLAGS = {"-s", "--signal", "-k", "--kill-after"}           # take a following value
+
+
+def _effective_program(tokens: List[str]) -> tuple:
+    """F1.5: strip leading env-assignments + known launchers (poetry/uv run, env,
+    nice, timeout <n>, xvfb-run, …) so the REAL executed program surfaces — a real
+    test run via a launcher must still count. Returns (prog_basename, rest)."""
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if re.match(r"^[A-Za-z_]\w*=", tok):            # VAR=val env-assignment
+            i += 1
+            continue
+        base = os.path.basename(tok)
+        if base in _RUN_LAUNCHERS:
+            if i + 1 < len(tokens) and tokens[i + 1] == "run":
+                i += 2
+                continue
+            break                                        # bare `poetry`/`uv` → not a runner
+        if base in _PREFIX_LAUNCHERS:
+            i += 1
+            while i < len(tokens):                       # skip launcher opts + timeout duration
+                t = tokens[i]
+                if t in _VALUE_FLAGS:
+                    i += 2
+                    continue
+                if (t.startswith("-")
+                        or re.match(r"^\d+(?:\.\d+)?[smhd]?$", t)
+                        or re.match(r"^[A-Za-z_]\w*=", t)):
+                    i += 1
+                    continue
+                break
+            continue
+        break
+    if i >= len(tokens):
+        return "", []
+    return os.path.basename(tokens[i]), tokens[i + 1:]
 
 
 def _runs_tests(cmd: str) -> bool:
@@ -138,13 +178,9 @@ def _runs_tests(cmd: str) -> bool:
             tokens = shlex.split(sub)
         except ValueError:
             tokens = sub.split()
-        idx = 0                                  # skip leading VAR=val env assignments
-        while idx < len(tokens) and re.match(r"^[A-Za-z_]\w*=", tokens[idx]):
-            idx += 1
-        if idx >= len(tokens):
+        prog, rest = _effective_program(tokens)   # F1.5: unwrap launchers
+        if not prog:
             continue
-        prog = os.path.basename(tokens[idx])
-        rest = tokens[idx + 1:]
         if prog in _TEST_PROGRAMS:
             return True
         if prog == "make":            # only a test-ish target counts (not `make clean`)

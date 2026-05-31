@@ -23,6 +23,24 @@ TOOLKIT_ROOT = Path(__file__).resolve().parent.parent
 HOOK = TOOLKIT_ROOT / "templates" / "claude" / "hooks" / "implement_notes_gate.py"
 PY = sys.executable
 
+# v0.34 T5 (F2.1): a sidecar must contain the 4 required sections to satisfy the
+# gate (presence, not length). Minimal-but-complete fixtures for "valid" cases.
+_VALID_MD_NOTES = (
+    "---\nspec: feature-foo\n---\n# Implement notes\n\n"
+    "## 1. Scope deviations\nNone\n\n"
+    "## 2. In-transcript trade-offs\nNone\n\n"
+    "## 3. Open follow-ups\nNone\n\n"
+    "## 4. Confidence summary\nhigh\n"
+)
+_VALID_HTML_NOTES = (
+    "<html><body>\n"
+    "<h2>§1 Scope deviations</h2>\n"
+    "<h2>§2 In-transcript trade-offs</h2>\n"
+    "<h2>§3 Open follow-ups</h2>\n"
+    "<h2>§4 Confidence summary</h2>\n"
+    "</body></html>\n"
+)
+
 
 def _git_init_repo(td: Path, branch: str = "feature-foo") -> Path:
     project = td / "proj"
@@ -151,10 +169,7 @@ class TestImplementNotesGate(unittest.TestCase):
             project = _git_init_repo(Path(td), branch="feature-foo")
             spec = _make_spec(project, "feature-foo")
             notes = spec.parent / "feature-foo.implement-noted.md"
-            notes.write_text(
-                "---\nspec: feature-foo\n---\n# implement notes\n",
-                encoding="utf-8",
-            )
+            notes.write_text(_VALID_MD_NOTES, encoding="utf-8")
             t = _make_transcript(project, "Sprint hoàn tất. Implement done.")
             envelope = {"cwd": str(project), "transcript_path": str(t)}
             proc = _run_hook(envelope, project)
@@ -250,8 +265,8 @@ class TestOutputFormatHtmlBoth(unittest.TestCase):
             self._write_config(project, "both")
             md_sidecar = spec.parent / f"{spec.stem}.implement-noted.md"
             html_sidecar = spec.parent / f"{spec.stem}.implement-noted.html"
-            md_sidecar.write_text("# md", encoding="utf-8")
-            html_sidecar.write_text("<html></html>", encoding="utf-8")
+            md_sidecar.write_text(_VALID_MD_NOTES, encoding="utf-8")
+            html_sidecar.write_text(_VALID_HTML_NOTES, encoding="utf-8")
             t = _make_transcript(project, "Implement done.")
             envelope = {"cwd": str(project), "transcript_path": str(t)}
             proc = _run_hook(envelope, project)
@@ -266,7 +281,7 @@ class TestOutputFormatHtmlBoth(unittest.TestCase):
             spec = _make_spec(project, "feature-foo")
             # No .agent-toolkit/implement_notes.json — default `md` only.
             md_sidecar = spec.parent / f"{spec.stem}.implement-noted.md"
-            md_sidecar.write_text("# md", encoding="utf-8")
+            md_sidecar.write_text(_VALID_MD_NOTES, encoding="utf-8")
             # HTML not present, but legacy behavior shouldn't care.
             t = _make_transcript(project, "Implement done.")
             envelope = {"cwd": str(project), "transcript_path": str(t)}
@@ -274,6 +289,65 @@ class TestOutputFormatHtmlBoth(unittest.TestCase):
             self.assertEqual(proc.returncode, 0)
             self.assertEqual((proc.stdout or "").strip(), "",
                              "legacy default should accept MD-only")
+
+
+# ============================================================
+# v0.34 T5 (F2.1) — content validation: empty / section-incomplete sidecar
+# ============================================================
+class TestSidecarContentValidation(unittest.TestCase):
+    """A sidecar that EXISTS but is empty / section-incomplete is rejected like a
+    missing one (presence of the 4 sections, not length)."""
+
+    def _setup(self, td, md_content=None):
+        project = _git_init_repo(Path(td), branch="feature-foo")
+        spec = _make_spec(project, "feature-foo")
+        md = spec.parent / "feature-foo.implement-noted.md"
+        if md_content is not None:
+            md.write_text(md_content, encoding="utf-8")
+        t = _make_transcript(project, "Implement done.")
+        return project, t, md
+
+    def test_empty_sidecar_warns(self):
+        with tempfile.TemporaryDirectory() as td:
+            project, t, _ = self._setup(td, md_content="")
+            proc = _run_hook({"cwd": str(project), "transcript_path": str(t)}, project)
+            self.assertEqual(proc.returncode, 0)
+            self.assertIn("[implement-notes-gate]", proc.stdout)
+
+    def test_whitespace_only_sidecar_warns(self):
+        with tempfile.TemporaryDirectory() as td:
+            project, t, _ = self._setup(td, md_content="   \n\t\n")
+            proc = _run_hook({"cwd": str(project), "transcript_path": str(t)}, project)
+            self.assertIn("[implement-notes-gate]", proc.stdout)
+
+    def test_section_missing_sidecar_warns(self):
+        # 3 of 4 sections (no Confidence summary) → flagged + names the missing one.
+        partial = (
+            "# notes\n## 1. Scope deviations\nNone\n"
+            "## 2. In-transcript trade-offs\nNone\n"
+            "## 3. Open follow-ups\nNone\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            project, t, _ = self._setup(td, md_content=partial)
+            proc = _run_hook({"cwd": str(project), "transcript_path": str(t)}, project)
+            self.assertIn("[implement-notes-gate]", proc.stdout)
+            self.assertIn("Confidence summary", proc.stdout)
+
+    def test_complete_minimal_sidecar_silent(self):
+        with tempfile.TemporaryDirectory() as td:
+            project, t, _ = self._setup(td, md_content=_VALID_MD_NOTES)
+            proc = _run_hook({"cwd": str(project), "transcript_path": str(t)}, project)
+            self.assertEqual((proc.stdout or "").strip(), "",
+                             f"expected silent, got: {proc.stdout!r}")
+
+    def test_empty_sidecar_blocks_under_enforce(self):
+        # F2.1 acceptance ev2: 0-byte sidecar + enforce:block → hard block.
+        with tempfile.TemporaryDirectory() as td:
+            project, t, _ = self._setup(td, md_content="")
+            cfg = project / ".agent-toolkit" / "implement_notes.json"
+            cfg.write_text(json.dumps({"enforce": "block"}), encoding="utf-8")
+            proc = _run_hook({"cwd": str(project), "transcript_path": str(t)}, project)
+            self.assertIn('"decision": "block"', proc.stdout)
 
 
 if __name__ == "__main__":

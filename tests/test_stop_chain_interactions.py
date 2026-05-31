@@ -121,13 +121,12 @@ class TestStopHookBlockSemantics(unittest.TestCase):
             )
 
     def test_non_blocking_stop_hooks_default_warn(self):
-        # Phase D v0.9.0: spec_drift_advisory + implement_orchestrator
-        # are PURE warn-only (no block path).
-        # implement_notes_gate now has CONDITIONAL block via enforce_mode.json
-        # (default still warn).
+        # spec_drift_advisory is PURE warn-only (no block path).
+        # implement_notes_gate + implement_orchestrator (v0.34 T6) now have
+        # CONDITIONAL block via enforce_mode.json (default still warn) — they are
+        # asserted in test_conditional_block_hooks_default_warn instead.
         pure_warners = {
             "spec_drift_advisory.py",
-            "implement_orchestrator.py",
         }
         for hook_name in pure_warners:
             src = (HOOKS_DIR / hook_name).read_text(encoding="utf-8")
@@ -139,7 +138,7 @@ class TestStopHookBlockSemantics(unittest.TestCase):
     def test_conditional_block_hooks_default_warn(self):
         # Phase D v0.9.0: hooks that CAN block via enforce_mode.json
         # must default to warn. They invoke get_enforce_mode() to check.
-        conditional = {"implement_notes_gate.py"}
+        conditional = {"implement_notes_gate.py", "implement_orchestrator.py"}
         for hook_name in conditional:
             src = (HOOKS_DIR / hook_name).read_text(encoding="utf-8")
             self.assertIn(

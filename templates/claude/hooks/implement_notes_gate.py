@@ -63,6 +63,40 @@ BYPASS_MARKER_RE = re.compile(
 
 TRUNK_BRANCHES = {"main", "master", "trunk", "develop"}
 
+# v0.34 T5 (F2.1): the 4 required sidecar sections — presence-checked (NOT length).
+# Each keyword must sit on a HEADER-like line (markdown `#…`, an HTML `<h1-6>` tag,
+# or a leading `§`) so a single line of unrelated/negating prose can't satisfy all 4
+# (review round-1 MED). The real .md headers (`## 1. Scope deviations` …) and .html
+# headers (`<h2 …>§1 Scope deviations` …) both match; nav links / prose lines don't.
+_SECTION_ANCHOR = r"(?im)^\s*(?:#{1,6}\s|<h[1-6]\b[^>]*>|§).*"
+_REQUIRED_SECTIONS = (
+    ("Scope deviations", re.compile(_SECTION_ANCHOR + r"scope deviation")),
+    ("In-transcript trade-offs", re.compile(_SECTION_ANCHOR + r"trade-?off")),
+    ("Open follow-ups", re.compile(_SECTION_ANCHOR + r"follow-?up")),
+    ("Confidence summary", re.compile(_SECTION_ANCHOR + r"confidence")),
+)
+
+
+def _sidecar_defect(path: Path) -> Optional[str]:
+    """T5 / F2.1 — return a short reason if the sidecar is absent / empty /
+    section-incomplete, else None (valid). Validates PRESENCE of the 4 required
+    sections, NOT length (a minimal-but-complete sidecar passes — risk note), so an
+    agent can't satisfy the gate with a 0-byte or stub file. Works for both .md and
+    .html (both render the 4 section titles as readable text). Fail-SAFE: a read
+    error counts as a defect — an unreadable sidecar must not silently pass."""
+    if not path.exists():
+        return "chưa có"
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "không đọc được"
+    if not text.strip():
+        return "rỗng (0-byte / whitespace-only)"
+    missing = [name for name, rx in _REQUIRED_SECTIONS if not rx.search(text)]
+    if missing:
+        return "thiếu section: " + ", ".join(missing)
+    return None
+
 
 def _exit_silent() -> None:
     sys.exit(0)
@@ -298,10 +332,15 @@ def main() -> int:
     md_path = _implement_notes_path(spec_path)
     html_path = _implement_notes_html_path(spec_path)
     paths_by_fmt = {"md": md_path, "html": html_path}
-    missing: List[Path] = [
-        paths_by_fmt[f] for f in expected_formats if not paths_by_fmt[f].exists()
-    ]
-    if not missing:
+    # T5 (F2.1): a sidecar that EXISTS but is empty / section-incomplete is as bad as
+    # a missing one — validate content presence, not just existence (closes the
+    # "emit a 0-byte file to satisfy .exists()" gap).
+    defects: List[tuple] = []   # (path, reason)
+    for f in expected_formats:
+        reason = _sidecar_defect(paths_by_fmt[f])
+        if reason:
+            defects.append((paths_by_fmt[f], reason))
+    if not defects:
         _log_event(workspace, {
             "ts": int(time.time()),
             "kind": "ok",
@@ -314,21 +353,22 @@ def main() -> int:
         "ts": int(time.time()),
         "kind": "warn",
         "slug": branch_slug,
-        "expected_paths": [str(p) for p in missing],
+        "defects": [{"path": str(p), "reason": r} for p, r in defects],
         "checked_formats": expected_formats,
     })
 
     rel_list: List[str] = []
-    for p in missing:
+    for p, r in defects:
         try:
-            rel_list.append(str(p.relative_to(workspace)))
+            rel = str(p.relative_to(workspace))
         except (ValueError, OSError):
-            rel_list.append(str(p))
+            rel = str(p)
+        rel_list.append(f"{rel} ({r})")
 
     missing_str = ", ".join(f"`{r}`" for r in rel_list)
     message = (
-        f"[implement-notes-gate] Turn này claim implement done nhưng "
-        f"{missing_str} chưa có. Chạy `/implement-notes {branch_slug}` "
+        f"[implement-notes-gate] Turn này claim implement done nhưng sidecar "
+        f"chưa đạt: {missing_str}. Chạy `/implement-notes {branch_slug}` "
         f"(emit both .md + .html by default per output_format config) để "
         f"AGENT walk transcript + emit file 4-section (scope deviations + "
         f"in-transcript trade-offs + open follow-ups + confidence summary). "

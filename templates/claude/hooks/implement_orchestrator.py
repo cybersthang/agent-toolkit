@@ -29,7 +29,10 @@ Bypass markers:
 
 Universal kill-switch: `AGENT_TOOLKIT_DISABLE=1`.
 
-Fail-open: any tool error → exit 0 silent.
+Failure modes: a chained-tool error is caught → advisory "skipped" line (exit 0),
+never a block. An uncaught exception in the hook logic itself fails CLOSED via
+`run_main_safe` (exit 1) since v0.20.0 — set `AGENT_TOOLKIT_NO_STRICT=1` to restore
+the old exit-0-silent behavior.
 """
 from __future__ import annotations
 
@@ -45,7 +48,7 @@ from typing import Any, Dict, List, Optional
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
     wrap_utf8_stdio, read_jsonl_transcript, split_current_turn,
-    run_main_safe, emit_fire_event,
+    run_main_safe, emit_fire_event, get_enforce_mode,
 )
 
 wrap_utf8_stdio()
@@ -92,6 +95,39 @@ def _emit_context(message: str) -> None:
     }
     print(json.dumps(payload, ensure_ascii=False))
     sys.exit(0)
+
+
+def _emit_block(message: str) -> None:
+    """T6 (F2.2): blocking variant — used when enforce_mode=block AND a positive
+    scope-integrity problem is found. The fire-event verdict now reflects the real
+    decision (block), replacing the previously-hardcoded `warn`."""
+    try:
+        emit_fire_event("implement_orchestrator.py", verdict="block")
+    except Exception:
+        pass
+    print(json.dumps({"decision": "block", "reason": message}, ensure_ascii=False))
+    sys.exit(0)
+
+
+_BLOCKING_DETECTOR_VERDICTS = {"missing-sd", "fabricated-sd", "missing-and-fabricated"}
+
+
+def _should_block(results: Dict[str, Dict[str, Any]]) -> bool:
+    """T6 (F2.2 + R4 de-risk): a POSITIVE missing/fabricated-SD finding worth blocking
+    on (under enforce_mode block). The detector verdict is only trustworthy when the
+    snapshot captured changes (`modified_count > 0`); an absent/empty snapshot yields
+    modified_count==0 where 'fabricated-sd' would be a false positive — so we degrade
+    to warn there (never wrongly block on missing snapshot data)."""
+    det = results.get("detector") or {}
+    if det.get("error") or det.get("verdict") not in _BLOCKING_DETECTOR_VERDICTS:
+        return False
+    # review round-1 LOW: a subprocess-fallback / third-party detector could emit a
+    # non-numeric modified_count — coerce defensively so this never raises (which
+    # would fail-closed via run_main_safe instead of degrading to warn).
+    try:
+        return int(det.get("modified_count") or 0) > 0
+    except (TypeError, ValueError):
+        return False
 
 
 def _resolve_branch(workspace: Path) -> str:
@@ -371,8 +407,15 @@ def main() -> int:
     if not impl_noted.exists():
         _exit_silent()  # implement_notes_gate already warns separately
 
-    # P3 v0.8.0: cache invalidated by impl-noted mtime
-    if _is_cache_fresh(workspace, slug, impl_noted_path=impl_noted):
+    # P3 v0.8.0: cache invalidated by impl-noted mtime.
+    # T6 (review round-1 HIGH): under block mode do NOT honor the cache short-circuit
+    # — the SD-mismatch depends on the source-file snapshot diff, which can change
+    # WITHOUT the impl-noted mtime, so a stale CLEAN cache (from a prior clean Stop)
+    # must not suppress a now-block-worthy state. Warn mode keeps the cache (avoids
+    # re-spamming the advisory).
+    block_mode = get_enforce_mode(
+        workspace, "implement_orchestrator", default="warn") == "block"
+    if not block_mode and _is_cache_fresh(workspace, slug, impl_noted_path=impl_noted):
         _exit_silent()
 
     # Phase 5.1 — validator (Phase F v0.9.0: in-process import)
@@ -428,9 +471,18 @@ def main() -> int:
         "annotator": annotator_result,
     }
 
-    _save_cache(workspace, slug, results, impl_noted_path=impl_noted)
-
     msg = _aggregate_message(slug, results)
+    # T6 (F2.2): block on a positive, snapshot-backed scope-integrity problem under
+    # block mode (computed above). Default warn → advisory additionalContext, the
+    # pre-v0.34 behavior is unchanged for warn-mode default installs.
+    blocking = block_mode and _should_block(results)
+    # A blocking verdict is never cached, and under block mode the cache read above is
+    # skipped entirely — so the chain re-evaluates every Stop until the DEV fixes the
+    # impl-noted. The warn/clean path caches to avoid re-spamming the same context.
+    if not blocking:
+        _save_cache(workspace, slug, results, impl_noted_path=impl_noted)
+    else:
+        _emit_block(msg)
     _emit_context(msg)
     return 0
 

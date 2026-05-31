@@ -76,6 +76,30 @@ def _make_impl_noted(project: Path, slug: str, sd_files: list = None):
     )
 
 
+def _install_stub_detector(project: Path, verdict: str, modified_count: int,
+                           missing=None, fabricated=None) -> None:
+    """Overwrite the project's missing_sd_detector with a stub `detect()` returning
+    a fixed verdict — lets us drive the orchestrator's T6 block decision without a
+    real git snapshot."""
+    missing = missing or []
+    fabricated = fabricated or []
+    stub = (
+        "def detect(slug, workspace):\n"
+        f"    return {{'verdict': {verdict!r}, 'modified_count': {modified_count!r},\n"
+        f"            'missing_files': {missing!r}, 'missing_count': {len(missing)},\n"
+        f"            'fabricated_sd_files': {fabricated!r}, 'fabricated_sd_count': {len(fabricated)},\n"
+        f"            'covered_count': 0, 'implement_noted_exists': True}}\n"
+    )
+    (project / ".codex" / "tools" / "missing_sd_detector.py").write_text(
+        stub, encoding="utf-8")
+
+
+def _set_enforce(project: Path, hook: str, mode: str) -> None:
+    cfg = project / ".agent-toolkit" / "enforce_mode.json"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(json.dumps({"per_hook": {hook: mode}}), encoding="utf-8")
+
+
 def _make_transcript(project: Path, assistant_text: str) -> Path:
     t = project / ".claude" / "transcript.jsonl"
     t.parent.mkdir(parents=True, exist_ok=True)
@@ -216,6 +240,84 @@ class TestCacheMtimeInvalidation(unittest.TestCase):
             self.assertEqual(proc3.returncode, 0)
             self.assertIn("[implement-orchestrator]", proc3.stdout,
                           "Cache should invalidate after impl-noted edit")
+
+
+class TestOrchestratorBlock(unittest.TestCase):
+    """v0.34 T6 (F2.2): honor enforce_mode → block on a positive, snapshot-backed
+    scope-integrity problem; R4 degrade to warn when the snapshot is absent
+    (modified_count==0)."""
+
+    def _base(self, td):
+        project = _git_init(Path(td), branch="feature-foo")
+        _make_spec(project, "feature-foo")
+        _make_impl_noted(project, "feature-foo", sd_files=[])  # 0 SD declared
+        t = _make_transcript(project, "implement done.")
+        return project, t
+
+    def test_block_on_missing_sd_under_enforce(self):
+        # ev2b: 0-SD declared + N modified (snapshot-backed) + enforce block → BLOCK.
+        with tempfile.TemporaryDirectory() as td:
+            project, t = self._base(td)
+            _install_stub_detector(project, "missing-sd", 3,
+                                   missing=["models/a.py", "models/b.py", "models/c.py"])
+            _set_enforce(project, "implement_orchestrator", "block")
+            proc = _run({"cwd": str(project), "transcript_path": str(t)}, project)
+            self.assertEqual(proc.returncode, 0)
+            self.assertIn('"decision": "block"', proc.stdout)
+
+    def test_no_block_missing_sd_default_warn(self):
+        # Same finding but DEFAULT (warn) install → advisory only, never blocks.
+        with tempfile.TemporaryDirectory() as td:
+            project, t = self._base(td)
+            _install_stub_detector(project, "missing-sd", 3, missing=["models/a.py"])
+            proc = _run({"cwd": str(project), "transcript_path": str(t)}, project)
+            self.assertEqual(proc.returncode, 0)
+            self.assertNotIn('"decision": "block"', proc.stdout)
+            self.assertIn("[implement-orchestrator]", proc.stdout)
+
+    def test_r4_no_block_when_snapshot_absent(self):
+        # R4: fabricated-sd verdict with modified_count==0 = no snapshot data →
+        # MUST degrade to warn (the verdict is a false positive there), even under enforce.
+        with tempfile.TemporaryDirectory() as td:
+            project, t = self._base(td)
+            _install_stub_detector(project, "fabricated-sd", 0,
+                                   fabricated=["models/ghost.py"])
+            _set_enforce(project, "implement_orchestrator", "block")
+            proc = _run({"cwd": str(project), "transcript_path": str(t)}, project)
+            self.assertEqual(proc.returncode, 0)
+            self.assertNotIn('"decision": "block"', proc.stdout)
+
+    def test_block_not_cached_refires_on_restop(self):
+        # A block must NOT be cached away — re-Stop within TTL (same impl-noted)
+        # must re-block, else the agent evades it by simply stopping again.
+        with tempfile.TemporaryDirectory() as td:
+            project, t = self._base(td)
+            _install_stub_detector(project, "missing-sd", 2,
+                                   missing=["models/a.py", "models/b.py"])
+            _set_enforce(project, "implement_orchestrator", "block")
+            proc1 = _run({"cwd": str(project), "transcript_path": str(t)}, project)
+            self.assertIn('"decision": "block"', proc1.stdout)
+            proc2 = _run({"cwd": str(project), "transcript_path": str(t)}, project)
+            self.assertIn('"decision": "block"', proc2.stdout,
+                          "block must re-fire on re-Stop, not be cached away")
+
+    def test_block_mode_bypasses_stale_clean_cache(self):
+        # review round-1 HIGH: turn-1 clean (cached) then turn-2 dirty WITHOUT an
+        # impl-noted edit must still block under block mode (cache read is skipped).
+        with tempfile.TemporaryDirectory() as td:
+            project, t = self._base(td)
+            _set_enforce(project, "implement_orchestrator", "block")
+            # Turn 1: detector clean → no block, writes a clean cache entry.
+            _install_stub_detector(project, "clean", 2)
+            proc1 = _run({"cwd": str(project), "transcript_path": str(t)}, project)
+            self.assertNotIn('"decision": "block"', proc1.stdout)
+            # Turn 2 (same impl-noted mtime, within TTL): source now mismatches →
+            # detector returns missing-sd. The stale CLEAN cache must NOT suppress it.
+            _install_stub_detector(project, "missing-sd", 2,
+                                   missing=["models/a.py", "models/b.py"])
+            proc2 = _run({"cwd": str(project), "transcript_path": str(t)}, project)
+            self.assertIn('"decision": "block"', proc2.stdout,
+                          "stale clean cache must not suppress a block under block mode")
 
 
 if __name__ == "__main__":

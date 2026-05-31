@@ -3,6 +3,67 @@
 All notable changes to agent-toolkit are documented here. Follows Semver:
 breaking changes bump MAJOR; feature additions bump MINOR; bug fixes bump PATCH.
 
+## [0.34.0] — 2026-05-31 — Enforcement hardening Phase 2 (②③④ + convergence)
+
+Implements `specs/v0.34.0-enforcement-hardening-phase2.md` (the ②③④ dimensions
+v0.33 deferred), built phase-by-phase, **each phase passing an independent
+fresh-context adversarial review** (the validated method — it caught real bypasses
+and false-positives every phase, most heavily on T7/F3.1 and the riskiest T9/F4.2).
+
+### Migration / upgrade note (read this)
+**Zero behavior change on a default install.** Every new enforcement trigger ships
+**block-CAPABLE @ WARN**: under the default `enforce_mode` it only WARNS where it
+*would* block. You opt a trigger into blocking per-hook in
+`.agent-toolkit/enforce_mode.json` `per_hook` (or globally with
+`AGENT_TOOLKIT_STRICT=1`) — and only after `templates/codex/tools/flip_readiness.py`
++ an independent FP-sample (R5.3) show its would-block false-positive rate ≈ 0.
+The **one** exception that ships enforcing is the new `no-subagents-forge` blocker
+invariant — it only denies the agent *writing* `**/subagents/**` transcript files
+(harness-authored; the agent never legitimately writes there), so its false-positive
+risk is ~0. The shared convergence-cap guarantees no gate can deadlock.
+
+### ① spec-flow (Phase 0+1)
+- **F1.5** `verify_lint` unwraps launchers (`poetry|uv|pdm|hatch run`, `xvfb-run`,
+  `env`, `nice`, `timeout <n>`, …) so a real test run via a launcher counts as a probe.
+- **F1.1** `verify_lint` no-evals + PASS-without-probe blocks are now **feature-scope-
+  guarded** (`spec_is_feature_scope`; meta/docs/refactor specs only warn) +
+  location-agnostic eval detection (frontmatter OR body) so a spec with body-placed
+  evals isn't false-blocked. **T3b** single-shot DEV bypass token
+  `.skip_verify_lint_next.json`.
+- **F1.2 / C8** `analyze_halt_gate` mechanically blocks source edits when the spec
+  under active `/implement` is feature-scope with 0 acceptance_evals (reads the spec
+  frontmatter, not an agent-authored verdict; honors `expires_at`).
+
+### ② implement-doc (Phase 2)
+- **F2.1** `implement_notes_gate` rejects a sidecar that EXISTS but is empty /
+  section-incomplete (the 4 required sections, anchored to header lines, .md + .html).
+- **F2.2** `implement_orchestrator` is block-capable @ warn — blocks on a snapshot-
+  backed missing/fabricated-SD finding (R4: an absent snapshot degrades to warn, never
+  wrongly blocks); a block is never cached so it can't be evaded by re-Stopping.
+
+### ③ review (Phase 3)
+- **F3.1** NEW `review_proof_gate`: on a `/review` run, each `**Proof**: path:line`
+  cite must have been Read/Grep-touched this turn (harness-confirmed result; agent
+  search inputs excluded; path-boundary match) OR exist on disk — a fabricated proof
+  warns/blocks. Non-file proofs (`mcp__*`/symbol/URL) are skipped.
+
+### ④ independent review (Phase 4)
+- **F4.1** NEW `deny_write_glob` invariant rule-type + `no-subagents-forge` blocker —
+  the agent can't forge a reviewer transcript (harness-write confirmed empirically).
+- **F4.2** reviewer-authored verdict: the reviewer emits `REVIEW-VERDICT: <sha>
+  PASS|FAIL` in its harness-written + write-denied transcript; the gate reads THAT,
+  not the main-agent-writable `.independent_review.json`. FAIL-precedence so a real
+  reviewer FAIL can't be shadowed. **Residual** (a throwaway echo-bot that prints the
+  public sha + PASS without reviewing) needs a per-Stop nonce / crypto-signed verdict
+  → **v0.35**.
+
+### convergence + telemetry (cross-cutting)
+- **R5.1** shared `converge_or_degrade` cap: a crisp block-gate escalates-and-HOLDS
+  after K consecutive blocks (with a reachable bypass) or degrades-to-warn (no
+  bypass) — **no gate can ever deadlock** (the v0.27-paralysis guard).
+- **R5.2 / T10** `flip_readiness.py` — per-trigger would-block telemetry that gates
+  the warn→block flip (flip only when FP≈0 per R5.3 sampling).
+
 ## [0.33.0] — 2026-05-31 — Enforcement hardening Phase 1 (spec-flow + Odoo v19 accuracy)
 
 Implements `specs/v0.33.0-enforcement-hardening.md` ① + ⑤ (Q1b phasing; ②③④ → v0.34).
